@@ -120,7 +120,7 @@ export class BandcampAPI {
             streamUrl,
           }
         : null,
-      tags: story.tags?.filter((t) => !t.isloc).map((t) => t.name) ?? [],
+      tags: story.tags?.filter((t) => !t.isloc).map((t) => t.norm_name) ?? [],
       price: story.is_purchasable
         ? { amount: story.price, currency: story.currency }
         : null,

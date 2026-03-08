@@ -13,12 +13,20 @@ interface Friend {
   count: number;
 }
 
+interface Tag {
+  name: string;
+  count: number;
+}
+
 interface FilterBarProps {
   feedFilter: FeedFilter;
   onFeedFilterChange: (filter: FeedFilter) => void;
   friends: Friend[];
   selectedFriend: string | null;
   onFriendChange: (username: string | null) => void;
+  tags: Tag[];
+  selectedTag: string | null;
+  onTagChange: (tag: string | null) => void;
   dateRange: DateRange | undefined;
   onDateRangeChange: (range: DateRange | undefined) => void;
 }
@@ -46,7 +54,7 @@ function formatDateLabel(range: DateRange | undefined): string {
   return `${fmt(range.from)} – ${fmt(range.to)}`;
 }
 
-export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFriend, onFriendChange, dateRange, onDateRangeChange }: FilterBarProps) {
+export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFriend, onFriendChange, tags, selectedTag, onTagChange, dateRange, onDateRangeChange }: FilterBarProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +106,25 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
               ))}
             </select>
           </div>
+        )}
+
+        {tags.length > 0 && (
+          <select
+            value={selectedTag ?? ''}
+            onChange={(e) => onTagChange(e.target.value || null)}
+            className={SELECT_CLASS}
+            style={{
+              backgroundImage: CHEVRON_SVG,
+              ...(selectedTag ? { backgroundColor: 'rgb(168 85 247 / 0.15)', color: 'rgb(192 132 252)' } : {}),
+            }}
+          >
+            <option value="">All tags</option>
+            {tags.map((t) => (
+              <option key={t.name} value={t.name}>
+                {t.name} ({t.count})
+              </option>
+            ))}
+          </select>
         )}
 
         <div className="relative ml-3 border-l border-zinc-800 pl-3" ref={popoverRef}>

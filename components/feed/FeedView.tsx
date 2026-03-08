@@ -66,6 +66,7 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
   const [loading, setLoading] = useState(false);
   const [feedFilter, setFeedFilter] = useState<FeedFilter>('new_release');
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [shortlist, setShortlist] = useState<Set<string>>(new Set());
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
@@ -132,10 +133,23 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
     return [...counts.values()].sort((a, b) => b.count - a.count);
   })();
 
+  const tags = (() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      for (const tag of item.tags) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
   const bounds = getDateRangeBounds(dateRange);
   const filtered = items.filter((item) => {
     if (feedFilter !== 'all' && item.storyType !== feedFilter) return false;
     if (selectedFriend && item.socialSignal.fan?.username !== selectedFriend) return false;
+    if (selectedTag && !item.tags.includes(selectedTag)) return false;
     if (bounds.from || bounds.to) {
       const d = new Date(item.date);
       if (bounds.from && d < bounds.from) return false;
@@ -146,13 +160,15 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
 
   const prevFilterRef = useRef(feedFilter);
   const prevFriendRef = useRef(selectedFriend);
+  const prevTagRef = useRef(selectedTag);
   useEffect(() => {
-    if (feedFilter !== prevFilterRef.current || selectedFriend !== prevFriendRef.current) {
+    if (feedFilter !== prevFilterRef.current || selectedFriend !== prevFriendRef.current || selectedTag !== prevTagRef.current) {
       autoFetchCountRef.current = 0;
       prevFilterRef.current = feedFilter;
       prevFriendRef.current = selectedFriend;
+      prevTagRef.current = selectedTag;
     }
-  }, [feedFilter, selectedFriend]);
+  }, [feedFilter, selectedFriend, selectedTag]);
 
   const MAX_AUTO_FETCHES = 5;
 
@@ -192,6 +208,9 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
         friends={friends}
         selectedFriend={selectedFriend}
         onFriendChange={setSelectedFriend}
+        tags={tags}
+        selectedTag={selectedTag}
+        onTagChange={setSelectedTag}
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
       />
