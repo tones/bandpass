@@ -70,9 +70,22 @@ describe('BandcampAPI', () => {
 
       const feed = await api.getFeed();
 
-      expect(feed.items[1].track?.streamUrl).toBe(
-        'https://t4.bcbits.com/stream/abc123/mp3-128/999'
+      expect(feed.items[0].track?.streamUrl).toBe(
+        'https://bandcamp.com/stream_redirect?enc=mp3-128&track_id=9001'
       );
+      expect(feed.items[1].track?.streamUrl).toBe(
+        'https://bandcamp.com/stream_redirect?enc=mp3-128&track_id=999'
+      );
+    });
+
+    it('filters out location tags', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postForm.mockResolvedValue(feedFixture);
+
+      const feed = await api.getFeed();
+
+      expect(feed.items[0].tags).toEqual(['jazz', 'afrobeat']);
+      expect(feed.items[0].tags).not.toContain('London');
     });
 
     it('passes older_than for pagination', async () => {

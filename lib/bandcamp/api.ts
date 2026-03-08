@@ -43,9 +43,9 @@ export class BandcampAPI {
     );
 
     const trackStreamUrls = new Map<number, string>();
-    if (raw.stories.track_list?.entries) {
-      for (const t of raw.stories.track_list.entries) {
-        const url = t.file?.['mp3-128'];
+    if (Array.isArray(raw.stories.track_list)) {
+      for (const t of raw.stories.track_list) {
+        const url = t.streaming_url?.['mp3-128'];
         if (url) trackStreamUrls.set(t.track_id, url);
       }
     }
@@ -70,14 +70,14 @@ export class BandcampAPI {
     const fan = story.fan_id && fanInfo[String(story.fan_id)];
 
     let streamUrl = story.featured_track_url;
-    if (!streamUrl && story.tralbum_id) {
-      streamUrl = trackStreamUrls.get(story.tralbum_id) ?? null;
+    if (!streamUrl && story.featured_track) {
+      streamUrl = trackStreamUrls.get(story.featured_track) ?? null;
     }
 
     return {
       id: `${story.story_type}-${story.tralbum_id}-${story.fan_id}-${story.story_date}`,
       storyType: STORY_TYPE_MAP[story.story_type] ?? 'also_purchased',
-      date: new Date(Number(story.story_date) * 1000),
+      date: new Date(story.story_date),
       album: {
         id: story.album_id,
         title: story.album_title || story.item_title,
@@ -96,7 +96,7 @@ export class BandcampAPI {
             streamUrl,
           }
         : null,
-      tags: story.tags?.map((t) => t.name) ?? [],
+      tags: story.tags?.filter((t) => !t.isloc).map((t) => t.name) ?? [],
       price: story.is_purchasable
         ? { amount: story.price, currency: story.currency }
         : null,
