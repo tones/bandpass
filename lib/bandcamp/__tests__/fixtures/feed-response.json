@@ -1,0 +1,105 @@
+{
+  "ok": true,
+  "stories": {
+    "entries": [
+      {
+        "fan_id": 111,
+        "item_id": 1001,
+        "item_type": "a",
+        "tralbum_id": 1001,
+        "band_id": 501,
+        "story_type": "fp",
+        "story_date": "1709500000",
+        "item_title": "Midnight Sessions",
+        "item_url": "https://kokoroko.bandcamp.com/album/midnight-sessions",
+        "item_art_url": "https://f4.bcbits.com/img/a1234567890_10.jpg",
+        "item_art_id": 1234567890,
+        "band_name": "Kokoroko",
+        "band_url": "https://kokoroko.bandcamp.com",
+        "genre_id": 15,
+        "is_purchasable": true,
+        "currency": "USD",
+        "price": 10.0,
+        "album_id": 1001,
+        "album_title": "Midnight Sessions",
+        "featured_track_title": "Something Good",
+        "featured_track_number": 1,
+        "featured_track_duration": 245.5,
+        "featured_track_url": null,
+        "also_collected_count": 3,
+        "num_streamable_tracks": 8,
+        "tags": [
+          { "name": "jazz", "norm_name": "jazz" },
+          { "name": "afrobeat", "norm_name": "afrobeat" }
+        ]
+      },
+      {
+        "fan_id": 0,
+        "item_id": 1002,
+        "item_type": "a",
+        "tralbum_id": 1002,
+        "band_id": 502,
+        "story_type": "nr",
+        "story_date": "1709400000",
+        "item_title": "Blue Hour",
+        "item_url": "https://floatingpoints.bandcamp.com/album/blue-hour",
+        "item_art_url": "https://f4.bcbits.com/img/a9876543210_10.jpg",
+        "item_art_id": 9876543210,
+        "band_name": "Floating Points",
+        "band_url": "https://floatingpoints.bandcamp.com",
+        "genre_id": 1,
+        "is_purchasable": true,
+        "currency": "GBP",
+        "price": 8.0,
+        "album_id": 1002,
+        "album_title": "Blue Hour",
+        "featured_track_title": "Vocoder",
+        "featured_track_number": 3,
+        "featured_track_duration": 312.0,
+        "featured_track_url": "https://t4.bcbits.com/stream/abc123/mp3-128/999",
+        "also_collected_count": 0,
+        "num_streamable_tracks": 10,
+        "tags": [
+          { "name": "electronic", "norm_name": "electronic" },
+          { "name": "ambient", "norm_name": "ambient" }
+        ]
+      }
+    ],
+    "oldest_story_date": 1709400000,
+    "newest_story_date": 1709500000,
+    "track_list": {
+      "entries": [
+        {
+          "track_id": 999,
+          "title": "Vocoder",
+          "artist": "Floating Points",
+          "album_id": 1002,
+          "album_title": "Blue Hour",
+          "band_id": 502,
+          "band_name": "Floating Points",
+          "band_url": "https://floatingpoints.bandcamp.com",
+          "item_art_id": 9876543210,
+          "duration": 312.0,
+          "file": { "mp3-128": "https://t4.bcbits.com/stream/abc123/mp3-128/999" },
+          "track_number": 3
+        }
+      ]
+    },
+    "feed_timestamp": 1709500000
+  },
+  "fan_info": {
+    "111": {
+      "fan_id": 111,
+      "name": "Sarah",
+      "username": "sarahmusic",
+      "image_id": 7777,
+      "trackpipe_url": "https://bandcamp.com/sarahmusic"
+    }
+  },
+  "band_info": {
+    "501": { "name": "Kokoroko", "band_id": 501, "image_id": 5001, "genre_id": 15, "followed": true },
+    "502": { "name": "Floating Points", "band_id": 502, "image_id": 5002, "genre_id": 1, "followed": true }
+  },
+  "story_collectors": {},
+  "item_lookup": {}
+}
