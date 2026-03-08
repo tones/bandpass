@@ -26,7 +26,7 @@ UI Layer (app/ routes + React components)
 Data Service Layer (lib/bandcamp/)
   │
   ├── SQLite cache (better-sqlite3 or drizzle-orm)
-  └── bandcamp-fetch (wraps Bandcamp internal APIs)
+  └── Custom Bandcamp API client (wraps internal JSON APIs directly)
 ```
 
 ### UI Layer
@@ -35,16 +35,16 @@ Next.js App Router pages and React components. Server components fetch data from
 
 ### Data Service Layer
 
-Wraps `bandcamp-fetch` and owns the SQLite database. Exposes a clean API to the UI layer. Internally handles all caching decisions: check SQLite first, decide if data is fresh enough, fetch from Bandcamp if not, cache the result, return it. The UI layer never knows about `bandcamp-fetch` or SQLite directly.
+Custom Bandcamp API client (no third-party library — see `docs/research/data-layer-decision.md`) that wraps Bandcamp's internal JSON APIs directly. Owns the SQLite database. Exposes a clean API to the UI layer. Internally handles all caching decisions: check SQLite first, decide if data is fresh enough, fetch from Bandcamp if not, cache the result, return it. The UI layer never knows about the Bandcamp endpoints or SQLite directly.
 
 This boundary is intentional. If the data service ever needs to become a separate API server, it lifts out cleanly.
 
 ### Key Technology Choices
 
 - **Next.js with App Router** — server components keep auth server-side; single codebase for server and client
-- **TypeScript** — bandcamp-fetch is already TypeScript; types flow end-to-end
+- **TypeScript** — types flow end-to-end from API responses to UI
 - **SQLite** — zero-config, file-based, correct for a single-user app
-- **bandcamp-fetch** — MIT-licensed Node.js library wrapping Bandcamp's internal APIs
+- **Custom Bandcamp API client** — thin typed wrapper over Bandcamp's internal JSON APIs (feed, discovery, collection). No third-party scraping library. See research docs for rationale.
 
 ### Auth
 
@@ -109,21 +109,20 @@ Top-level tabs (may evolve): Feed, Discover, List. These may merge into filter s
 - No audio proxying through our server; zero bandwidth cost
 - Stream URLs may expire; on playback failure, the data service re-fetches track detail for a fresh URL
 
-## Phase 0: Research
+## Phase 0: Research (Completed)
 
-Before implementation, we need to investigate what data is actually available. This is an iterative process:
+Research findings documented in `docs/research/`. Key outcomes:
 
-1. **Install and authenticate with `bandcamp-fetch`** — verify cookie-based auth works
-2. **Explore feed endpoints** — what event types exist? What fields come back? Does bandcamp-fetch expose the feed, or do we need to hit Bandcamp endpoints directly?
-3. **Explore discovery endpoints** — what filtering is available? How does tag/genre browsing work?
-4. **Explore collection/fan endpoints** — what does "following an artist" mean? What's the difference between followed and purchased-from?
-5. **Identify gaps** — anything we need that bandcamp-fetch doesn't provide
-6. **Report findings** — collaboratively decide features and schema based on real data
+- **Feed endpoint discovered:** `POST /fan_dash_feed_updates` returns typed JSON with story entries (new releases, friend purchases, also-purchased). No HTML scraping needed.
+- **Feed story types:** `nr` (new release), `fp` (friend purchase), `np` (also purchased). Each includes album metadata, tags, art URL, featured track stream URL, and social signal (`also_collected_count`).
+- **Fan ID bootstrap:** `GET /api/fan/2/collection_summary` gives us fan_id from the identity cookie. No HTML scraping.
+- **bandcamp-fetch evaluated and rejected:** Well-structured but no feed support, zero tests, single maintainer, fragile HTML scraping. Its source taught us the endpoint surface.
+- **bandcamp-retriever evaluated:** Has feed support but UNLICENSED. Valuable as reference for response type shapes.
+- **Decision: build our own API client.** JSON-first, thin typed wrapper, no third-party scraping dependencies.
 
 ## Open Questions
 
-- How stable are Bandcamp's internal APIs? Acceptable risk for a personal project.
-- Rate limiting behavior — start gentle, observe.
-- Does `bandcamp-fetch` expose the social feed, or only collections and discovery?
 - Stream URL expiration policy — how long are preview URLs valid?
-- Exact feed event types — to be determined by Phase 0 research.
+- Rate limiting behavior on feed/discovery endpoints — start gentle, observe.
+- Does `collection_items` work with a "start from beginning" token, or needs initial HTML scrape?
+- How stable are Bandcamp's internal APIs? Acceptable risk for a personal project.
