@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import type { FeedPage, FeedItem, StoryType } from '@/lib/bandcamp';
 import { FeedItemCard } from './FeedItem';
 import { FilterBar } from './FilterBar';
+import { WaveformPlayer } from './WaveformPlayer';
 import { loadMoreFeed } from '@/app/feed/actions';
 
 interface FeedViewProps {
@@ -90,30 +91,7 @@ export function FeedView({ initialFeed }: FeedViewProps) {
         </div>
       )}
       {playingItem && playingTrackUrl && (
-        <div className="fixed bottom-0 left-0 right-0 border-t border-zinc-800 bg-zinc-900 px-6 py-3">
-          <div className="mx-auto flex max-w-5xl items-center gap-4">
-            <img
-              src={playingItem.album.imageUrl}
-              alt=""
-              className="h-12 w-12 rounded"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{playingItem.track?.title}</div>
-              <div className="truncate text-xs text-zinc-400">
-                {playingItem.artist.name} — {playingItem.album.title}
-              </div>
-            </div>
-            <audio src={playingTrackUrl} autoPlay controls className="h-8 w-64" />
-            <a
-              href={playingItem.album.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 rounded bg-zinc-800 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700"
-            >
-              Bandcamp ↗
-            </a>
-          </div>
-        </div>
+        <WaveformPlayer item={playingItem} trackUrl={playingTrackUrl} />
       )}
     </div>
   );
