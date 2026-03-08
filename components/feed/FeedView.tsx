@@ -1,7 +1,7 @@
 // components/feed/FeedView.tsx
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { FeedPage, FeedItem, StoryType } from '@/lib/bandcamp';
 import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
@@ -65,6 +65,8 @@ export function FeedView({ initialFeed }: FeedViewProps) {
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
 
+  const autoFetchingRef = useRef(false);
+
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
     setLoading(true);
@@ -110,6 +112,31 @@ export function FeedView({ initialFeed }: FeedViewProps) {
     return true;
   });
 
+  useEffect(() => {
+    const MIN_VISIBLE = 10;
+    const cutoff = getTimeRangeCutoff(timeRange);
+
+    const needsMoreForFilter = filtered.length < MIN_VISIBLE;
+    const needsMoreForRange = cutoff && items.length > 0 &&
+      new Date(items[items.length - 1].date) > cutoff;
+
+    if ((!needsMoreForFilter && !needsMoreForRange) || !hasMore || loading || autoFetchingRef.current) return;
+
+    autoFetchingRef.current = true;
+    setLoading(true);
+
+    loadMoreFeed(oldestDate).then((next) => {
+      setItems((prev) => [...prev, ...next.items]);
+      setOldestDate(next.oldestStoryDate);
+      setHasMore(next.hasMore);
+      setLoading(false);
+      autoFetchingRef.current = false;
+    }).catch(() => {
+      setLoading(false);
+      autoFetchingRef.current = false;
+    });
+  }, [filtered.length, hasMore, loading, oldestDate, timeRange, items]);
+
   const grouped = groupByDate(filtered);
 
   return (
@@ -138,13 +165,19 @@ export function FeedView({ initialFeed }: FeedViewProps) {
       </div>
       {hasMore && (
         <div className="flex justify-center py-6">
-          <button
-            onClick={loadMore}
-            disabled={loading}
-            className="rounded-lg bg-zinc-800 px-6 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
-          >
-            {loading ? 'Loading...' : 'Load more'}
-          </button>
+          {loading ? (
+            <span className="text-xs text-zinc-500">
+              Loading more... ({items.length} items loaded)
+            </span>
+          ) : (
+            <button
+              onClick={loadMore}
+              disabled={loading}
+              className="rounded-lg bg-zinc-800 px-6 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+            >
+              Load more
+            </button>
+          )}
         </div>
       )}
       {playingItem && playingTrackUrl && (
