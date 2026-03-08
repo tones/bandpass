@@ -60,25 +60,22 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
   return (
     <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 px-6 py-3 backdrop-blur">
       <div className="flex items-center gap-2">
-        {FEED_OPTIONS.map(({ value, label }) => (
-          <button
-            key={value}
-            onClick={() => {
-              onFeedFilterChange(value);
-              if (value !== 'friend_purchase') onFriendChange(null);
-            }}
-            className={`rounded-full px-3 py-1 text-sm transition-colors ${
-              feedFilter === value
-                ? 'bg-zinc-100 text-zinc-900'
-                : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+        <select
+          value={feedFilter}
+          onChange={(e) => {
+            const value = e.target.value as FeedFilter;
+            onFeedFilterChange(value);
+            if (value !== 'friend_purchase') onFriendChange(null);
+          }}
+          className="rounded-full bg-zinc-800/50 px-3 py-1 text-sm text-zinc-400 outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+        >
+          {FEED_OPTIONS.map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
 
         {feedFilter === 'friend_purchase' && friends.length > 0 && (
-          <div className="ml-3 border-l border-zinc-800 pl-3">
+          <div>
             <select
               value={selectedFriend ?? ''}
               onChange={(e) => onFriendChange(e.target.value || null)}
