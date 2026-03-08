@@ -9,10 +9,19 @@ interface FeedItemCardProps {
   onPlay: () => void;
 }
 
-const STORY_LABELS: Record<string, string> = {
-  friend_purchase: 'Friend purchased',
-  new_release: 'New release',
-  also_purchased: 'Also purchased',
+const STORY_BADGES: Record<string, { label: string; className: string }> = {
+  friend_purchase: {
+    label: 'Friend purchased',
+    className: 'bg-sky-500/15 text-sky-400',
+  },
+  new_release: {
+    label: 'New release',
+    className: 'bg-emerald-500/15 text-emerald-400',
+  },
+  also_purchased: {
+    label: 'Also purchased',
+    className: 'bg-violet-500/15 text-violet-400',
+  },
 };
 
 function formatDuration(seconds: number): string {
@@ -77,8 +86,8 @@ export function FeedItemCard({
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="truncate font-medium">{item.album.title}</span>
-          <span className="shrink-0 text-xs text-zinc-500">
-            {STORY_LABELS[item.storyType]}
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STORY_BADGES[item.storyType]?.className ?? 'bg-zinc-800 text-zinc-400'}`}>
+            {STORY_BADGES[item.storyType]?.label ?? item.storyType}
           </span>
           <span className="shrink-0 text-xs text-zinc-600">
             {formatRelativeDate(new Date(item.date))}
