@@ -1,2 +1,43 @@
 @import "tailwindcss";
+@import "react-day-picker/style.css";
 
+.rdp-dark {
+  --rdp-accent-color: #d97706;
+  --rdp-accent-background-color: #d9770633;
+  --rdp-range_middle-background-color: #d9770620;
+  --rdp-range_middle-color: #e4e4e7;
+  --rdp-day-height: 2rem;
+  --rdp-day-width: 2rem;
+  --rdp-day_button-height: 2rem;
+  --rdp-day_button-width: 2rem;
+  color: #a1a1aa;
+}
+
+.rdp-dark .rdp-button_previous,
+.rdp-dark .rdp-button_next {
+  color: #71717a;
+}
+
+.rdp-dark .rdp-button_previous:hover,
+.rdp-dark .rdp-button_next:hover {
+  background-color: #27272a;
+  color: #e4e4e7;
+}
+
+.rdp-dark .rdp-day_button:hover {
+  background-color: #27272a;
+}
+
+.rdp-dark .rdp-month_caption {
+  color: #e4e4e7;
+  font-size: 0.875rem;
+}
+
+.rdp-dark .rdp-weekday {
+  color: #52525b;
+  font-size: 0.75rem;
+}
+
+.rdp-dark .rdp-disabled {
+  opacity: 0.25;
+}

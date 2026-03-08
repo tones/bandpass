@@ -1,20 +1,15 @@
-// components/feed/FilterBar.tsx
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { DayPicker } from 'react-day-picker';
+import type { DateRange } from 'react-day-picker';
 import type { StoryType } from '@/lib/bandcamp';
-
-export type TimeRange = '7d' | '30d' | '90d' | 'all';
-
-const TIME_RANGES: { value: TimeRange; label: string }[] = [
-  { value: '7d', label: 'Last 7 days' },
-  { value: '30d', label: 'Last 30 days' },
-  { value: '90d', label: 'Last 90 days' },
-  { value: 'all', label: 'All' },
-];
 
 interface FilterBarProps {
   activeFilters: Set<StoryType>;
   onToggle: (type: StoryType) => void;
-  timeRange: TimeRange;
-  onTimeRangeChange: (range: TimeRange) => void;
+  dateRange: DateRange | undefined;
+  onDateRangeChange: (range: DateRange | undefined) => void;
 }
 
 const FILTERS: { type: StoryType; label: string }[] = [
@@ -23,7 +18,33 @@ const FILTERS: { type: StoryType; label: string }[] = [
   { type: 'also_purchased', label: 'Also Purchased' },
 ];
 
-export function FilterBar({ activeFilters, onToggle, timeRange, onTimeRangeChange }: FilterBarProps) {
+const SIX_MONTHS_AGO = new Date(Date.now() - 180 * 86400000);
+
+function formatDateLabel(range: DateRange | undefined): string {
+  if (!range?.from) return 'All time';
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (!range.to || range.from.getTime() === range.to.getTime()) {
+    return fmt(range.from);
+  }
+  return `${fmt(range.from)} – ${fmt(range.to)}`;
+}
+
+export function FilterBar({ activeFilters, onToggle, dateRange, onDateRangeChange }: FilterBarProps) {
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setCalendarOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [calendarOpen]);
+
   return (
     <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 px-6 py-3 backdrop-blur">
       <div className="flex items-center gap-2">
@@ -51,16 +72,41 @@ export function FilterBar({ activeFilters, onToggle, timeRange, onTimeRangeChang
             Clear
           </button>
         )}
-        <div className="flex items-center gap-3 border-l border-zinc-800 pl-3 ml-3">
-          <select
-            value={timeRange}
-            onChange={(e) => onTimeRangeChange(e.target.value as TimeRange)}
-            className="rounded bg-zinc-800/50 px-2 py-1 text-sm text-zinc-400 outline-none hover:bg-zinc-800"
+        <div className="relative ml-3 border-l border-zinc-800 pl-3" ref={popoverRef}>
+          <button
+            onClick={() => setCalendarOpen((v) => !v)}
+            className={`rounded-full px-3 py-1 text-sm transition-colors ${
+              dateRange?.from
+                ? 'bg-amber-600/20 text-amber-400'
+                : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
+            }`}
           >
-            {TIME_RANGES.map(({ value, label }) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+            {formatDateLabel(dateRange)}
+          </button>
+          {dateRange?.from && (
+            <button
+              onClick={() => onDateRangeChange(undefined)}
+              className="ml-1 px-1 text-xs text-zinc-500 hover:text-zinc-400"
+            >
+              ×
+            </button>
+          )}
+          {calendarOpen && (
+            <div className="absolute left-0 top-full mt-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-xl">
+              <DayPicker
+                mode="range"
+                selected={dateRange}
+                onSelect={onDateRangeChange}
+                disabled={{ before: SIX_MONTHS_AGO, after: new Date() }}
+                defaultMonth={new Date()}
+                startMonth={SIX_MONTHS_AGO}
+                endMonth={new Date()}
+                classNames={{
+                  root: 'rdp-dark',
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

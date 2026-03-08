@@ -2,10 +2,10 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import type { DateRange } from 'react-day-picker';
 import type { FeedPage, FeedItem, StoryType } from '@/lib/bandcamp';
 import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
-import type { TimeRange } from './FilterBar';
 import { FilterBar } from './FilterBar';
 import { WaveformPlayer } from './WaveformPlayer';
 import { loadMoreFeed } from '@/app/feed/actions';
@@ -14,10 +14,13 @@ type FeedListEntry =
   | { type: 'header'; label: string }
   | { type: 'item'; item: FeedItem };
 
-function getTimeRangeCutoff(range: TimeRange): Date | null {
-  if (range === 'all') return null;
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-  return new Date(Date.now() - days * 86400000);
+function getDateRangeBounds(range: DateRange | undefined): { from: Date | null; to: Date | null } {
+  if (!range?.from) return { from: null, to: null };
+  const from = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
+  const to = range.to
+    ? new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1)
+    : new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);
+  return { from, to };
 }
 
 function dateSectionLabel(date: Date): string {
@@ -60,7 +63,7 @@ export function FeedView({ initialFeed }: FeedViewProps) {
   const [hasMore, setHasMore] = useState(initialFeed.hasMore);
   const [loading, setLoading] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<StoryType>>(new Set());
-  const [timeRange, setTimeRange] = useState<TimeRange>('all');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [shortlist, setShortlist] = useState<Set<string>>(new Set());
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
@@ -105,20 +108,23 @@ export function FeedView({ initialFeed }: FeedViewProps) {
     }
   }, []);
 
-  const cutoff = getTimeRangeCutoff(timeRange);
+  const bounds = getDateRangeBounds(dateRange);
   const filtered = items.filter((item) => {
     if (activeFilters.size > 0 && !activeFilters.has(item.storyType)) return false;
-    if (cutoff && new Date(item.date) < cutoff) return false;
+    if (bounds.from || bounds.to) {
+      const d = new Date(item.date);
+      if (bounds.from && d < bounds.from) return false;
+      if (bounds.to && d >= bounds.to) return false;
+    }
     return true;
   });
 
   useEffect(() => {
     const MIN_VISIBLE = 10;
-    const cutoff = getTimeRangeCutoff(timeRange);
 
     const needsMoreForFilter = filtered.length < MIN_VISIBLE;
-    const needsMoreForRange = cutoff && items.length > 0 &&
-      new Date(items[items.length - 1].date) > cutoff;
+    const needsMoreForRange = bounds.from && items.length > 0 &&
+      new Date(items[items.length - 1].date) > bounds.from;
 
     if ((!needsMoreForFilter && !needsMoreForRange) || !hasMore || loading || autoFetchingRef.current) return;
 
@@ -135,7 +141,7 @@ export function FeedView({ initialFeed }: FeedViewProps) {
       setLoading(false);
       autoFetchingRef.current = false;
     });
-  }, [filtered.length, hasMore, loading, oldestDate, timeRange, items]);
+  }, [filtered.length, hasMore, loading, oldestDate, bounds.from, items]);
 
   const grouped = groupByDate(filtered);
 
@@ -144,8 +150,8 @@ export function FeedView({ initialFeed }: FeedViewProps) {
       <FilterBar
         activeFilters={activeFilters}
         onToggle={toggleFilter}
-        timeRange={timeRange}
-        onTimeRangeChange={setTimeRange}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
       />
       <div>
         {grouped.map((entry) =>
