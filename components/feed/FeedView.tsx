@@ -69,6 +69,22 @@ export function FeedView({ initialFeed }: FeedViewProps) {
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
 
   const autoFetchingRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMore && !loading) {
+          loadMore();
+        }
+      },
+      { rootMargin: '400px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading]);
 
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
@@ -169,23 +185,13 @@ export function FeedView({ initialFeed }: FeedViewProps) {
           ),
         )}
       </div>
-      {hasMore && (
-        <div className="flex justify-center py-6">
-          {loading ? (
-            <span className="text-xs text-zinc-500">
-              Loading more... ({items.length} items loaded)
-            </span>
-          ) : (
-            <button
-              onClick={loadMore}
-              disabled={loading}
-              className="rounded-lg bg-zinc-800 px-6 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
-            >
-              Load more
-            </button>
-          )}
-        </div>
-      )}
+      <div ref={sentinelRef} className="flex justify-center py-6">
+        {loading && (
+          <span className="text-xs text-zinc-500">
+            Loading more... ({items.length} items loaded)
+          </span>
+        )}
+      </div>
       {playingItem && playingTrackUrl && (
         <WaveformPlayer item={playingItem} trackUrl={playingTrackUrl} />
       )}

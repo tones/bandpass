@@ -37,14 +37,9 @@ Shows your Bandcamp social feed (friend purchases, new releases from followed ar
 npm install
 ```
 
-Get your Bandcamp identity cookie:
-1. Log in to bandcamp.com
-2. Open DevTools → Application → Cookies → bandcamp.com
-3. Copy the value of the `identity` cookie
-
 Create `.env.local`:
 ```
-BANDCAMP_IDENTITY=<paste your identity cookie value>
+SESSION_SECRET=<any string at least 32 characters long>
 ```
 
 ### Run
@@ -53,7 +48,7 @@ BANDCAMP_IDENTITY=<paste your identity cookie value>
 npm run dev
 ```
 
-Open http://localhost:3000
+Open http://localhost:3000 — you'll be prompted to connect your Bandcamp account by pasting your identity cookie (instructions are on the login page).
 
 ### Test
 
