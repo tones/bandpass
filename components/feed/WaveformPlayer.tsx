@@ -46,7 +46,7 @@ export function WaveformPlayer({ item, trackUrl }: WaveformPlayerProps) {
   }, [wavesurfer]);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 border-t border-zinc-800 bg-zinc-950 px-6 py-3">
+    <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-800 bg-zinc-950 px-6 py-3">
       <div className="mx-auto flex max-w-5xl items-center gap-4">
         <img
           src={item.album.imageUrl}
