@@ -55,9 +55,10 @@ function groupByDate(items: FeedItem[]): FeedListEntry[] {
 
 interface FeedViewProps {
   initialFeed: FeedPage;
+  exchangeRates?: Record<string, number>;
 }
 
-export function FeedView({ initialFeed }: FeedViewProps) {
+export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
   const [items, setItems] = useState<FeedItem[]>(initialFeed.items);
   const [oldestDate, setOldestDate] = useState(initialFeed.oldestStoryDate);
   const [hasMore, setHasMore] = useState(initialFeed.hasMore);
@@ -181,6 +182,7 @@ export function FeedView({ initialFeed }: FeedViewProps) {
               isPlaying={playingTrackUrl === entry.item.track?.streamUrl}
               onToggleShortlist={() => toggleShortlist(entry.item.id)}
               onPlay={() => handlePlay(entry.item)}
+              exchangeRates={exchangeRates}
             />
           ),
         )}

@@ -1,5 +1,15 @@
 // components/feed/FeedItem.tsx
 import type { FeedItem } from '@/lib/bandcamp';
+function convertToUsd(
+  amount: number,
+  fromCurrency: string,
+  rates: Record<string, number>,
+): number | null {
+  if (fromCurrency === 'USD') return amount;
+  const rate = rates[fromCurrency];
+  if (!rate) return null;
+  return Math.round((amount / rate) * 100) / 100;
+}
 
 interface FeedItemCardProps {
   item: FeedItem;
@@ -7,6 +17,7 @@ interface FeedItemCardProps {
   isPlaying: boolean;
   onToggleShortlist: () => void;
   onPlay: () => void;
+  exchangeRates?: Record<string, number>;
 }
 
 const STORY_BADGES: Record<string, { label: string; className: string }> = {
@@ -23,6 +34,29 @@ const STORY_BADGES: Record<string, { label: string; className: string }> = {
     className: 'bg-violet-500/15 text-violet-400',
   },
 };
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  AUD: 'A$',
+  CAD: 'C$',
+  JPY: '¥',
+  NZD: 'NZ$',
+  CHF: 'CHF',
+  SEK: 'SEK',
+  NOK: 'NOK',
+  DKK: 'DKK',
+  BRL: 'R$',
+  MXN: 'MX$',
+};
+
+function formatPrice(amount: number, currency: string): string {
+  const sym = CURRENCY_SYMBOLS[currency] ?? currency + ' ';
+  const isSymbol = sym.length <= 2 || sym.endsWith('$');
+  if (isSymbol) return `${sym}${amount.toFixed(2)}`;
+  return `${sym} ${amount.toFixed(2)}`;
+}
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -54,6 +88,7 @@ export function FeedItemCard({
   isPlaying,
   onToggleShortlist,
   onPlay,
+  exchangeRates = {},
 }: FeedItemCardProps) {
   const signal = item.socialSignal;
   const signalText = signal.fan
@@ -115,12 +150,24 @@ export function FeedItemCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {item.price && (
-          <span className="text-xs text-zinc-500">
-            {item.price.currency === 'USD' ? '$' : item.price.currency}{' '}
-            {item.price.amount}
-          </span>
-        )}
+        {item.price && (() => {
+          const { amount, currency } = item.price;
+          const isUsd = currency === 'USD';
+          const usdAmount = isUsd ? amount : convertToUsd(amount, currency, exchangeRates);
+
+          return (
+            <div className="text-right">
+              <div className="text-xs text-zinc-400">
+                {usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency)}
+              </div>
+              {!isUsd && usdAmount != null && (
+                <div className="text-[10px] text-zinc-600">
+                  {formatPrice(amount, currency)}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <button
           onClick={onToggleShortlist}
           className={`rounded p-1.5 text-lg transition-colors ${

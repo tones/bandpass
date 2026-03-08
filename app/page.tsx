@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { getBandcamp } from '@/lib/bandcamp';
+import { getExchangeRates } from '@/lib/currency';
 import { FeedView } from '@/components/feed/FeedView';
 import { LogoutButton } from '@/components/LogoutButton';
 
@@ -17,9 +18,11 @@ export default async function Home() {
 
   let feed;
   let error: string | null = null;
+  let exchangeRates: Record<string, number> = {};
 
   try {
-    const bandcamp = await getBandcamp();
+    const [bandcamp, rates] = await Promise.all([getBandcamp(), getExchangeRates()]);
+    exchangeRates = rates;
     feed = await bandcamp.getFeedPages({ pages: 5 });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load feed';
@@ -52,7 +55,7 @@ export default async function Home() {
       {error ? (
         <div className="p-6 text-red-400">{error}</div>
       ) : feed ? (
-        <FeedView initialFeed={feed} />
+        <FeedView initialFeed={feed} exchangeRates={exchangeRates} />
       ) : null}
     </main>
   );
