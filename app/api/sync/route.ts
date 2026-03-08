@@ -6,26 +6,33 @@ import { getItemCount } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic';
 
+interface SyncProgress {
+  newItemsFound: number;
+}
+
+const activeSyncs = new Map<number, SyncProgress>();
+
 export async function GET() {
   const session = await getSession();
   if (!session.fanId) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const state = getSyncState(session.fanId);
-  const totalItems = getItemCount(session.fanId);
+  const fanId = session.fanId;
+  const state = getSyncState(fanId);
+  const totalItems = getItemCount(fanId);
+  const progress = activeSyncs.get(fanId);
 
   return NextResponse.json({
-    fanId: session.fanId,
+    fanId,
     totalItems,
     isSyncing: state?.isSyncing ?? false,
     lastSyncAt: state?.lastSyncAt ?? null,
     oldestStoryDate: state?.oldestStoryDate ?? null,
     newestStoryDate: state?.newestStoryDate ?? null,
+    newItemsFound: progress?.newItemsFound ?? null,
   });
 }
-
-const activeSyncs = new Set<number>();
 
 export async function POST() {
   const session = await getSession();
@@ -42,11 +49,10 @@ export async function POST() {
   const state = getSyncState(fanId);
   const isInitial = !state?.lastSyncAt;
 
-  activeSyncs.add(fanId);
+  const progress: SyncProgress = { newItemsFound: 0 };
+  activeSyncs.set(fanId, progress);
 
   const api = await getBandcamp();
-
-  // Resolve the fan_id if not yet cached on the API instance
   await api.getFanId();
 
   const syncPromise = isInitial
@@ -54,8 +60,11 @@ export async function POST() {
     : syncFeedIncremental(api, fanId);
 
   syncPromise
+    .then((count) => { progress.newItemsFound = count; })
     .catch((err) => console.error('Sync error:', err))
-    .finally(() => activeSyncs.delete(fanId));
+    .finally(() => {
+      setTimeout(() => activeSyncs.delete(fanId), 30_000);
+    });
 
   return NextResponse.json({
     status: isInitial ? 'full_sync_started' : 'incremental_sync_started',

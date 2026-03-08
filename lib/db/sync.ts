@@ -148,8 +148,13 @@ export async function syncFeedFull(api: BandcampAPI, fanId: number): Promise<num
   return totalSynced;
 }
 
+const CONSECUTIVE_KNOWN_PAGES_THRESHOLD = 3;
+
 /**
- * Incremental sync: fetches only items newer than the most recent item we have.
+ * Smart incremental sync: scans the feed looking for any new items, not just
+ * chronologically recent ones. Handles backdated items from newly-followed
+ * artists/fans by continuing past known items. Stops after N consecutive
+ * pages where every item was already in the DB.
  */
 export async function syncFeedIncremental(api: BandcampAPI, fanId: number): Promise<number> {
   const state = getSyncState(fanId);
@@ -160,6 +165,11 @@ export async function syncFeedIncremental(api: BandcampAPI, fanId: number): Prom
   const db = getDb();
   setSyncing(fanId, true);
   let totalNew = 0;
+  let consecutiveKnownPages = 0;
+
+  const existsStmt = db.prepare(
+    'SELECT 1 FROM feed_items WHERE id = ? AND fan_id = ?',
+  );
 
   try {
     let olderThan: number | undefined;
@@ -170,21 +180,26 @@ export async function syncFeedIncremental(api: BandcampAPI, fanId: number): Prom
       if (page.items.length === 0) break;
 
       const newItems = page.items.filter(
-        (item) => item.date.getTime() / 1000 > state.newestStoryDate!,
+        (item) => !existsStmt.get(item.id, fanId),
       );
 
       if (newItems.length > 0) {
         insertItems(fanId, newItems);
         totalNew += newItems.length;
+        consecutiveKnownPages = 0;
+      } else {
+        consecutiveKnownPages++;
       }
 
-      if (newItems.length < page.items.length || !page.hasMore) break;
+      if (consecutiveKnownPages >= CONSECUTIVE_KNOWN_PAGES_THRESHOLD) break;
+      if (!page.hasMore) break;
+      if (page.oldestStoryDate >= (olderThan ?? Infinity)) break;
       olderThan = page.oldestStoryDate;
     }
 
-    if (totalNew > 0) {
-      const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
-      const newest = (db.prepare('SELECT MAX(date) as d FROM feed_items WHERE fan_id = ?').get(fanId) as { d: string }).d;
+    const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
+    const newest = (db.prepare('SELECT MAX(date) as d FROM feed_items WHERE fan_id = ?').get(fanId) as { d: string }).d;
+    if (newest) {
       updateSyncProgress(fanId, state.oldestStoryDate!, Math.floor(new Date(newest).getTime() / 1000), dbTotal);
     }
   } finally {

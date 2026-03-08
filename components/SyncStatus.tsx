@@ -6,27 +6,25 @@ interface SyncInfo {
   totalItems: number;
   isSyncing: boolean;
   lastSyncAt: string | null;
+  newItemsFound: number | null;
 }
 
 interface SyncStatusProps {
   onSyncComplete: () => void;
 }
 
+type SyncPhase = 'idle' | 'checking' | 'done';
+
 export function SyncStatus({ onSyncComplete }: SyncStatusProps) {
-  const [info, setInfo] = useState<SyncInfo | null>(null);
+  const [phase, setPhase] = useState<SyncPhase>('idle');
+  const [newItems, setNewItems] = useState(0);
   const [triggered, setTriggered] = useState(false);
-  const prevItemCount = useRef(0);
   const syncEverStarted = useRef(false);
 
   const poll = useCallback(async () => {
     try {
       const res = await fetch('/api/sync');
-      if (res.ok) {
-        const data = await res.json() as SyncInfo;
-        setInfo(data);
-        if (data.isSyncing) syncEverStarted.current = true;
-        return data;
-      }
+      if (res.ok) return (await res.json()) as SyncInfo;
     } catch (err) {
       console.error('SyncStatus poll error:', err);
     }
@@ -39,10 +37,10 @@ export function SyncStatus({ onSyncComplete }: SyncStatusProps) {
 
       const staleThreshold = 60 * 60 * 1000;
       const isStale = !data.lastSyncAt || Date.now() - new Date(data.lastSyncAt).getTime() > staleThreshold;
-      const isEmpty = data.totalItems === 0;
 
-      if ((isStale || isEmpty) && !triggered) {
+      if (isStale && !triggered) {
         setTriggered(true);
+        setPhase('checking');
         fetch('/api/sync', { method: 'POST' })
           .catch((err) => console.error('Failed to trigger sync:', err));
       }
@@ -56,27 +54,35 @@ export function SyncStatus({ onSyncComplete }: SyncStatusProps) {
       const data = await poll();
       if (!data) return;
 
-      if (data.totalItems > prevItemCount.current) {
-        prevItemCount.current = data.totalItems;
-        onSyncComplete();
-      }
+      if (data.isSyncing) syncEverStarted.current = true;
 
-      if (!data.isSyncing && syncEverStarted.current) {
+      if (!data.isSyncing && (syncEverStarted.current || data.lastSyncAt)) {
         clearInterval(interval);
-        onSyncComplete();
+        const found = data.newItemsFound ?? 0;
+        setNewItems(found);
+        setPhase('done');
+        if (found > 0) onSyncComplete();
+        setTimeout(() => setPhase('idle'), 4000);
       }
     }, 2000);
 
     return () => clearInterval(interval);
   }, [triggered, poll, onSyncComplete]);
 
-  if (!info) return null;
-
-  if (triggered && (!syncEverStarted.current || info.isSyncing)) {
+  if (phase === 'checking') {
     return (
       <div className="flex items-center gap-2 text-xs text-amber-400">
         <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" />
-        Syncing... {info.totalItems > 0 ? `${info.totalItems} items` : 'starting'}
+        Checking for new items...
+      </div>
+    );
+  }
+
+  if (phase === 'done' && newItems > 0) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-emerald-400">
+        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+        Found {newItems} new {newItems === 1 ? 'item' : 'items'}
       </div>
     );
   }
