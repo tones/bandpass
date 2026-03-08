@@ -32,6 +32,10 @@ const FEED_OPTIONS: { value: FeedFilter; label: string }[] = [
 
 const SIX_MONTHS_AGO = new Date(Date.now() - 180 * 86400000);
 
+const CHEVRON_SVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`;
+const SELECT_CLASS = 'appearance-none rounded-full bg-zinc-800/50 py-1 pl-3 pr-7 text-sm text-zinc-400 outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-300 cursor-pointer bg-no-repeat bg-[right_0.5rem_center]';
+
+
 function formatDateLabel(range: DateRange | undefined): string {
   if (!range?.from) return 'All time';
   const fmt = (d: Date) =>
@@ -67,7 +71,8 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
             onFeedFilterChange(value);
             if (value !== 'friend_purchase') onFriendChange(null);
           }}
-          className="rounded-full bg-zinc-800/50 px-3 py-1 text-sm text-zinc-400 outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+          className={SELECT_CLASS}
+          style={{ backgroundImage: CHEVRON_SVG }}
         >
           {FEED_OPTIONS.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
@@ -79,8 +84,11 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
             <select
               value={selectedFriend ?? ''}
               onChange={(e) => onFriendChange(e.target.value || null)}
-              className="rounded-full bg-zinc-800/50 px-3 py-1 text-sm text-zinc-400 outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-              style={selectedFriend ? { backgroundColor: 'rgb(14 165 233 / 0.15)', color: 'rgb(56 189 248)' } : undefined}
+              className={SELECT_CLASS}
+              style={{
+                backgroundImage: CHEVRON_SVG,
+                ...(selectedFriend ? { backgroundColor: 'rgb(14 165 233 / 0.15)', color: 'rgb(56 189 248)' } : {}),
+              }}
             >
               <option value="">All friends</option>
               {friends.map((f) => (
