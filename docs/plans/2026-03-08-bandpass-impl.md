@@ -1,12 +1,21 @@
 # Bandpass MVP Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status: COMPLETE** (March 8, 2026) — All 9 tasks implemented and working.
 
 **Goal:** Build a working Bandcamp feed viewer with audio playback and shortlisting — the minimum vertical slice that proves the architecture end-to-end.
 
-**Architecture:** Next.js 15 App Router with a custom Bandcamp API client (`lib/bandcamp/`). Server components fetch feed data (keeping the identity cookie server-side). Client components handle audio playback, filtering, and shortlist state. No SQLite caching in this milestone — data fetched live from Bandcamp on each visit. Caching is Phase 2.
+**Architecture:** Next.js App Router with a custom Bandcamp API client (`lib/bandcamp/`). Server components fetch feed data (keeping the identity cookie server-side). Client components handle audio playback, filtering, and shortlist state. No SQLite caching in this milestone — data fetched live from Bandcamp on each visit. Caching is Phase 2.
 
-**Tech Stack:** Next.js 15, TypeScript, Tailwind CSS, Vitest, React
+**Tech Stack:** Next.js, TypeScript, Tailwind CSS v4, Vitest, React
+
+> **Post-implementation note:** Several type definitions in the code examples below were corrected during implementation after inspecting live Bandcamp API responses with `scripts/inspect-feed.ts`. Key corrections:
+> - `track_list` is a plain `BandcampFeedTrack[]` array, not `{ entries: BandcampFeedTrack[] }`
+> - Track audio uses `streaming_url: Record<string, string>`, not `file: Record<string, string>`
+> - `story_date` is an ISO date string, not a Unix timestamp (no `* 1000` conversion needed)
+> - Tags include an `isloc` boolean flag — location tags are filtered out during normalization
+> - Stream URL resolution prioritizes `featured_track_url`, then falls back to `trackStreamUrls` map keyed by `featured_track`
+>
+> The actual code in `lib/bandcamp/` and `lib/bandcamp/__tests__/` reflects these corrections. Treat the source code as authoritative over the examples in this plan.
 
 ---
 
