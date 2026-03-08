@@ -1,0 +1,10 @@
+node_modules
+.next
+data
+.env*
+.git
+.gitignore
+README.md
+docs
+scripts
+.cursor

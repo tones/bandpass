@@ -3,8 +3,10 @@ import { getIdentityCookie, getSession } from '@/lib/session';
 import { getBandcamp } from '@/lib/bandcamp';
 import { getExchangeRates } from '@/lib/currency';
 import { getFeedItems, getTagCounts, getFriendCounts, getItemCount } from '@/lib/db/queries';
+import { getSyncState } from '@/lib/db/sync';
 import { FeedView } from '@/components/feed/FeedView';
 import { LogoutButton } from '@/components/LogoutButton';
+import { InitialSyncGate } from '@/components/InitialSyncGate';
 
 export default async function Home() {
   const cookie = await getIdentityCookie();
@@ -24,6 +26,13 @@ export default async function Home() {
       console.error('Failed to fetch fanId, redirecting to login:', err);
       redirect('/login');
     }
+  }
+
+  const syncState = getSyncState(fanId);
+  const needsInitialSync = !syncState?.lastSyncAt;
+
+  if (needsInitialSync) {
+    return <InitialSyncGate />;
   }
 
   const exchangeRates = await getExchangeRates();

@@ -1,0 +1,20 @@
+app = 'bandpass'
+primary_region = 'sjc'
+
+[build]
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[mounts]
+  source = 'bandpass_data'
+  destination = '/app/data'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
