@@ -62,30 +62,6 @@ export class BandcampAPI {
     };
   }
 
-  async getFeedPages(options?: { pages?: number; olderThan?: number }): Promise<FeedPage> {
-    const pageCount = options?.pages ?? 1;
-    let olderThan = options?.olderThan;
-    const allItems: FeedItem[] = [];
-    let newestStoryDate = 0;
-    let oldestStoryDate = 0;
-    let hasMore = true;
-
-    for (let i = 0; i < pageCount; i++) {
-      const page = await this.getFeed({ olderThan });
-      allItems.push(...page.items);
-      if (i === 0) newestStoryDate = page.newestStoryDate;
-      oldestStoryDate = page.oldestStoryDate;
-
-      if (!page.hasMore) {
-        hasMore = false;
-        break;
-      }
-      olderThan = page.oldestStoryDate;
-    }
-
-    return { items: allItems, oldestStoryDate, newestStoryDate, hasMore };
-  }
-
   private normalizeStory(
     story: BandcampFeedStory,
     fanInfo: Record<string, BandcampFanInfo>,

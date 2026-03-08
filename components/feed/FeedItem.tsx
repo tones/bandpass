@@ -1,15 +1,6 @@
 // components/feed/FeedItem.tsx
 import type { FeedItem } from '@/lib/bandcamp';
-function convertToUsd(
-  amount: number,
-  fromCurrency: string,
-  rates: Record<string, number>,
-): number | null {
-  if (fromCurrency === 'USD') return amount;
-  const rate = rates[fromCurrency];
-  if (!rate) return null;
-  return Math.round((amount / rate) * 100) / 100;
-}
+import { convertToUsd } from '@/lib/currency';
 
 interface FeedItemCardProps {
   item: FeedItem;

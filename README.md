@@ -8,18 +8,20 @@ Shows your Bandcamp social feed (friend purchases, new releases from followed ar
 
 ## Status (March 8, 2026)
 
-**MVP is working.** The app fetches your live Bandcamp feed, renders it with filtering, audio playback, and a shortlist.
+**MVP is working.** The app syncs your Bandcamp feed to a local SQLite database, then renders it with rich filtering, waveform audio playback, and a shortlist.
 
 ### What's built
 - Custom Bandcamp API client (`lib/bandcamp/`) — thin typed wrapper over Bandcamp's internal JSON APIs, no third-party scraping libraries
 - Feed fetching via `POST /fan_dash_feed_updates` with cookie auth
-- Feed page with story type filters (Friends, New Releases, Also Purchased)
-- Inline audio player (persistent bottom bar, streams from Bandcamp's CDN)
+- SQLite caching (`data/bandpass.db`) — background sync pulls ~6 months of feed history on first login, then incremental updates on subsequent visits
+- Feed page with story type filters (New Releases, Friend Purchases, Also Purchased), friend filter, tag filter, and date range picker
+- Waveform audio player (persistent bottom bar with wavesurfer.js, streams via CORS proxy)
+- Multi-user session auth via cookie paste (iron-session)
+- Currency conversion (prices shown in USD with original currency below)
 - One-click shortlist (client-side state, not persisted yet)
 - 12 tests covering the HTTP client and API normalization layer
 
-### What's not built yet (Phase 2)
-- SQLite caching (currently fetches live from Bandcamp on every visit)
+### What's not built yet
 - Discovery/browse endpoint integration
 - Persisted shortlist (saved to disk/DB)
 - Album detail page (full track listing)
@@ -61,17 +63,23 @@ npm test
 ```
 UI Layer (app/ routes + React components)
   │
-  │  Clean API: getFeed(), getFanId()
+  │  Server actions query SQLite, client components render
   │
-Data Service Layer (lib/bandcamp/)
+Data Layer (lib/db/)
+  │
+  ├── index.ts    — SQLite connection + schema (better-sqlite3)
+  ├── queries.ts  — getFeedItems(), getTagCounts(), getFriendCounts()
+  └── sync.ts     — Background sync (full 6-month + incremental)
+  │
+Bandcamp Client (lib/bandcamp/)
   │
   ├── api.ts      — BandcampAPI class, normalizes raw responses into domain types
   ├── client.ts   — HTTP client with cookie auth (GET, POST form, POST JSON)
-  ├── service.ts  — Singleton, reads cookie from env
+  ├── service.ts  — Creates per-request API instance from session cookie
   └── types/      — Raw API response types + normalized domain types
 ```
 
-Server components fetch data (keeping the cookie server-side). Client components handle audio playback, filtering, and shortlist state.
+Server components load initial data from SQLite. Client components handle audio playback, filtering (via server actions), and shortlist state. The sync API route (`/api/sync`) triggers background feed syncing into SQLite.
 
 See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 
@@ -85,12 +93,20 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 | `docs/research/data-layer-decision.md` | Why we built our own API client |
 | `docs/research/bandcamp-fetch-evaluation.md` | Evaluation of bandcamp-fetch library |
 | `scripts/inspect-feed.ts` | Diagnostic script — dumps raw feed response shapes |
+| `scripts/feed-depth.ts` | Diagnostic script — measures how far back the feed goes |
 | `lib/bandcamp/` | The Bandcamp API client |
+| `lib/db/` | SQLite database layer (schema, queries, sync) |
 | `components/feed/` | Feed UI components |
+
+> **Note:** The diagnostic scripts in `scripts/` require a `BANDCAMP_IDENTITY` environment variable containing a valid Bandcamp identity cookie. Example: `BANDCAMP_IDENTITY="..." npx tsx scripts/inspect-feed.ts`
 
 ## Tech Stack
 
 - Next.js 16 (App Router)
 - TypeScript
 - Tailwind CSS v4
+- better-sqlite3 (SQLite)
+- iron-session (encrypted cookie sessions)
+- wavesurfer.js (waveform audio player)
+- react-day-picker (date range filter)
 - Vitest

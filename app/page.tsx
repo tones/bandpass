@@ -20,7 +20,8 @@ export default async function Home() {
       fanId = await api.getFanId();
       session.fanId = fanId;
       await session.save();
-    } catch {
+    } catch (err) {
+      console.error('Failed to fetch fanId, redirecting to login:', err);
       redirect('/login');
     }
   }

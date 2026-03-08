@@ -32,6 +32,15 @@ interface FeedItemRow {
   also_collected_count: number;
 }
 
+function safeParseTags(json: string): string[] {
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function rowToFeedItem(row: FeedItemRow): FeedItem {
   return {
     id: row.id,
@@ -55,7 +64,7 @@ function rowToFeedItem(row: FeedItemRow): FeedItem {
           streamUrl: row.track_stream_url,
         }
       : null,
-    tags: JSON.parse(row.tags),
+    tags: safeParseTags(row.tags),
     price:
       row.price_amount != null && row.price_currency
         ? { amount: row.price_amount, currency: row.price_currency }
@@ -97,6 +106,7 @@ export function getFeedItems(fanId: number, filters: FeedFilters = {}): FeedItem
       SELECT fi.* FROM feed_items fi, json_each(fi.tags) AS t
       WHERE ${conditions.join(' AND ')} AND t.value = ?
       ORDER BY fi.date DESC
+      LIMIT 500
     `;
     params.push(filters.tag);
   } else {
@@ -104,6 +114,7 @@ export function getFeedItems(fanId: number, filters: FeedFilters = {}): FeedItem
       SELECT fi.* FROM feed_items fi
       WHERE ${conditions.join(' AND ')}
       ORDER BY fi.date DESC
+      LIMIT 500
     `;
   }
 

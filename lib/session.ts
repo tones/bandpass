@@ -5,11 +5,20 @@ export interface SessionData {
   identityCookie?: string;
   fanId?: number;
   username?: string;
-  imageUrl?: string;
+}
+
+function getSessionPassword(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET environment variable is required in production');
+  }
+  console.warn('SESSION_SECRET not set — using insecure default for development');
+  return 'bandpass-dev-secret-must-be-32-chars-long!!';
 }
 
 const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET || 'bandpass-dev-secret-must-be-32-chars-long!!',
+  password: getSessionPassword(),
   cookieName: 'bandpass_session',
   cookieOptions: {
     secure: process.env.NODE_ENV === 'production',

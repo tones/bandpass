@@ -27,7 +27,9 @@ export function SyncStatus({ onSyncComplete }: SyncStatusProps) {
         if (data.isSyncing) syncEverStarted.current = true;
         return data;
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('SyncStatus poll error:', err);
+    }
     return null;
   }, []);
 
@@ -41,7 +43,8 @@ export function SyncStatus({ onSyncComplete }: SyncStatusProps) {
 
       if ((isStale || isEmpty) && !triggered) {
         setTriggered(true);
-        fetch('/api/sync', { method: 'POST' });
+        fetch('/api/sync', { method: 'POST' })
+          .catch((err) => console.error('Failed to trigger sync:', err));
       }
     });
   }, [poll, triggered]);
