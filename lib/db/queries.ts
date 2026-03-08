@@ -123,6 +123,7 @@ export function getTagCounts(fanId: number): TagCount[] {
     FROM feed_items fi, json_each(fi.tags) AS t
     WHERE fi.fan_id = ?
     GROUP BY t.value
+    HAVING COUNT(*) >= 5
     ORDER BY t.value COLLATE NOCASE
   `).all(fanId) as { name: string; count: number }[];
   return rows;
