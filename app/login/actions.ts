@@ -31,6 +31,7 @@ export async function loginWithCookie(
 
     const session = await getSession();
     session.identityCookie = trimmed;
+    session.fanId = data.fan_id;
     session.username = data.collection_summary?.username ?? undefined;
     await session.save();
   } catch {

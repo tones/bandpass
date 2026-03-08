@@ -1,28 +1,19 @@
-// components/feed/FeedView.tsx
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useTransition } from 'react';
 import type { DateRange } from 'react-day-picker';
-import type { FeedPage, FeedItem } from '@/lib/bandcamp';
+import type { FeedItem } from '@/lib/bandcamp';
 import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
 import { FilterBar } from './FilterBar';
 import type { FeedFilter } from './FilterBar';
 import { WaveformPlayer } from './WaveformPlayer';
-import { loadMoreFeed } from '@/app/feed/actions';
+import { SyncStatus } from '@/components/SyncStatus';
+import { queryFeed } from '@/app/feed/actions';
 
 type FeedListEntry =
   | { type: 'header'; label: string }
   | { type: 'item'; item: FeedItem };
-
-function getDateRangeBounds(range: DateRange | undefined): { from: Date | null; to: Date | null } {
-  if (!range?.from) return { from: null, to: null };
-  const from = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
-  const to = range.to
-    ? new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1)
-    : new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);
-  return { from, to };
-}
 
 function dateSectionLabel(date: Date): string {
   const now = new Date();
@@ -55,15 +46,24 @@ function groupByDate(items: FeedItem[]): FeedListEntry[] {
 }
 
 interface FeedViewProps {
-  initialFeed: FeedPage;
+  initialItems: FeedItem[];
+  initialTotalItems: number;
+  initialTags: { name: string; count: number }[];
+  initialFriends: { name: string; username: string; count: number }[];
   exchangeRates?: Record<string, number>;
 }
 
-export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
-  const [items, setItems] = useState<FeedItem[]>(initialFeed.items);
-  const [oldestDate, setOldestDate] = useState(initialFeed.oldestStoryDate);
-  const [hasMore, setHasMore] = useState(initialFeed.hasMore);
-  const [loading, setLoading] = useState(false);
+export function FeedView({
+  initialItems,
+  initialTotalItems,
+  initialTags,
+  initialFriends,
+  exchangeRates = {},
+}: FeedViewProps) {
+  const [items, setItems] = useState<FeedItem[]>(initialItems);
+  const [totalItems, setTotalItems] = useState(initialTotalItems);
+  const [tags, setTags] = useState(initialTags);
+  const [friends, setFriends] = useState(initialFriends);
   const [feedFilter, setFeedFilter] = useState<FeedFilter>('new_release');
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -71,38 +71,78 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
   const [shortlist, setShortlist] = useState<Set<string>>(new Set());
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  const autoFetchingRef = useRef(false);
-  const autoFetchCountRef = useRef(0);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const applyFilters = useCallback(
+    (
+      newFilter: FeedFilter,
+      newFriend: string | null,
+      newTag: string | null,
+      newDateRange: DateRange | undefined,
+    ) => {
+      const dateFrom = newDateRange?.from
+        ? new Date(newDateRange.from.getFullYear(), newDateRange.from.getMonth(), newDateRange.from.getDate()).toISOString()
+        : undefined;
+      const dateTo = newDateRange?.to
+        ? new Date(newDateRange.to.getFullYear(), newDateRange.to.getMonth(), newDateRange.to.getDate() + 1).toISOString()
+        : newDateRange?.from
+          ? new Date(newDateRange.from.getFullYear(), newDateRange.from.getMonth(), newDateRange.from.getDate() + 1).toISOString()
+          : undefined;
 
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && hasMore && !loading) {
-          loadMore();
-        }
-      },
-      { rootMargin: '400px' },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, loading]);
+      startTransition(async () => {
+        const result = await queryFeed({
+          storyType: newFilter === 'all' ? undefined : newFilter,
+          friendUsername: newFriend ?? undefined,
+          tag: newTag ?? undefined,
+          dateFrom,
+          dateTo,
+        });
+        setItems(result.items);
+        setTotalItems(result.totalItems);
+        setTags(result.tags);
+        setFriends(result.friends);
+      });
+    },
+    [],
+  );
 
-  const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return;
-    setLoading(true);
-    try {
-      const next = await loadMoreFeed(oldestDate);
-      setItems((prev) => [...prev, ...next.items]);
-      setOldestDate(next.oldestStoryDate);
-      setHasMore(next.hasMore);
-    } finally {
-      setLoading(false);
-    }
-  }, [loading, hasMore, oldestDate]);
+  const handleFeedFilterChange = useCallback(
+    (filter: FeedFilter) => {
+      setFeedFilter(filter);
+      const newFriend = filter === 'friend_purchase' ? selectedFriend : null;
+      if (filter !== 'friend_purchase') setSelectedFriend(null);
+      applyFilters(filter, newFriend, selectedTag, dateRange);
+    },
+    [selectedFriend, selectedTag, dateRange, applyFilters],
+  );
+
+  const handleFriendChange = useCallback(
+    (friend: string | null) => {
+      setSelectedFriend(friend);
+      applyFilters(feedFilter, friend, selectedTag, dateRange);
+    },
+    [feedFilter, selectedTag, dateRange, applyFilters],
+  );
+
+  const handleTagChange = useCallback(
+    (tag: string | null) => {
+      setSelectedTag(tag);
+      applyFilters(feedFilter, selectedFriend, tag, dateRange);
+    },
+    [feedFilter, selectedFriend, dateRange, applyFilters],
+  );
+
+  const handleDateRangeChange = useCallback(
+    (range: DateRange | undefined) => {
+      setDateRange(range);
+      applyFilters(feedFilter, selectedFriend, selectedTag, range);
+    },
+    [feedFilter, selectedFriend, selectedTag, applyFilters],
+  );
+
+  const handleSyncComplete = useCallback(() => {
+    applyFilters(feedFilter, selectedFriend, selectedTag, dateRange);
+  }, [feedFilter, selectedFriend, selectedTag, dateRange, applyFilters]);
 
   const toggleShortlist = useCallback((id: string) => {
     setShortlist((prev) => {
@@ -120,100 +160,28 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
     }
   }, []);
 
-  const friends = (() => {
-    const counts = new Map<string, { name: string; username: string; count: number }>();
-    for (const item of items) {
-      if (item.storyType === 'friend_purchase' && item.socialSignal.fan) {
-        const { name, username } = item.socialSignal.fan;
-        const existing = counts.get(username);
-        if (existing) existing.count++;
-        else counts.set(username, { name, username, count: 1 });
-      }
-    }
-    return [...counts.values()].sort((a, b) => b.count - a.count);
-  })();
-
-  const tags = (() => {
-    const counts = new Map<string, number>();
-    for (const item of items) {
-      for (const tag of item.tags) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1);
-      }
-    }
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  })();
-
-  const bounds = getDateRangeBounds(dateRange);
-  const filtered = items.filter((item) => {
-    if (feedFilter !== 'all' && item.storyType !== feedFilter) return false;
-    if (selectedFriend && item.socialSignal.fan?.username !== selectedFriend) return false;
-    if (selectedTag && !item.tags.includes(selectedTag)) return false;
-    if (bounds.from || bounds.to) {
-      const d = new Date(item.date);
-      if (bounds.from && d < bounds.from) return false;
-      if (bounds.to && d >= bounds.to) return false;
-    }
-    return true;
-  });
-
-  const prevFilterRef = useRef(feedFilter);
-  const prevFriendRef = useRef(selectedFriend);
-  const prevTagRef = useRef(selectedTag);
-  useEffect(() => {
-    if (feedFilter !== prevFilterRef.current || selectedFriend !== prevFriendRef.current || selectedTag !== prevTagRef.current) {
-      autoFetchCountRef.current = 0;
-      prevFilterRef.current = feedFilter;
-      prevFriendRef.current = selectedFriend;
-      prevTagRef.current = selectedTag;
-    }
-  }, [feedFilter, selectedFriend, selectedTag]);
-
-  const MAX_AUTO_FETCHES = 5;
-
-  useEffect(() => {
-    const MIN_VISIBLE = 10;
-
-    const needsMoreForFilter = filtered.length < MIN_VISIBLE;
-    const needsMoreForRange = bounds.from && items.length > 0 &&
-      new Date(items[items.length - 1].date) > bounds.from;
-
-    if ((!needsMoreForFilter && !needsMoreForRange) || !hasMore || loading || autoFetchingRef.current) return;
-    if (autoFetchCountRef.current >= MAX_AUTO_FETCHES) return;
-
-    autoFetchingRef.current = true;
-    autoFetchCountRef.current++;
-    setLoading(true);
-
-    loadMoreFeed(oldestDate).then((next) => {
-      setItems((prev) => [...prev, ...next.items]);
-      setOldestDate(next.oldestStoryDate);
-      setHasMore(next.hasMore);
-      setLoading(false);
-      autoFetchingRef.current = false;
-    }).catch(() => {
-      setLoading(false);
-      autoFetchingRef.current = false;
-    });
-  }, [filtered.length, hasMore, loading, oldestDate, bounds.from, items]);
-
-  const grouped = groupByDate(filtered);
+  const grouped = groupByDate(items);
 
   return (
     <div className="pb-24">
       <FilterBar
         feedFilter={feedFilter}
-        onFeedFilterChange={setFeedFilter}
+        onFeedFilterChange={handleFeedFilterChange}
         friends={friends}
         selectedFriend={selectedFriend}
-        onFriendChange={setSelectedFriend}
+        onFriendChange={handleFriendChange}
         tags={tags}
         selectedTag={selectedTag}
-        onTagChange={setSelectedTag}
+        onTagChange={handleTagChange}
         dateRange={dateRange}
-        onDateRangeChange={setDateRange}
+        onDateRangeChange={handleDateRangeChange}
       />
+      <div className="flex items-center justify-between px-6 py-2">
+        <SyncStatus onSyncComplete={handleSyncComplete} />
+        <span className="ml-auto text-xs text-zinc-600">
+          {isPending ? 'Filtering...' : `${items.length} items${totalItems > 0 ? ` of ${totalItems} total` : ''}`}
+        </span>
+      </div>
       <div>
         {grouped.map((entry) =>
           entry.type === 'header' ? (
@@ -231,13 +199,13 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
           ),
         )}
       </div>
-      <div ref={sentinelRef} className="flex justify-center py-6">
-        {loading && (
-          <span className="text-xs text-zinc-500">
-            Loading more... ({items.length} items loaded)
-          </span>
-        )}
-      </div>
+      {items.length === 0 && !isPending && (
+        <div className="px-6 py-12 text-center text-zinc-500">
+          {totalItems === 0
+            ? 'No feed items yet. Sync is starting...'
+            : 'No items match your filters.'}
+        </div>
+      )}
       {playingItem && playingTrackUrl && (
         <WaveformPlayer item={playingItem} trackUrl={playingTrackUrl} />
       )}

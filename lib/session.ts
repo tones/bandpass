@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 
 export interface SessionData {
   identityCookie?: string;
+  fanId?: number;
   username?: string;
   imageUrl?: string;
 }

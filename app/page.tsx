@@ -2,12 +2,9 @@ import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { getBandcamp } from '@/lib/bandcamp';
 import { getExchangeRates } from '@/lib/currency';
+import { getFeedItems, getTagCounts, getFriendCounts, getItemCount } from '@/lib/db/queries';
 import { FeedView } from '@/components/feed/FeedView';
 import { LogoutButton } from '@/components/LogoutButton';
-
-function isAuthError(message: string): boolean {
-  return /\b(401|403)\b/.test(message);
-}
 
 export default async function Home() {
   const cookie = await getIdentityCookie();
@@ -15,24 +12,24 @@ export default async function Home() {
 
   const session = await getSession();
   const username = session.username;
+  let fanId = session.fanId;
 
-  let feed;
-  let error: string | null = null;
-  let exchangeRates: Record<string, number> = {};
-
-  try {
-    const [bandcamp, rates] = await Promise.all([getBandcamp(), getExchangeRates()]);
-    exchangeRates = rates;
-    feed = await bandcamp.getFeedPages({ pages: 5 });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'Failed to load feed';
-    if (isAuthError(message)) {
-      const session = await getSession();
-      session.destroy();
+  if (!fanId) {
+    try {
+      const api = await getBandcamp();
+      fanId = await api.getFanId();
+      session.fanId = fanId;
+      await session.save();
+    } catch {
       redirect('/login');
     }
-    error = message;
   }
+
+  const exchangeRates = await getExchangeRates();
+  const items = getFeedItems(fanId, { storyType: 'new_release' });
+  const tags = getTagCounts(fanId);
+  const friends = getFriendCounts(fanId);
+  const totalItems = getItemCount(fanId);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -52,11 +49,13 @@ export default async function Home() {
           <LogoutButton />
         </div>
       </header>
-      {error ? (
-        <div className="p-6 text-red-400">{error}</div>
-      ) : feed ? (
-        <FeedView initialFeed={feed} exchangeRates={exchangeRates} />
-      ) : null}
+      <FeedView
+        initialItems={items}
+        initialTotalItems={totalItems}
+        initialTags={tags}
+        initialFriends={friends}
+        exchangeRates={exchangeRates}
+      />
     </main>
   );
 }
