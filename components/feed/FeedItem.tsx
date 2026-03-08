@@ -21,6 +21,24 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function formatRelativeDate(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 2) return 'yesterday';
+
+  const day = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  if (date.getFullYear() !== now.getFullYear()) {
+    return `${day}, ${date.getFullYear()}`;
+  }
+  return day;
+}
+
 export function FeedItemCard({
   item,
   isShortlisted,
@@ -61,6 +79,9 @@ export function FeedItemCard({
           <span className="truncate font-medium">{item.album.title}</span>
           <span className="shrink-0 text-xs text-zinc-500">
             {STORY_LABELS[item.storyType]}
+          </span>
+          <span className="shrink-0 text-xs text-zinc-600">
+            {formatRelativeDate(new Date(item.date))}
           </span>
         </div>
         <div className="truncate text-sm text-zinc-400">
