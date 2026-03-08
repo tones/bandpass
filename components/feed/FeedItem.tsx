@@ -85,7 +85,9 @@ export function FeedItemCard({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="truncate font-medium">{item.album.title}</span>
+          <span className="truncate font-medium">
+            {item.track?.title ?? item.album.title}
+          </span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STORY_BADGES[item.storyType]?.className ?? 'bg-zinc-800 text-zinc-400'}`}>
             {STORY_BADGES[item.storyType]?.label ?? item.storyType}
           </span>
@@ -95,11 +97,10 @@ export function FeedItemCard({
         </div>
         <div className="truncate text-sm text-zinc-400">
           {item.artist.name}
-          {item.track && (
-            <span className="text-zinc-600">
-              {' · '}{item.track.title} ({formatDuration(item.track.duration)})
-            </span>
-          )}
+          <span className="text-zinc-600">
+            {' · '}{item.album.title}
+            {item.track && ` (${formatDuration(item.track.duration)})`}
+          </span>
         </div>
         <div className="mt-0.5 flex flex-wrap gap-1.5">
           {item.tags.slice(0, 4).map((tag) => (
