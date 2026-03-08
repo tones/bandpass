@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import type { FeedPage, FeedItem, StoryType } from '@/lib/bandcamp';
 import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
+import type { TimeRange } from './FilterBar';
 import { FilterBar } from './FilterBar';
 import { WaveformPlayer } from './WaveformPlayer';
 import { loadMoreFeed } from '@/app/feed/actions';
@@ -12,6 +13,12 @@ import { loadMoreFeed } from '@/app/feed/actions';
 type FeedListEntry =
   | { type: 'header'; label: string }
   | { type: 'item'; item: FeedItem };
+
+function getTimeRangeCutoff(range: TimeRange): Date | null {
+  if (range === 'all') return null;
+  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+  return new Date(Date.now() - days * 86400000);
+}
 
 function dateSectionLabel(date: Date): string {
   const now = new Date();
@@ -53,6 +60,7 @@ export function FeedView({ initialFeed }: FeedViewProps) {
   const [hasMore, setHasMore] = useState(initialFeed.hasMore);
   const [loading, setLoading] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<StoryType>>(new Set());
+  const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [shortlist, setShortlist] = useState<Set<string>>(new Set());
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
@@ -95,15 +103,23 @@ export function FeedView({ initialFeed }: FeedViewProps) {
     }
   }, []);
 
-  const filtered = activeFilters.size === 0
-    ? items
-    : items.filter((item) => activeFilters.has(item.storyType));
+  const cutoff = getTimeRangeCutoff(timeRange);
+  const filtered = items.filter((item) => {
+    if (activeFilters.size > 0 && !activeFilters.has(item.storyType)) return false;
+    if (cutoff && new Date(item.date) < cutoff) return false;
+    return true;
+  });
 
   const grouped = groupByDate(filtered);
 
   return (
     <div className="pb-24">
-      <FilterBar activeFilters={activeFilters} onToggle={toggleFilter} />
+      <FilterBar
+        activeFilters={activeFilters}
+        onToggle={toggleFilter}
+        timeRange={timeRange}
+        onTimeRangeChange={setTimeRange}
+      />
       <div>
         {grouped.map((entry) =>
           entry.type === 'header' ? (
