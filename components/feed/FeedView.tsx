@@ -3,10 +3,11 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { DateRange } from 'react-day-picker';
-import type { FeedPage, FeedItem, StoryType } from '@/lib/bandcamp';
+import type { FeedPage, FeedItem } from '@/lib/bandcamp';
 import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
 import { FilterBar } from './FilterBar';
+import type { FeedFilter } from './FilterBar';
 import { WaveformPlayer } from './WaveformPlayer';
 import { loadMoreFeed } from '@/app/feed/actions';
 
@@ -63,13 +64,15 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
   const [oldestDate, setOldestDate] = useState(initialFeed.oldestStoryDate);
   const [hasMore, setHasMore] = useState(initialFeed.hasMore);
   const [loading, setLoading] = useState(false);
-  const [activeFilters, setActiveFilters] = useState<Set<StoryType>>(new Set());
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>('new_release');
+  const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [shortlist, setShortlist] = useState<Set<string>>(new Set());
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
 
   const autoFetchingRef = useRef(false);
+  const autoFetchCountRef = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -100,15 +103,6 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
     }
   }, [loading, hasMore, oldestDate]);
 
-  const toggleFilter = useCallback((type: StoryType) => {
-    setActiveFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return next;
-    });
-  }, []);
-
   const toggleShortlist = useCallback((id: string) => {
     setShortlist((prev) => {
       const next = new Set(prev);
@@ -125,9 +119,23 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
     }
   }, []);
 
+  const friends = (() => {
+    const counts = new Map<string, { name: string; username: string; count: number }>();
+    for (const item of items) {
+      if (item.storyType === 'friend_purchase' && item.socialSignal.fan) {
+        const { name, username } = item.socialSignal.fan;
+        const existing = counts.get(username);
+        if (existing) existing.count++;
+        else counts.set(username, { name, username, count: 1 });
+      }
+    }
+    return [...counts.values()].sort((a, b) => b.count - a.count);
+  })();
+
   const bounds = getDateRangeBounds(dateRange);
   const filtered = items.filter((item) => {
-    if (activeFilters.size > 0 && !activeFilters.has(item.storyType)) return false;
+    if (feedFilter !== 'all' && item.storyType !== feedFilter) return false;
+    if (selectedFriend && item.socialSignal.fan?.username !== selectedFriend) return false;
     if (bounds.from || bounds.to) {
       const d = new Date(item.date);
       if (bounds.from && d < bounds.from) return false;
@@ -135,6 +143,18 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
     }
     return true;
   });
+
+  const prevFilterRef = useRef(feedFilter);
+  const prevFriendRef = useRef(selectedFriend);
+  useEffect(() => {
+    if (feedFilter !== prevFilterRef.current || selectedFriend !== prevFriendRef.current) {
+      autoFetchCountRef.current = 0;
+      prevFilterRef.current = feedFilter;
+      prevFriendRef.current = selectedFriend;
+    }
+  }, [feedFilter, selectedFriend]);
+
+  const MAX_AUTO_FETCHES = 5;
 
   useEffect(() => {
     const MIN_VISIBLE = 10;
@@ -144,8 +164,10 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
       new Date(items[items.length - 1].date) > bounds.from;
 
     if ((!needsMoreForFilter && !needsMoreForRange) || !hasMore || loading || autoFetchingRef.current) return;
+    if (autoFetchCountRef.current >= MAX_AUTO_FETCHES) return;
 
     autoFetchingRef.current = true;
+    autoFetchCountRef.current++;
     setLoading(true);
 
     loadMoreFeed(oldestDate).then((next) => {
@@ -165,8 +187,11 @@ export function FeedView({ initialFeed, exchangeRates = {} }: FeedViewProps) {
   return (
     <div className="pb-24">
       <FilterBar
-        activeFilters={activeFilters}
-        onToggle={toggleFilter}
+        feedFilter={feedFilter}
+        onFeedFilterChange={setFeedFilter}
+        friends={friends}
+        selectedFriend={selectedFriend}
+        onFriendChange={setSelectedFriend}
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
       />
