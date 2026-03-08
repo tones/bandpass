@@ -100,4 +100,35 @@ describe('BandcampAPI', () => {
       );
     });
   });
+
+  describe('getFeedPages', () => {
+    it('fetches multiple pages and concatenates items', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postForm
+        .mockResolvedValueOnce(feedFixture)
+        .mockResolvedValueOnce(feedFixture);
+
+      const feed = await api.getFeedPages({ pages: 2 });
+
+      expect(feed.items).toHaveLength(4);
+      expect(mockClient.postForm).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops early when a page returns no items', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postForm
+        .mockResolvedValueOnce(feedFixture)
+        .mockResolvedValueOnce({
+          stories: { entries: [], track_list: [], oldest_story_date: 0, newest_story_date: 0 },
+          fan_info: {},
+          band_info: {},
+        });
+
+      const feed = await api.getFeedPages({ pages: 5 });
+
+      expect(feed.items).toHaveLength(2);
+      expect(feed.hasMore).toBe(false);
+      expect(mockClient.postForm).toHaveBeenCalledTimes(2);
+    });
+  });
 });

@@ -9,7 +9,7 @@ export default async function Home() {
   let error: string | null = null;
 
   try {
-    feed = await bandcamp.getFeed();
+    feed = await bandcamp.getFeedPages({ pages: 5 });
   } catch (e) {
     error = e instanceof Error ? e.message : 'Failed to load feed';
   }
