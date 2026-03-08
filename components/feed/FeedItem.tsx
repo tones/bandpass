@@ -161,14 +161,14 @@ export function FeedItemCard({
         })()}
         <button
           onClick={onToggleShortlist}
-          className={`rounded p-1.5 text-lg transition-colors ${
+          className={`flex h-8 w-8 items-center justify-center rounded text-lg transition-colors ${
             isShortlisted
               ? 'text-rose-400 hover:text-rose-300'
               : 'text-zinc-600 hover:text-zinc-400'
           }`}
           title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
         >
-          {isShortlisted ? '♥' : '♡'}
+          <span className="leading-none">{isShortlisted ? '♥' : '♡'}</span>
         </button>
         <a
           href={item.album.url}
