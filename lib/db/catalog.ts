@@ -1,5 +1,11 @@
 import { getDb } from './index';
 
+function normalizeDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toISOString().slice(0, 10);
+}
+
 export interface CatalogRelease {
   id: number;
   bandSlug: string;
@@ -31,7 +37,9 @@ export function getCachedDiscography(slug: string): CatalogRelease[] | null {
   const rows = db.prepare(`
     SELECT * FROM catalog_releases
     WHERE band_slug = ?
-    ORDER BY id
+    ORDER BY 
+      CASE WHEN release_date IS NULL THEN 1 ELSE 0 END,
+      release_date DESC
   `).all(slug) as Array<{
     id: number;
     band_slug: string;
@@ -186,8 +194,8 @@ export function cacheAlbumTracks(
   });
   insertMany();
 
-  // Update release metadata if provided
   if (releaseDate !== undefined || tags !== undefined) {
+    const normalizedDate = releaseDate ? normalizeDate(releaseDate) : null;
     const update = db.prepare(`
       UPDATE catalog_releases
       SET release_date = COALESCE(?, release_date),
@@ -195,7 +203,7 @@ export function cacheAlbumTracks(
       WHERE id = ?
     `);
     update.run(
-      releaseDate ?? null,
+      normalizedDate,
       tags ? JSON.stringify(tags) : null,
       releaseId,
     );

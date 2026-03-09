@@ -138,5 +138,25 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 8) {
+    // Normalize existing release dates from "31 Oct 2025 00:00:00 GMT" to "2025-10-31"
+    const rows = db.prepare(
+      `SELECT id, release_date FROM catalog_releases WHERE release_date IS NOT NULL`
+    ).all() as Array<{ id: number; release_date: string }>;
+
+    const update = db.prepare(`UPDATE catalog_releases SET release_date = ? WHERE id = ?`);
+    const migrateAll = db.transaction(() => {
+      for (const row of rows) {
+        const d = new Date(row.release_date);
+        if (!isNaN(d.getTime())) {
+          update.run(d.toISOString().slice(0, 10), row.id);
+        }
+      }
+    });
+    migrateAll();
+
+    db.exec(`PRAGMA user_version = 8;`);
+  }
+
   return db;
 }

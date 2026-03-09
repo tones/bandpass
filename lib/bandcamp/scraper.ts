@@ -79,6 +79,60 @@ function artIdToUrl(artId: number, size: number = 5): string {
   return `https://f4.bcbits.com/img/a${artId}_${size}.jpg`;
 }
 
+function parseHtmlItems(
+  html: string,
+  bandUrl: string,
+): Array<{
+  id: number;
+  title: string;
+  page_url: string;
+  art_id: number;
+  type: string;
+  band_id: number;
+}> {
+  const itemPattern = /<li[^>]*data-item-id="(track|album)-(\d+)"[^>]*data-band-id="(\d+)"[^>]*>([\s\S]*?)<\/li>/g;
+  const items: Array<{
+    id: number;
+    title: string;
+    page_url: string;
+    art_id: number;
+    type: string;
+    band_id: number;
+  }> = [];
+  let match;
+  while ((match = itemPattern.exec(html)) !== null) {
+    const [, itemType, itemId, bandId, itemHtml] = match;
+    const hrefMatch = itemHtml.match(/<a[^>]*href="([^"]+)"/);
+    const imgMatch = itemHtml.match(/<img[^>]*src="([^"]+)"/);
+    const titleMatch = itemHtml.match(/<p[^>]*class="title"[^>]*>\s*([^<]+)/);
+
+    if (!hrefMatch) continue;
+
+    const href = hrefMatch[1];
+    const imgSrc = imgMatch?.[1] || '';
+    const artIdMatch = imgSrc.match(/\/img\/a(\d+)_/);
+    const artId = artIdMatch ? parseInt(artIdMatch[1], 10) : 0;
+    let title = titleMatch?.[1]?.trim() || href.split('/').pop()?.replace(/-/g, ' ') || '';
+    // Decode HTML entities
+    title = title
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
+
+    items.push({
+      id: parseInt(itemId, 10),
+      title,
+      page_url: href.startsWith('http') ? href : `${bandUrl}${href}`,
+      art_id: artId,
+      type: itemType,
+      band_id: parseInt(bandId, 10),
+    });
+  }
+  return items;
+}
+
 export async function fetchDiscography(
   fetchHtml: HtmlFetcher,
   bandUrl: string,
@@ -96,7 +150,8 @@ export async function fetchDiscography(
     throw new Error('Could not extract band data from page');
   }
 
-  let rawItems = extractJsonAttr(html, 'data-client-items') as Array<{
+  // Always parse both JSON and HTML, then merge
+  const jsonItems = extractJsonAttr(html, 'data-client-items') as Array<{
     id: number;
     title: string;
     page_url: string;
@@ -106,50 +161,34 @@ export async function fetchDiscography(
     artist?: string;
   }> | null;
 
-  // Fallback: parse items from <li data-item-id> elements if data-client-items is missing
-  if (!rawItems || rawItems.length === 0) {
-    const itemPattern = /<li[^>]*data-item-id="(track|album)-(\d+)"[^>]*data-band-id="(\d+)"[^>]*>([\s\S]*?)<\/li>/g;
-    const fallbackItems: Array<{
+  const htmlItems = parseHtmlItems(html, bandUrl);
+
+  // Merge: create map by ID, prefer HTML when both exist (HTML is source of truth)
+  const itemsMap = new Map<
+    number,
+    {
       id: number;
       title: string;
       page_url: string;
       art_id: number;
       type: string;
       band_id: number;
-    }> = [];
-    let match;
-    while ((match = itemPattern.exec(html)) !== null) {
-      const [, itemType, itemId, bandId, itemHtml] = match;
-      const hrefMatch = itemHtml.match(/<a[^>]*href="([^"]+)"/);
-      const imgMatch = itemHtml.match(/<img[^>]*src="([^"]+)"/);
-      const titleMatch = itemHtml.match(/<p[^>]*class="title"[^>]*>\s*([^<]+)/);
-      
-      if (!hrefMatch) continue;
-      
-      const href = hrefMatch[1];
-      const imgSrc = imgMatch?.[1] || '';
-      const artIdMatch = imgSrc.match(/\/img\/a(\d+)_/);
-      const artId = artIdMatch ? parseInt(artIdMatch[1], 10) : 0;
-      let title = titleMatch?.[1]?.trim() || href.split('/').pop()?.replace(/-/g, ' ') || '';
-      // Decode HTML entities
-      title = title
-        .replace(/&#39;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
-      
-      fallbackItems.push({
-        id: parseInt(itemId, 10),
-        title,
-        page_url: href.startsWith('http') ? href : `${bandUrl}${href}`,
-        art_id: artId,
-        type: itemType,
-        band_id: parseInt(bandId, 10),
-      });
+      artist?: string;
     }
-    rawItems = fallbackItems.length > 0 ? fallbackItems : null;
+  >();
+
+  if (jsonItems) {
+    for (const item of jsonItems) {
+      itemsMap.set(item.id, item);
+    }
   }
+
+  // HTML overwrites JSON if duplicate (HTML is more complete)
+  for (const item of htmlItems) {
+    itemsMap.set(item.id, item);
+  }
+
+  const rawItems = Array.from(itemsMap.values());
 
   const items: DiscographyItem[] = (rawItems ?? []).map((item) => ({
     id: item.id,

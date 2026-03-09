@@ -6,6 +6,8 @@ import { getShortlist } from '@/lib/db/shortlist';
 import { CatalogView } from '@/components/music/CatalogView';
 import { AppHeader } from '@/components/AppHeader';
 
+export const dynamic = 'force-dynamic';
+
 interface MusicDetailPageProps {
   params: Promise<{ slug: string }>;
 }
