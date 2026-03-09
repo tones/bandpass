@@ -69,10 +69,10 @@ function parseTags(html: string): string[] {
   const tagPattern = /<a[^>]*class="tag"[^>]*>([^<]+)<\/a>/g;
   let match;
   while ((match = tagPattern.exec(html)) !== null) {
-    const tag = match[1].trim();
+    const tag = match[1].trim().toLowerCase();
     if (tag) tags.push(tag);
   }
-  return tags;
+  return [...new Set(tags)].sort();
 }
 
 function artIdToUrl(artId: number, size: number = 5): string {
