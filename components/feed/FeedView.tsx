@@ -165,10 +165,15 @@ export function FeedView({
   }, []);
 
   const handlePlay = useCallback((item: FeedItem) => {
-    if (item.track?.streamUrl) {
-      setPlayingTrackUrl(item.track.streamUrl);
+    if (!item.track?.streamUrl) return;
+    setPlayingTrackUrl((prev) => {
+      if (prev === item.track!.streamUrl) {
+        setPlayingItem(null);
+        return null;
+      }
       setPlayingItem(item);
-    }
+      return item.track!.streamUrl;
+    });
   }, []);
 
   const grouped = groupByDate(items);

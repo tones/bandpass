@@ -1,6 +1,7 @@
-// components/feed/FeedItem.tsx
 import type { FeedItem } from '@/lib/bandcamp';
+import { extractSlug } from '@/lib/bandcamp/scraper';
 import { convertToUsd } from '@/lib/currency';
+import { TrackActions } from '@/components/TrackActions';
 
 interface FeedItemCardProps {
   item: FeedItem;
@@ -122,10 +123,23 @@ export function FeedItemCard({
           </span>
         </div>
         <div className="truncate text-sm text-zinc-400">
-          {item.artist.name}
+          <a
+            href={`/music/${extractSlug(item.artist.url)}`}
+            className="hover:text-zinc-200 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {item.artist.name}
+          </a>
           <span className="text-zinc-600">
             {' · '}{item.album.title}
             {item.track && ` (${formatDuration(item.track.duration)})`}
+            {item.price && (() => {
+              const { amount, currency } = item.price;
+              const isUsd = currency === 'USD';
+              const usdAmount = isUsd ? amount : convertToUsd(amount, currency, exchangeRates);
+              const display = usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency);
+              return ` · ${display}`;
+            })()}
           </span>
         </div>
         <div className="mt-0.5 flex flex-wrap gap-1.5">
@@ -140,46 +154,14 @@ export function FeedItemCard({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        {item.price && (() => {
-          const { amount, currency } = item.price;
-          const isUsd = currency === 'USD';
-          const usdAmount = isUsd ? amount : convertToUsd(amount, currency, exchangeRates);
-
-          return (
-            <div className="text-right">
-              <div className="text-xs text-zinc-400">
-                {usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency)}
-              </div>
-              {!isUsd && usdAmount != null && (
-                <div className="text-[10px] text-zinc-600">
-                  {formatPrice(amount, currency)}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-        <button
-          onClick={onToggleShortlist}
-          className={`flex h-8 w-8 items-center justify-center rounded text-lg transition-colors ${
-            isShortlisted
-              ? 'text-rose-400 hover:text-rose-300'
-              : 'text-zinc-600 hover:text-zinc-400'
-          }`}
-          title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
-        >
-          <span className="leading-none">{isShortlisted ? '♥' : '♡'}</span>
-        </button>
-        <a
-          href={item.album.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded p-1.5 text-sm text-zinc-600 hover:text-zinc-400"
-          title="Open on Bandcamp"
-        >
-          ↗
-        </a>
-      </div>
+      <TrackActions
+        isPlaying={isPlaying}
+        hasStream={!!item.track?.streamUrl}
+        isShortlisted={isShortlisted}
+        bandcampUrl={item.album.url}
+        onPlay={onPlay}
+        onToggleShortlist={onToggleShortlist}
+      />
     </div>
   );
 }

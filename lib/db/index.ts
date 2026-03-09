@@ -82,5 +82,43 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS catalog_releases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        band_slug TEXT NOT NULL,
+        band_name TEXT NOT NULL,
+        band_url TEXT NOT NULL,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        image_url TEXT DEFAULT '',
+        release_type TEXT NOT NULL DEFAULT 'album',
+        scraped_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_catalog_band ON catalog_releases(band_slug);
+
+      CREATE TABLE IF NOT EXISTS catalog_tracks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        release_id INTEGER NOT NULL,
+        track_num INTEGER,
+        title TEXT NOT NULL,
+        duration REAL,
+        stream_url TEXT,
+        FOREIGN KEY (release_id) REFERENCES catalog_releases(id) ON DELETE CASCADE
+      );
+
+      PRAGMA user_version = 4;
+    `);
+  }
+
+  if (schemaVersion < 5) {
+    db.exec(`
+      ALTER TABLE catalog_tracks ADD COLUMN track_url TEXT;
+
+      PRAGMA user_version = 5;
+    `);
+  }
+
   return db;
 }

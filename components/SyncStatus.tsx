@@ -71,25 +71,20 @@ export function SyncStatus({ onSyncComplete, onOldestDateChange }: SyncStatusPro
       const staleThreshold = 60 * 60 * 1000;
       const isStale = !data.lastSyncAt || Date.now() - new Date(data.lastSyncAt).getTime() > staleThreshold;
       const isFirstSync = !data.lastSyncAt;
-      const deepSyncInProgress = data.isDeepSyncing || data.isSyncing;
+      const syncInProgress = data.isDeepSyncing || data.isSyncing;
       const needsSync = !data.deepSyncComplete;
 
-      if (isStale || needsSync || deepSyncInProgress) {
+      if (isStale || needsSync || syncInProgress) {
         setTriggered(true);
 
         if (isFirstSync) {
           setPhase('initial');
-        } else if (deepSyncInProgress && !isStale) {
+        } else if (syncInProgress && !isStale) {
           setPhase('deep');
         } else if (isStale) {
           setPhase('checking');
         } else {
           setPhase('deep');
-        }
-
-        if (!deepSyncInProgress) {
-          fetch('/api/sync', { method: 'POST' })
-            .catch((err) => console.error('Failed to trigger sync:', err));
         }
       }
     });

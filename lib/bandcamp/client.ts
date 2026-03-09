@@ -43,6 +43,16 @@ export class BandcampClient {
     return response.json() as Promise<T>;
   }
 
+  async getHtml(url: string): Promise<string> {
+    const response = await fetch(url, {
+      headers: this.authHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Bandcamp page fetch error: ${response.status}`);
+    }
+    return response.text();
+  }
+
   async postJson<T = unknown>(
     path: string,
     payload: Record<string, unknown>,
