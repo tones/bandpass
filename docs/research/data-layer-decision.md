@@ -65,7 +65,7 @@ We'll investigate whether the feed and discovery responses include enough track/
 - Feed endpoint (`fan_dash_feed_updates`) implementation and response shape
 - Exhaustive TypeScript type definitions for raw API responses (in `types/private/`)
 - Feed story types: `nr` (new release), `fp` (friend purchase), `np` (also purchased)
-- CSRF crumb handling for write operations (future: follow/wishlist from within Bandpass)
+- CSRF crumb handling for write operations (future: follow/wishlist from within BandPass)
 - Two-layer type architecture (raw API shapes → normalized public types)
 
 **From michaelherger/Bandcamp-API:**

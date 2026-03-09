@@ -1,4 +1,4 @@
-# Bandpass
+# BandPass
 
 A Bandcamp discovery app. Named after the bandpass filter — let the signal through, cut the noise.
 

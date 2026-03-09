@@ -48,7 +48,7 @@ export default async function Home() {
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-semibold tracking-tight">Bandpass</h1>
+          <h1 className="text-xl font-semibold tracking-tight">BandPass</h1>
           <a
             href="/shortlist"
             className="flex items-center gap-1.5 rounded-full bg-zinc-800 px-3 py-1 text-sm text-rose-400 transition-colors hover:bg-zinc-700"

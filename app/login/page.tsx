@@ -9,7 +9,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">
       <div className="w-full max-w-md">
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight">Bandpass</h1>
+        <h1 className="mb-2 text-2xl font-semibold tracking-tight">BandPass</h1>
         <p className="mb-8 text-sm text-zinc-400">
           Connect your Bandcamp account to see your feed.
         </p>
