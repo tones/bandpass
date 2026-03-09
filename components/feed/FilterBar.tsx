@@ -35,7 +35,7 @@ interface FilterBarProps {
 const FEED_OPTIONS: { value: FeedFilter; label: string }[] = [
   { value: 'new_release', label: 'New Releases' },
   { value: 'friend_purchase', label: 'Friend Purchases' },
-  { value: 'also_purchased', label: 'Also Purchased' },
+  { value: 'my_purchase', label: 'My Purchases' },
   { value: 'all', label: 'All Items' },
 ];
 

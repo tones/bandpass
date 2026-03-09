@@ -1,10 +1,8 @@
-import { LogoutButton } from './LogoutButton';
-
 type NavTab = 'feed' | 'music' | 'shortlist';
 
 const NAV_ITEMS: { id: NavTab; label: string; href: string }[] = [
   { id: 'music', label: 'Music', href: '/music' },
-  { id: 'feed', label: 'Feed', href: '/feed' },
+  { id: 'feed', label: 'Timeline', href: '/feed' },
   { id: 'shortlist', label: 'Shortlist', href: '/shortlist' },
 ];
 
@@ -22,17 +20,12 @@ export function AppHeader({ activeTab, username }: AppHeaderProps) {
         </a>
         <div className="flex items-center gap-3">
           {username ? (
-            <>
-              <a
-                href={`https://bandcamp.com/${username}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-zinc-400 hover:text-zinc-200"
-              >
-                {username}
-              </a>
-              <LogoutButton />
-            </>
+            <a
+              href="/account"
+              className="text-sm text-zinc-400 transition-colors hover:text-zinc-200"
+            >
+              {username}
+            </a>
           ) : (
             <a
               href="/login"

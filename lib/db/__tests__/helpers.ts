@@ -40,7 +40,8 @@ export function createTestDb(): Database.Database {
       total_items INTEGER NOT NULL DEFAULT 0,
       is_syncing INTEGER NOT NULL DEFAULT 0,
       last_sync_at TEXT,
-      deep_sync_complete INTEGER NOT NULL DEFAULT 0
+      deep_sync_complete INTEGER NOT NULL DEFAULT 0,
+      collection_synced INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE shortlist (

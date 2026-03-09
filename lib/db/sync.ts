@@ -1,6 +1,6 @@
 import { getDb } from './index';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import type { FeedItem, FeedPage } from '@/lib/bandcamp/types/domain';
+import type { CollectionPage, FeedItem, FeedPage } from '@/lib/bandcamp/types/domain';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,6 +21,24 @@ async function fetchWithRetry(
       if (!is429 || attempt === MAX_RETRIES) throw err;
       const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
       console.warn(`Rate limited (429), backing off ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await sleep(backoff);
+    }
+  }
+  throw new Error('Unreachable');
+}
+
+async function fetchCollectionWithRetry(
+  api: BandcampAPI,
+  options?: { olderThanToken?: string; count?: number },
+): Promise<CollectionPage> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await api.getCollection(options);
+    } catch (err) {
+      const is429 = err instanceof Error && err.message.includes('429');
+      if (!is429 || attempt === MAX_RETRIES) throw err;
+      const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+      console.warn(`Collection rate limited (429), backing off ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
       await sleep(backoff);
     }
   }
@@ -85,6 +103,7 @@ export interface SyncState {
   isSyncing: boolean;
   lastSyncAt: string | null;
   deepSyncComplete: boolean;
+  collectionSynced: boolean;
 }
 
 export function getSyncState(fanId: number): SyncState | null {
@@ -99,6 +118,7 @@ export function getSyncState(fanId: number): SyncState | null {
     is_syncing: number;
     last_sync_at: string | null;
     deep_sync_complete: number;
+    collection_synced: number;
   } | undefined;
 
   if (!row) return null;
@@ -110,6 +130,7 @@ export function getSyncState(fanId: number): SyncState | null {
     isSyncing: row.is_syncing === 1,
     lastSyncAt: row.last_sync_at,
     deepSyncComplete: row.deep_sync_complete === 1,
+    collectionSynced: row.collection_synced === 1,
   };
 }
 
@@ -285,4 +306,110 @@ export async function syncFeedDeep(api: BandcampAPI, fanId: number): Promise<num
   }
 
   return totalSynced;
+}
+
+function setCollectionSynced(fanId: number) {
+  const db = getDb();
+  db.prepare(
+    'UPDATE sync_state SET collection_synced = 1 WHERE fan_id = ?',
+  ).run(fanId);
+}
+
+const COLLECTION_PAGE_DELAY_MS = 500;
+
+/**
+ * Full collection sync: pages through all purchased items from newest to oldest,
+ * storing them as feed items with story_type='my_purchase'.
+ */
+export async function syncCollection(api: BandcampAPI, fanId: number): Promise<number> {
+  const db = getDb();
+  setSyncing(fanId, true);
+  let lastToken: string | undefined;
+  let totalSynced = 0;
+
+  try {
+    while (true) {
+      await sleep(COLLECTION_PAGE_DELAY_MS);
+
+      const page = await fetchCollectionWithRetry(api, {
+        olderThanToken: lastToken,
+      });
+
+      if (page.items.length === 0) break;
+
+      insertItems(fanId, page.items);
+      totalSynced += page.items.length;
+
+      const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
+      updateSyncProgress(
+        fanId,
+        getSyncState(fanId)?.oldestStoryDate ?? Math.floor(Date.now() / 1000),
+        getSyncState(fanId)?.newestStoryDate ?? 0,
+        dbTotal,
+      );
+
+      if (!page.hasMore) break;
+      lastToken = page.lastToken;
+    }
+
+    setCollectionSynced(fanId);
+  } finally {
+    setSyncing(fanId, false);
+  }
+
+  return totalSynced;
+}
+
+/**
+ * Incremental collection sync: fetches the first page of collection items and
+ * compares against the newest my_purchase in the DB. Pages until it hits known items.
+ */
+export async function syncCollectionIncremental(api: BandcampAPI, fanId: number): Promise<number> {
+  const db = getDb();
+
+  const newest = db.prepare(
+    "SELECT date FROM feed_items WHERE fan_id = ? AND story_type = 'my_purchase' ORDER BY date DESC LIMIT 1",
+  ).get(fanId) as { date: string } | undefined;
+
+  if (!newest) {
+    return syncCollection(api, fanId);
+  }
+
+  const newestDate = new Date(newest.date).getTime();
+  setSyncing(fanId, true);
+  let lastToken: string | undefined;
+  let totalNew = 0;
+
+  try {
+    while (true) {
+      const page = await fetchCollectionWithRetry(api, {
+        olderThanToken: lastToken,
+      });
+
+      if (page.items.length === 0) break;
+
+      const newItems = page.items.filter(
+        (item) => item.date.getTime() > newestDate,
+      );
+
+      if (newItems.length > 0) {
+        insertItems(fanId, newItems);
+        totalNew += newItems.length;
+      }
+
+      if (newItems.length < page.items.length) break;
+      if (!page.hasMore) break;
+      lastToken = page.lastToken;
+    }
+
+    const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
+    const state = getSyncState(fanId);
+    if (state) {
+      updateSyncProgress(fanId, state.oldestStoryDate ?? Math.floor(Date.now() / 1000), state.newestStoryDate ?? 0, dbTotal);
+    }
+  } finally {
+    setSyncing(fanId, false);
+  }
+
+  return totalNew;
 }

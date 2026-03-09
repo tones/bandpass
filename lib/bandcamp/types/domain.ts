@@ -1,6 +1,6 @@
 // lib/bandcamp/types/domain.ts
 
-export type StoryType = 'new_release' | 'friend_purchase' | 'also_purchased';
+export type StoryType = 'new_release' | 'friend_purchase' | 'my_purchase';
 
 export interface FeedItem {
   id: string;
@@ -34,5 +34,11 @@ export interface FeedPage {
   items: FeedItem[];
   oldestStoryDate: number;
   newestStoryDate: number;
+  hasMore: boolean;
+}
+
+export interface CollectionPage {
+  items: FeedItem[];
+  lastToken: string;
   hasMore: boolean;
 }

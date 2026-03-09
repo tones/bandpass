@@ -120,5 +120,14 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 6) {
+    db.exec(`
+      ALTER TABLE sync_state ADD COLUMN collection_synced INTEGER NOT NULL DEFAULT 0;
+      DELETE FROM feed_items WHERE story_type = 'also_purchased';
+
+      PRAGMA user_version = 6;
+    `);
+  }
+
   return db;
 }

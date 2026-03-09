@@ -21,8 +21,8 @@ const STORY_BADGES: Record<string, { label: string; className: string }> = {
     label: 'New release',
     className: 'bg-emerald-500/15 text-emerald-400',
   },
-  also_purchased: {
-    label: 'Also purchased',
+  my_purchase: {
+    label: 'My purchase',
     className: 'bg-violet-500/15 text-violet-400',
   },
 };

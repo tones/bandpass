@@ -151,3 +151,41 @@ export interface BandcampBandInfo {
   latest_art_id: number | null;
   followed: number;
 }
+
+// --- Collection (POST /api/fancollection/1/collection_items) ---
+
+export interface BandcampCollectionResponse {
+  items: BandcampCollectionItem[];
+  more_available: boolean;
+  last_token: string;
+  tracklists: Record<string, BandcampCollectionTracklist>;
+}
+
+export interface BandcampCollectionItem {
+  fan_id: number;
+  tralbum_id: number;
+  tralbum_type: 'a' | 't';
+  band_id: number;
+  band_name: string;
+  band_url: string;
+  album_id: number;
+  album_title: string;
+  item_title: string;
+  item_url: string;
+  item_art_url: string;
+  item_art_id: number;
+  item_type: 'album' | 'track';
+  featured_track_title: string | null;
+  featured_track_duration: number | null;
+  purchased: string;
+  price: number;
+  currency: string;
+  also_collected_count: number;
+  token: string;
+}
+
+export interface BandcampCollectionTracklist {
+  file: Record<string, string> | null;
+  duration: number | null;
+  title: string;
+}

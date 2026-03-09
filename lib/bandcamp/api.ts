@@ -1,16 +1,17 @@
 import { BandcampClient } from './client';
 import type {
   BandcampCollectionSummary,
+  BandcampCollectionItem,
+  BandcampCollectionResponse,
   BandcampFeedResponse,
   BandcampFeedStory,
   BandcampFanInfo,
 } from './types/api';
-import type { FeedItem, FeedPage, StoryType } from './types/domain';
+import type { CollectionPage, FeedItem, FeedPage, StoryType } from './types/domain';
 
 const STORY_TYPE_MAP: Record<string, StoryType> = {
   nr: 'new_release',
   fp: 'friend_purchase',
-  np: 'also_purchased',
 };
 
 export class BandcampAPI {
@@ -50,15 +51,83 @@ export class BandcampAPI {
       }
     }
 
-    const items = raw.stories.entries.map((story) =>
-      this.normalizeStory(story, raw.fan_info, trackStreamUrls),
-    );
+    const items = raw.stories.entries
+      .filter((story) => story.story_type in STORY_TYPE_MAP)
+      .map((story) => this.normalizeStory(story, raw.fan_info, trackStreamUrls));
 
     return {
       items,
       oldestStoryDate: raw.stories.oldest_story_date,
       newestStoryDate: raw.stories.newest_story_date,
       hasMore: items.length > 0,
+    };
+  }
+
+  async getCollection(options?: { olderThanToken?: string; count?: number }): Promise<CollectionPage> {
+    const fanId = await this.getFanId();
+    const count = options?.count ?? 100;
+    const olderThanToken = options?.olderThanToken ?? `${Math.floor(Date.now() / 1000)}::a:`;
+
+    const raw = await this.client.postJson<BandcampCollectionResponse>(
+      '/api/fancollection/1/collection_items',
+      {
+        fan_id: fanId,
+        older_than_token: olderThanToken,
+        count,
+      },
+    );
+
+    const items = raw.items.map((item) =>
+      this.normalizeCollectionItem(item, fanId, raw.tracklists),
+    );
+
+    return {
+      items,
+      lastToken: raw.last_token,
+      hasMore: raw.more_available,
+    };
+  }
+
+  private normalizeCollectionItem(
+    item: BandcampCollectionItem,
+    fanId: number,
+    tracklists: Record<string, { file: Record<string, string> | null; duration: number | null; title: string }>,
+  ): FeedItem {
+    const tracklistKey = item.tralbum_type === 'a' ? `a${item.tralbum_id}` : `t${item.tralbum_id}`;
+    const tracklist = tracklists[tracklistKey];
+    const streamUrl = tracklist?.file?.['mp3-v0'] ?? tracklist?.file?.['mp3-128'] ?? null;
+
+    const trackTitle = item.featured_track_title ?? tracklist?.title ?? null;
+    const trackDuration = item.featured_track_duration ?? tracklist?.duration ?? null;
+
+    return {
+      id: `mp-${item.tralbum_id}-${fanId}-${item.purchased}`,
+      storyType: 'my_purchase',
+      date: new Date(item.purchased),
+      album: {
+        id: item.album_id,
+        title: item.album_title || item.item_title,
+        url: item.item_url,
+        imageUrl: item.item_art_url,
+      },
+      artist: {
+        id: item.band_id,
+        name: item.band_name,
+        url: item.band_url,
+      },
+      track: trackTitle
+        ? {
+            title: trackTitle,
+            duration: trackDuration ?? 0,
+            streamUrl,
+          }
+        : null,
+      tags: [],
+      price: item.price ? { amount: item.price, currency: item.currency } : null,
+      socialSignal: {
+        fan: null,
+        alsoCollectedCount: item.also_collected_count,
+      },
     };
   }
 
@@ -76,7 +145,7 @@ export class BandcampAPI {
 
     return {
       id: `${story.story_type}-${story.tralbum_id}-${story.fan_id}-${story.story_date}`,
-      storyType: STORY_TYPE_MAP[story.story_type] ?? 'also_purchased',
+      storyType: STORY_TYPE_MAP[story.story_type] ?? 'new_release',
       date: new Date(story.story_date),
       album: {
         id: story.album_id,

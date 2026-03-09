@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep } from '@/lib/db/sync';
+import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental } from '@/lib/db/sync';
 import { getItemCount } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +10,8 @@ interface SyncProgress {
   newItemsFound: number;
   isDeepSyncing: boolean;
   deepSyncItemsFound: number;
+  isCollectionSyncing: boolean;
+  collectionItemsFound: number;
 }
 
 const activeSyncs = new Map<number, SyncProgress>();
@@ -17,7 +19,13 @@ const activeSyncs = new Map<number, SyncProgress>();
 async function startSync(fanId: number, identityCookie: string, isInitial: boolean) {
   if (activeSyncs.has(fanId)) return;
 
-  const progress: SyncProgress = { newItemsFound: 0, isDeepSyncing: false, deepSyncItemsFound: 0 };
+  const progress: SyncProgress = {
+    newItemsFound: 0,
+    isDeepSyncing: false,
+    deepSyncItemsFound: 0,
+    isCollectionSyncing: false,
+    collectionItemsFound: 0,
+  };
   activeSyncs.set(fanId, progress);
 
   try {
@@ -40,6 +48,19 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
         progress.isDeepSyncing = false;
       }
     }
+
+    const collectionState = getSyncState(fanId);
+    progress.isCollectionSyncing = true;
+    try {
+      const collectionCount = collectionState?.collectionSynced
+        ? await syncCollectionIncremental(api, fanId)
+        : await syncCollection(api, fanId);
+      progress.collectionItemsFound = collectionCount;
+    } catch (err) {
+      console.error('Collection sync error:', err);
+    } finally {
+      progress.isCollectionSyncing = false;
+    }
   } catch (err) {
     console.error('Sync error:', err);
   } finally {
@@ -58,7 +79,7 @@ export async function GET() {
   const totalItems = getItemCount(fanId);
   const progress = activeSyncs.get(fanId);
 
-  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete;
+  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced;
   if (needsSync && !activeSyncs.has(fanId) && session.identityCookie) {
     startSync(fanId, session.identityCookie, !state?.lastSyncAt).catch((err) =>
       console.error('Auto-triggered sync error:', err),
@@ -75,6 +96,9 @@ export async function GET() {
     newItemsFound: progress?.newItemsFound ?? null,
     isDeepSyncing: progress?.isDeepSyncing ?? false,
     deepSyncComplete: state?.deepSyncComplete ?? false,
+    isCollectionSyncing: progress?.isCollectionSyncing ?? false,
+    collectionSynced: state?.collectionSynced ?? false,
+    collectionItemsFound: progress?.collectionItemsFound ?? 0,
   });
 }
 

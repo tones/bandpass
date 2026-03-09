@@ -163,3 +163,9 @@ export function getItemCount(fanId: number): number {
   const row = db.prepare('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number };
   return row.c;
 }
+
+export function getItemCountByType(fanId: number, storyType: string): number {
+  const db = getDb();
+  const row = db.prepare('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = ? AND story_type = ?').get(fanId, storyType) as { c: number };
+  return row.c;
+}
