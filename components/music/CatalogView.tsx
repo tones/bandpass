@@ -17,6 +17,7 @@ interface CatalogViewProps {
   bandUrl: string;
   releases: CatalogRelease[];
   initialShortlist?: string[];
+  loggedIn?: boolean;
 }
 
 interface TrackCache {
@@ -38,7 +39,7 @@ function proxyUrl(url: string): string {
   return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
 }
 
-export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlist = [] }: CatalogViewProps) {
+export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlist = [], loggedIn = false }: CatalogViewProps) {
   const [shortlist, setShortlist] = useState<Set<string>>(() => new Set(initialShortlist));
   const [expanded, setExpanded] = useState<Set<number>>(
     () => new Set(releases.map((r) => r.id)),
@@ -181,6 +182,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
             tracks={trackCache[release.id]}
             nowPlaying={nowPlaying}
             shortlist={shortlist}
+            loggedIn={loggedIn}
             onToggleExpand={() => toggleExpand(release)}
             onPlayTrack={(track) => playTrack(track, release)}
             onToggleShortlist={handleToggleShortlist}
@@ -238,7 +240,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
               {duration > 0 ? formatDuration(duration) : '—'}
             </span>
 
-            {nowPlaying.track.id && (() => {
+            {loggedIn && nowPlaying.track.id && (() => {
               const sid = catalogTrackShortlistId(nowPlaying.track.id);
               const isSl = shortlist.has(sid);
               return (
@@ -277,6 +279,7 @@ interface ReleaseCardProps {
   tracks?: CatalogTrack[];
   nowPlaying: NowPlaying | null;
   shortlist: Set<string>;
+  loggedIn: boolean;
   onToggleExpand: () => void;
   onPlayTrack: (track: CatalogTrack) => void;
   onToggleShortlist: (trackId: number) => void;
@@ -289,6 +292,7 @@ function ReleaseCard({
   tracks,
   nowPlaying,
   shortlist,
+  loggedIn,
   onToggleExpand,
   onPlayTrack,
   onToggleShortlist,
@@ -361,6 +365,7 @@ function ReleaseCard({
                       bandcampUrl={track.trackUrl ?? release.url}
                       onPlay={() => onPlayTrack(track)}
                       onToggleShortlist={() => onToggleShortlist(track.id)}
+                      showShortlist={loggedIn}
                     />
                   </div>
                 );

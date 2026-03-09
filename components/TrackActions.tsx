@@ -6,6 +6,7 @@ interface TrackActionsProps {
   onPlay: () => void;
   onToggleShortlist: () => void;
   size?: 'sm' | 'md';
+  showShortlist?: boolean;
 }
 
 const SIZE_CLASSES = {
@@ -27,6 +28,7 @@ export function TrackActions({
   onPlay,
   onToggleShortlist,
   size = 'sm',
+  showShortlist = true,
 }: TrackActionsProps) {
   const s = SIZE_CLASSES[size];
 
@@ -47,17 +49,19 @@ export function TrackActions({
         <span className="leading-none">{isPlaying ? '⏸' : '▶'}</span>
       </button>
 
-      <button
-        onClick={(e) => { e.stopPropagation(); onToggleShortlist(); }}
-        className={`flex items-center justify-center rounded transition-colors ${s.button} ${
-          isShortlisted
-            ? 'text-rose-400 hover:text-rose-300'
-            : 'text-zinc-600 hover:text-zinc-400'
-        }`}
-        title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
-      >
-        <span className="leading-none">{isShortlisted ? '♥' : '♡'}</span>
-      </button>
+      {showShortlist && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleShortlist(); }}
+          className={`flex items-center justify-center rounded transition-colors ${s.button} ${
+            isShortlisted
+              ? 'text-rose-400 hover:text-rose-300'
+              : 'text-zinc-600 hover:text-zinc-400'
+          }`}
+          title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
+        >
+          <span className="leading-none">{isShortlisted ? '♥' : '♡'}</span>
+        </button>
+      )}
 
       <a
         href={bandcampUrl}

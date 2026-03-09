@@ -67,6 +67,7 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
         bandUrl={bandUrl}
         releases={releases}
         initialShortlist={[...shortlistIds]}
+        loggedIn={!!fanId}
       />
     </main>
   );
