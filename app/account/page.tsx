@@ -21,7 +21,7 @@ export default async function AccountPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader activeTab="feed" username={username} />
+      <AppHeader username={username} />
       <AccountView
         username={username ?? 'Unknown'}
         totalItems={totalItems}

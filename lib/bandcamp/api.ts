@@ -91,10 +91,12 @@ export class BandcampAPI {
   private normalizeCollectionItem(
     item: BandcampCollectionItem,
     fanId: number,
-    tracklists: Record<string, { file: Record<string, string> | null; duration: number | null; title: string }>,
+    tracklists: Record<string, { file: Record<string, string> | null; duration: number | null; title: string }[]>,
   ): FeedItem {
     const tracklistKey = item.tralbum_type === 'a' ? `a${item.tralbum_id}` : `t${item.tralbum_id}`;
-    const tracklist = tracklists[tracklistKey];
+    const tracklistArr = tracklists[tracklistKey];
+    const featuredId = item.featured_track ?? item.tralbum_id;
+    const tracklist = tracklistArr?.find((t) => (t as { id?: number }).id === featuredId) ?? tracklistArr?.[0];
     const streamUrl = tracklist?.file?.['mp3-v0'] ?? tracklist?.file?.['mp3-128'] ?? null;
 
     const trackTitle = item.featured_track_title ?? tracklist?.title ?? null;

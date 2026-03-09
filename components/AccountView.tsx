@@ -27,13 +27,15 @@ interface AccountViewProps {
 }
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
+  const normalized = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
+  const d = new Date(normalized);
   return d.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZoneName: 'short',
   });
 }
 

@@ -7,7 +7,7 @@ const NAV_ITEMS: { id: NavTab; label: string; href: string }[] = [
 ];
 
 interface AppHeaderProps {
-  activeTab: NavTab;
+  activeTab?: NavTab;
   username?: string | null;
 }
 

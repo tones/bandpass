@@ -315,6 +315,31 @@ function setCollectionSynced(fanId: number) {
   ).run(fanId);
 }
 
+/**
+ * Enrich my_purchase items that have no tags by copying tags from feed items
+ * with the same album_id (new_release or friend_purchase items often have tags).
+ */
+function enrichPurchaseTags(fanId: number) {
+  const db = getDb();
+  db.prepare(`
+    UPDATE feed_items SET tags = (
+      SELECT f2.tags FROM feed_items f2
+      WHERE f2.fan_id = feed_items.fan_id
+        AND f2.album_id = feed_items.album_id
+        AND f2.story_type != 'my_purchase'
+        AND f2.tags != '[]'
+      LIMIT 1
+    )
+    WHERE fan_id = ?
+      AND story_type = 'my_purchase'
+      AND tags = '[]'
+      AND album_id IN (
+        SELECT DISTINCT f3.album_id FROM feed_items f3
+        WHERE f3.fan_id = ? AND f3.story_type != 'my_purchase' AND f3.tags != '[]'
+      )
+  `).run(fanId, fanId);
+}
+
 const COLLECTION_PAGE_DELAY_MS = 500;
 
 /**
@@ -352,6 +377,7 @@ export async function syncCollection(api: BandcampAPI, fanId: number): Promise<n
       lastToken = page.lastToken;
     }
 
+    enrichPurchaseTags(fanId);
     setCollectionSynced(fanId);
   } finally {
     setSyncing(fanId, false);
@@ -401,6 +427,8 @@ export async function syncCollectionIncremental(api: BandcampAPI, fanId: number)
       if (!page.hasMore) break;
       lastToken = page.lastToken;
     }
+
+    if (totalNew > 0) enrichPurchaseTags(fanId);
 
     const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
     const state = getSyncState(fanId);

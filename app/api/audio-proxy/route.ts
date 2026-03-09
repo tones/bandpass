@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getIdentityCookie } from '@/lib/session';
 
 const ALLOWED_HOSTS = ['bandcamp.com', 'bcbits.com'];
 
@@ -19,7 +20,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
   }
 
-  const upstream = await fetch(url);
+  const reqHeaders: Record<string, string> = {};
+  const identityCookie = await getIdentityCookie();
+  if (identityCookie) {
+    reqHeaders['Cookie'] = `identity=${identityCookie}`;
+  }
+
+  const upstream = await fetch(url, { headers: reqHeaders });
   if (!upstream.ok) {
     return NextResponse.json(
       { error: 'Upstream fetch failed' },
@@ -27,12 +34,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const headers = new Headers();
+  const resHeaders = new Headers();
   const contentType = upstream.headers.get('content-type');
-  if (contentType) headers.set('Content-Type', contentType);
+  if (contentType) resHeaders.set('Content-Type', contentType);
   const contentLength = upstream.headers.get('content-length');
-  if (contentLength) headers.set('Content-Length', contentLength);
-  headers.set('Cache-Control', 'public, max-age=86400');
+  if (contentLength) resHeaders.set('Content-Length', contentLength);
+  resHeaders.set('Cache-Control', 'public, max-age=86400');
 
-  return new NextResponse(upstream.body, { status: 200, headers });
+  return new NextResponse(upstream.body, { status: 200, headers: resHeaders });
 }

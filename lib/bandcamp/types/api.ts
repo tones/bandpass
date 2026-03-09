@@ -158,7 +158,7 @@ export interface BandcampCollectionResponse {
   items: BandcampCollectionItem[];
   more_available: boolean;
   last_token: string;
-  tracklists: Record<string, BandcampCollectionTracklist>;
+  tracklists: Record<string, BandcampCollectionTracklist[]>;
 }
 
 export interface BandcampCollectionItem {
@@ -175,6 +175,7 @@ export interface BandcampCollectionItem {
   item_art_url: string;
   item_art_id: number;
   item_type: 'album' | 'track';
+  featured_track: number | null;
   featured_track_title: string | null;
   featured_track_duration: number | null;
   purchased: string;
