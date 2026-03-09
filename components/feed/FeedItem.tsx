@@ -1,6 +1,7 @@
 import type { FeedItem } from '@/lib/bandcamp';
 import { extractSlug } from '@/lib/bandcamp/scraper';
 import { convertToUsd } from '@/lib/currency';
+import { formatDuration, formatPrice } from '@/lib/formatters';
 import { TrackActions } from '@/components/TrackActions';
 
 interface FeedItemCardProps {
@@ -26,35 +27,6 @@ const STORY_BADGES: Record<string, { label: string; className: string }> = {
     className: 'bg-violet-500/15 text-violet-400',
   },
 };
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$',
-  EUR: '€',
-  GBP: '£',
-  AUD: 'A$',
-  CAD: 'C$',
-  JPY: '¥',
-  NZD: 'NZ$',
-  CHF: 'CHF',
-  SEK: 'SEK',
-  NOK: 'NOK',
-  DKK: 'DKK',
-  BRL: 'R$',
-  MXN: 'MX$',
-};
-
-function formatPrice(amount: number, currency: string): string {
-  const sym = CURRENCY_SYMBOLS[currency] ?? currency + ' ';
-  const isSymbol = sym.length <= 2 || sym.endsWith('$');
-  if (isSymbol) return `${sym}${amount.toFixed(2)}`;
-  return `${sym} ${amount.toFixed(2)}`;
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
 
 function formatRelativeDate(date: Date): string {
   const now = new Date();

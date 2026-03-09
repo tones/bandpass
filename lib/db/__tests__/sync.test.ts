@@ -13,8 +13,9 @@ vi.mock('@/lib/bandcamp/api', () => ({
   BandcampAPI: vi.fn(),
 }));
 
-import { syncFeedIncremental, syncFeedInitial, getSyncState } from '../sync';
+import { syncFeedIncremental, syncFeedInitial, syncFeedDeep, syncCollection, syncCollectionIncremental, getSyncState } from '../sync';
 import { BandcampAPI } from '@/lib/bandcamp/api';
+import type { CollectionPage } from '@/lib/bandcamp/types/domain';
 
 function makeFeedItem(id: string, dateOffset: number): FeedItem {
   const now = Date.now();
@@ -197,5 +198,259 @@ describe('syncFeedInitial', () => {
     expect(result).toBe(2);
     expect(getDbItemCount(fanId)).toBe(2);
     expect(getSyncState(fanId)?.isSyncing).toBe(false);
+  });
+});
+
+function makeCollectionItem(id: string, dateOffset: number, albumId: number = 1): FeedItem {
+  const now = Date.now();
+  return {
+    id,
+    storyType: 'my_purchase',
+    date: new Date(now - dateOffset * 1000),
+    album: { id: albumId, title: 'Album', url: '', imageUrl: '' },
+    artist: { id: 1, name: 'Artist', url: '' },
+    track: null,
+    tags: [],
+    price: null,
+    socialSignal: { fan: null, alsoCollectedCount: 0 },
+  };
+}
+
+function makeCollectionPage(items: FeedItem[], hasMore: boolean, lastToken: string = 'tok'): CollectionPage {
+  return { items, hasMore, lastToken };
+}
+
+describe('syncFeedDeep', () => {
+  const fanId = 77777;
+
+  beforeEach(() => {
+    testDb = createTestDb();
+  });
+
+  it('returns 0 when no prior sync state exists', async () => {
+    const mockApi = { getFeed: vi.fn(), getFanId: vi.fn() } as unknown as BandcampAPI;
+    const result = await syncFeedDeep(mockApi, fanId);
+    expect(result).toBe(0);
+    expect(mockApi.getFeed).not.toHaveBeenCalled();
+  });
+
+  it('pages backwards from oldest known date and sets deep_sync_complete', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedSyncState(fanId, now, now - 86400);
+
+    const page1Items = [makeFeedItem('deep-1', 86400 + 100), makeFeedItem('deep-2', 86400 + 200)];
+    const page2Items = [makeFeedItem('deep-3', 86400 + 300)];
+
+    let callCount = 0;
+    const pages = [
+      makePage(page1Items, true),
+      makePage(page2Items, false),
+    ];
+
+    const mockApi = {
+      getFeed: vi.fn(async () => pages[callCount++]),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncFeedDeep(mockApi, fanId);
+
+    expect(result).toBe(3);
+    expect(getDbItemCount(fanId)).toBe(3);
+    expect(getSyncState(fanId)?.deepSyncComplete).toBe(true);
+    expect(getSyncState(fanId)?.isSyncing).toBe(false);
+  });
+
+  it('stops when page returns empty items', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedSyncState(fanId, now, now - 86400);
+
+    const mockApi = {
+      getFeed: vi.fn(async () => makePage([], false)),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncFeedDeep(mockApi, fanId);
+
+    expect(result).toBe(0);
+    expect(getSyncState(fanId)?.deepSyncComplete).toBe(true);
+  });
+});
+
+describe('syncCollection', () => {
+  const fanId = 55555;
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    seedSyncState(fanId, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000) - 86400);
+  });
+
+  it('inserts all collection items and marks collection_synced', async () => {
+    const items = [makeCollectionItem('coll-1', 100), makeCollectionItem('coll-2', 200)];
+
+    const mockApi = {
+      getCollection: vi.fn(async () => makeCollectionPage(items, false)),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncCollection(mockApi, fanId);
+
+    expect(result).toBe(2);
+    expect(getDbItemCount(fanId)).toBe(2);
+    expect(getSyncState(fanId)?.collectionSynced).toBe(true);
+    expect(getSyncState(fanId)?.isSyncing).toBe(false);
+  });
+
+  it('pages through multiple pages until hasMore=false', async () => {
+    const page1 = [makeCollectionItem('p1-1', 100), makeCollectionItem('p1-2', 200)];
+    const page2 = [makeCollectionItem('p2-1', 300)];
+
+    let callCount = 0;
+    const mockApi = {
+      getCollection: vi.fn(async () => {
+        callCount++;
+        if (callCount === 1) return makeCollectionPage(page1, true, 'tok1');
+        return makeCollectionPage(page2, false, 'tok2');
+      }),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncCollection(mockApi, fanId);
+
+    expect(result).toBe(3);
+    expect(mockApi.getCollection).toHaveBeenCalledTimes(2);
+  });
+
+  it('enriches purchase tags from existing feed items', async () => {
+    testDb.prepare(`
+      INSERT INTO feed_items (id, fan_id, story_type, date, album_id, tags, also_collected_count)
+      VALUES ('feed-1', ?, 'new_release', '2025-01-01T00:00:00Z', 42, '["rock","indie"]', 0)
+    `).run(fanId);
+
+    const purchaseItem = makeCollectionItem('purchase-1', 100, 42);
+
+    const mockApi = {
+      getCollection: vi.fn(async () => makeCollectionPage([purchaseItem], false)),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    await syncCollection(mockApi, fanId);
+
+    const row = testDb.prepare(
+      "SELECT tags FROM feed_items WHERE id = 'purchase-1' AND fan_id = ?",
+    ).get(fanId) as { tags: string };
+    expect(JSON.parse(row.tags)).toEqual(['rock', 'indie']);
+  });
+});
+
+describe('syncCollectionIncremental', () => {
+  const fanId = 44444;
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    seedSyncState(fanId, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000) - 86400);
+  });
+
+  it('falls back to full sync when no prior purchases exist', async () => {
+    const items = [makeCollectionItem('inc-1', 100)];
+
+    const mockApi = {
+      getCollection: vi.fn(async () => makeCollectionPage(items, false)),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncCollectionIncremental(mockApi, fanId);
+
+    expect(result).toBe(1);
+    expect(getSyncState(fanId)?.collectionSynced).toBe(true);
+  });
+
+  it('only inserts items newer than the most recent purchase', async () => {
+    const existingDate = new Date('2025-06-01T00:00:00Z');
+    testDb.prepare(`
+      INSERT INTO feed_items (id, fan_id, story_type, date, tags, also_collected_count)
+      VALUES ('existing-purchase', ?, 'my_purchase', ?, '[]', 0)
+    `).run(fanId, existingDate.toISOString());
+
+    const olderItem: FeedItem = {
+      id: 'old-1',
+      storyType: 'my_purchase',
+      date: new Date('2025-05-15T00:00:00Z'),
+      album: { id: 1, title: 'Album', url: '', imageUrl: '' },
+      artist: { id: 1, name: 'Artist', url: '' },
+      track: null,
+      tags: [],
+      price: null,
+      socialSignal: { fan: null, alsoCollectedCount: 0 },
+    };
+    const newerItem: FeedItem = {
+      id: 'new-1',
+      storyType: 'my_purchase',
+      date: new Date('2025-07-01T00:00:00Z'),
+      album: { id: 2, title: 'Album 2', url: '', imageUrl: '' },
+      artist: { id: 1, name: 'Artist', url: '' },
+      track: null,
+      tags: [],
+      price: null,
+      socialSignal: { fan: null, alsoCollectedCount: 0 },
+    };
+
+    const mockApi = {
+      getCollection: vi.fn(async () => makeCollectionPage([newerItem, olderItem], false)),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncCollectionIncremental(mockApi, fanId);
+
+    expect(result).toBe(1);
+    const newInDb = testDb.prepare(
+      "SELECT id FROM feed_items WHERE fan_id = ? AND id = 'new-1'",
+    ).all(fanId);
+    expect(newInDb).toHaveLength(1);
+    const oldInDb = testDb.prepare(
+      "SELECT id FROM feed_items WHERE fan_id = ? AND id = 'old-1'",
+    ).all(fanId);
+    expect(oldInDb).toHaveLength(0);
+  });
+
+  it('stops paging when it hits items older than newest purchase', async () => {
+    const existingDate = new Date('2025-06-01T00:00:00Z');
+    testDb.prepare(`
+      INSERT INTO feed_items (id, fan_id, story_type, date, tags, also_collected_count)
+      VALUES ('existing', ?, 'my_purchase', ?, '[]', 0)
+    `).run(fanId, existingDate.toISOString());
+
+    const newerItem: FeedItem = {
+      id: 'newer-1',
+      storyType: 'my_purchase',
+      date: new Date('2025-07-01T00:00:00Z'),
+      album: { id: 1, title: 'A', url: '', imageUrl: '' },
+      artist: { id: 1, name: 'A', url: '' },
+      track: null, tags: [], price: null,
+      socialSignal: { fan: null, alsoCollectedCount: 0 },
+    };
+    const olderItem: FeedItem = {
+      id: 'older-1',
+      storyType: 'my_purchase',
+      date: new Date('2025-05-01T00:00:00Z'),
+      album: { id: 2, title: 'B', url: '', imageUrl: '' },
+      artist: { id: 1, name: 'A', url: '' },
+      track: null, tags: [], price: null,
+      socialSignal: { fan: null, alsoCollectedCount: 0 },
+    };
+
+    let callCount = 0;
+    const mockApi = {
+      getCollection: vi.fn(async () => {
+        callCount++;
+        if (callCount === 1) return makeCollectionPage([newerItem], true, 'tok1');
+        return makeCollectionPage([olderItem], true, 'tok2');
+      }),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncCollectionIncremental(mockApi, fanId);
+
+    expect(result).toBe(1);
+    expect(mockApi.getCollection).toHaveBeenCalledTimes(2);
   });
 });

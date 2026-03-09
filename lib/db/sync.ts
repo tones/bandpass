@@ -9,36 +9,15 @@ function sleep(ms: number): Promise<void> {
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 5000;
 
-async function fetchWithRetry(
-  api: BandcampAPI,
-  options?: { olderThan?: number },
-): Promise<FeedPage> {
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await api.getFeed(options);
+      return await fn();
     } catch (err) {
       const is429 = err instanceof Error && err.message.includes('429');
       if (!is429 || attempt === MAX_RETRIES) throw err;
       const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
       console.warn(`Rate limited (429), backing off ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
-      await sleep(backoff);
-    }
-  }
-  throw new Error('Unreachable');
-}
-
-async function fetchCollectionWithRetry(
-  api: BandcampAPI,
-  options?: { olderThanToken?: string; count?: number },
-): Promise<CollectionPage> {
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await api.getCollection(options);
-    } catch (err) {
-      const is429 = err instanceof Error && err.message.includes('429');
-      if (!is429 || attempt === MAX_RETRIES) throw err;
-      const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
-      console.warn(`Collection rate limited (429), backing off ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
       await sleep(backoff);
     }
   }
@@ -285,7 +264,7 @@ export async function syncFeedDeep(api: BandcampAPI, fanId: number): Promise<num
     while (true) {
       await sleep(DEEP_SYNC_PAGE_DELAY_MS);
 
-      const page = await fetchWithRetry(api, { olderThan });
+      const page = await withRetry(() => api.getFeed({ olderThan }));
 
       if (page.items.length === 0) break;
 
@@ -356,9 +335,9 @@ export async function syncCollection(api: BandcampAPI, fanId: number): Promise<n
     while (true) {
       await sleep(COLLECTION_PAGE_DELAY_MS);
 
-      const page = await fetchCollectionWithRetry(api, {
+      const page = await withRetry(() => api.getCollection({
         olderThanToken: lastToken,
-      });
+      }));
 
       if (page.items.length === 0) break;
 
@@ -408,9 +387,9 @@ export async function syncCollectionIncremental(api: BandcampAPI, fanId: number)
 
   try {
     while (true) {
-      const page = await fetchCollectionWithRetry(api, {
+      const page = await withRetry(() => api.getCollection({
         olderThanToken: lastToken,
-      });
+      }));
 
       if (page.items.length === 0) break;
 

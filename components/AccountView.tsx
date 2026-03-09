@@ -1,19 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { logout } from '@/app/logout/actions';
-
-interface SyncApiResponse {
-  totalItems: number;
-  isSyncing: boolean;
-  lastSyncAt: string | null;
-  isDeepSyncing: boolean;
-  deepSyncComplete: boolean;
-  oldestStoryDate: number | null;
-  isCollectionSyncing: boolean;
-  collectionSynced: boolean;
-  collectionItemsFound: number;
-}
+import { useSyncPolling } from '@/hooks/useSyncPolling';
 
 interface AccountViewProps {
   username: string;
@@ -47,87 +36,31 @@ function formatOldestDate(timestamp: number): string {
 export function AccountView({
   username,
   totalItems: initialTotal,
-  feedItems: initialFeedItems,
   purchaseItems: initialPurchaseItems,
   lastSyncAt: initialLastSync,
   deepSyncComplete: initialDeepComplete,
   collectionSynced: initialCollectionSynced,
   oldestStoryDate: initialOldestDate,
 }: AccountViewProps) {
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isDeepSyncing, setIsDeepSyncing] = useState(false);
-  const [isCollectionSyncing, setIsCollectionSyncing] = useState(false);
   const [totalItems, setTotalItems] = useState(initialTotal);
   const [lastSyncAt, setLastSyncAt] = useState(initialLastSync);
   const [deepSyncComplete, setDeepSyncComplete] = useState(initialDeepComplete);
   const [collectionSynced, setCollectionSynced] = useState(initialCollectionSynced);
   const [oldestDate, setOldestDate] = useState(initialOldestDate);
-  const [syncTriggered, setSyncTriggered] = useState(false);
 
-  const poll = useCallback(async () => {
-    try {
-      const res = await fetch('/api/sync');
-      if (!res.ok) return null;
-      return (await res.json()) as SyncApiResponse;
-    } catch {
-      return null;
-    }
-  }, []);
+  const { state, isActive: anySyncing, triggerSync } = useSyncPolling({
+    onStateChange(s) {
+      setTotalItems(s.totalItems);
+      setLastSyncAt(s.lastSyncAt);
+      setDeepSyncComplete(s.deepSyncComplete);
+      setCollectionSynced(s.collectionSynced);
+      if (s.oldestStoryDate) setOldestDate(s.oldestStoryDate);
+    },
+  });
 
-  useEffect(() => {
-    poll().then((data) => {
-      if (!data) return;
-      setIsSyncing(data.isSyncing);
-      setIsDeepSyncing(data.isDeepSyncing);
-      setIsCollectionSyncing(data.isCollectionSyncing);
-      setTotalItems(data.totalItems);
-      setLastSyncAt(data.lastSyncAt);
-      setDeepSyncComplete(data.deepSyncComplete);
-      setCollectionSynced(data.collectionSynced);
-      if (data.oldestStoryDate) setOldestDate(data.oldestStoryDate);
-
-      if (data.isSyncing || data.isDeepSyncing || data.isCollectionSyncing) {
-        setSyncTriggered(true);
-      }
-    });
-  }, [poll]);
-
-  useEffect(() => {
-    const isActive = isSyncing || isDeepSyncing || isCollectionSyncing || syncTriggered;
-    if (!isActive) return;
-
-    const interval = setInterval(async () => {
-      const data = await poll();
-      if (!data) return;
-
-      setIsSyncing(data.isSyncing);
-      setIsDeepSyncing(data.isDeepSyncing);
-      setIsCollectionSyncing(data.isCollectionSyncing);
-      setTotalItems(data.totalItems);
-      setLastSyncAt(data.lastSyncAt);
-      setDeepSyncComplete(data.deepSyncComplete);
-      setCollectionSynced(data.collectionSynced);
-      if (data.oldestStoryDate) setOldestDate(data.oldestStoryDate);
-
-      if (!data.isSyncing && !data.isDeepSyncing && !data.isCollectionSyncing) {
-        setSyncTriggered(false);
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [isSyncing, isDeepSyncing, isCollectionSyncing, syncTriggered, poll]);
-
-  async function handleSync() {
-    setSyncTriggered(true);
-    setIsSyncing(true);
-    try {
-      await fetch('/api/sync', { method: 'POST' });
-    } catch (err) {
-      console.error('Failed to trigger sync:', err);
-    }
-  }
-
-  const anySyncing = isSyncing || isDeepSyncing || isCollectionSyncing;
+  const isSyncing = state?.isSyncing ?? false;
+  const isDeepSyncing = state?.isDeepSyncing ?? false;
+  const isCollectionSyncing = state?.isCollectionSyncing ?? false;
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
@@ -174,7 +107,7 @@ export function AccountView({
 
         <div className="flex gap-3 border-t border-zinc-800 pt-6">
           <button
-            onClick={handleSync}
+            onClick={triggerSync}
             disabled={anySyncing}
             className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
           >

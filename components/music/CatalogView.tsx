@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import WavesurferPlayer from '@wavesurfer/react';
 import type WaveSurfer from 'wavesurfer.js';
 import type { CatalogRelease, CatalogTrack } from '@/lib/db/catalog';
+import { formatDuration, proxyUrl } from '@/lib/formatters';
 import { toggleShortlistItem } from '@/app/shortlist/actions';
 import { TrackActions } from '@/components/TrackActions';
 
@@ -35,16 +36,6 @@ interface TagsCache {
 interface NowPlaying {
   track: CatalogTrack;
   release: CatalogRelease;
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function proxyUrl(url: string): string {
-  return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
 }
 
 export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlist = [], loggedIn = false }: CatalogViewProps) {

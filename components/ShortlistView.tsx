@@ -4,23 +4,9 @@ import { useState, useCallback } from 'react';
 import type { FeedItem } from '@/lib/bandcamp';
 import type { ShortlistCatalogItem } from '@/lib/db/shortlist';
 import { convertToUsd } from '@/lib/currency';
+import { formatPrice } from '@/lib/formatters';
 import { WaveformPlayer } from './feed/WaveformPlayer';
 import { removeShortlistItem, clearAllShortlist } from '@/app/shortlist/actions';
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$', EUR: '€', GBP: '£', AUD: 'A$', CAD: 'C$', JPY: '¥',
-};
-
-function formatPrice(amount: number, currency: string): string {
-  const sym = CURRENCY_SYMBOLS[currency] ?? currency + ' ';
-  const isSymbol = sym.length <= 2 || sym.endsWith('$');
-  if (isSymbol) return `${sym}${amount.toFixed(2)}`;
-  return `${sym} ${amount.toFixed(2)}`;
-}
-
-function proxyUrl(url: string): string {
-  return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
-}
 
 interface ShortlistViewProps {
   initialItems: FeedItem[];

@@ -1,18 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-
-interface SyncInfo {
-  totalItems: number;
-  isSyncing: boolean;
-  lastSyncAt: string | null;
-  newItemsFound: number | null;
-  isDeepSyncing: boolean;
-  deepSyncComplete: boolean;
-  oldestStoryDate: number | null;
-  isCollectionSyncing: boolean;
-  collectionSynced: boolean;
-}
+import { useState, useRef, useCallback } from 'react';
+import { useSyncPolling } from '@/hooks/useSyncPolling';
 
 interface SyncStatusProps {
   onSyncComplete: () => void;
@@ -22,21 +11,9 @@ interface SyncStatusProps {
 const PROGRESSIVE_REFRESH_INTERVAL_MS = 10_000;
 
 export function SyncStatus({ onSyncComplete, onOldestDateChange }: SyncStatusProps) {
-  const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [triggered, setTriggered] = useState(false);
   const lastRefreshAt = useRef(0);
   const lastRefreshedCount = useRef(0);
-
-  const poll = useCallback(async () => {
-    try {
-      const res = await fetch('/api/sync');
-      if (res.ok) return (await res.json()) as SyncInfo;
-    } catch (err) {
-      console.error('SyncStatus poll error:', err);
-    }
-    return null;
-  }, []);
 
   const maybeRefreshFeed = useCallback((itemCount: number) => {
     const now = Date.now();
@@ -50,33 +27,15 @@ export function SyncStatus({ onSyncComplete, onOldestDateChange }: SyncStatusPro
     }
   }, [onSyncComplete]);
 
-  useEffect(() => {
-    poll().then((data) => {
-      if (!data || triggered) return;
-      const isActive = data.isSyncing || data.isDeepSyncing || data.isCollectionSyncing;
-      const needsSync = !data.deepSyncComplete || !data.collectionSynced;
-      if (isActive || needsSync) {
-        setTriggered(true);
-        setSyncing(true);
-      }
-    });
-  }, [poll, triggered]);
-
-  useEffect(() => {
-    if (!triggered) return;
-
-    const interval = setInterval(async () => {
-      const data = await poll();
-      if (!data) return;
-
+  const { isActive } = useSyncPolling({
+    onSyncComplete,
+    onStateChange(data) {
       if (data.oldestStoryDate) {
         onOldestDateChange?.(data.oldestStoryDate);
       }
 
-      const isActive = data.isSyncing || data.isDeepSyncing || data.isCollectionSyncing;
-
-      if (isActive) {
-        setSyncing(true);
+      const active = data.isSyncing || data.isDeepSyncing || data.isCollectionSyncing;
+      if (active) {
         if (data.isCollectionSyncing) {
           setMessage('Syncing purchases...');
         } else if (data.isDeepSyncing) {
@@ -86,17 +45,12 @@ export function SyncStatus({ onSyncComplete, onOldestDateChange }: SyncStatusPro
         }
         maybeRefreshFeed(data.totalItems);
       } else {
-        setSyncing(false);
         setMessage(null);
-        onSyncComplete();
-        clearInterval(interval);
       }
-    }, 3000);
+    },
+  });
 
-    return () => clearInterval(interval);
-  }, [triggered, poll, onSyncComplete, onOldestDateChange, maybeRefreshFeed]);
-
-  if (!syncing || !message) return null;
+  if (!isActive || !message) return null;
 
   return (
     <a

@@ -73,13 +73,125 @@ describe('scraper', () => {
       expect(result.items[0].type).toBe('album');
     });
 
-    it('returns empty items when data-client-items is missing', async () => {
+    it('returns empty items when neither JSON nor HTML items are present', async () => {
       const html = `<html><body><div data-band="${encode({ id: 1, name: 'B', subdomain: 'b' })}"></div></body></html>`;
       mockFetcher = vi.fn().mockResolvedValue(html);
 
       const result = await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
       expect(result.items).toEqual([]);
       expect(result.band.name).toBe('B');
+    });
+
+    it('parses items from HTML when data-client-items is missing', async () => {
+      const band = { id: 1, name: 'TestBand', subdomain: 'testband' };
+      const html = `<html><body>
+        <div data-band="${encode(band)}"></div>
+        <li data-item-id="album-500" data-band-id="1">
+          <a href="/album/cool-album">
+            <img src="https://f4.bcbits.com/img/a777_5.jpg" />
+          </a>
+          <p class="title">Cool Album</p>
+        </li>
+        <li data-item-id="track-501" data-band-id="1">
+          <a href="/track/nice-track">
+            <img src="https://f4.bcbits.com/img/a888_5.jpg" />
+          </a>
+          <p class="title">Nice Track</p>
+        </li>
+      </body></html>`;
+      mockFetcher = vi.fn().mockResolvedValue(html);
+
+      const result = await fetchDiscography(mockFetcher, 'https://testband.bandcamp.com');
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]).toMatchObject({
+        id: 500,
+        title: 'Cool Album',
+        type: 'album',
+        artId: 777,
+        pageUrl: 'https://testband.bandcamp.com/album/cool-album',
+      });
+      expect(result.items[1]).toMatchObject({
+        id: 501,
+        title: 'Nice Track',
+        type: 'track',
+        artId: 888,
+      });
+    });
+
+    it('decodes HTML entities in titles parsed from HTML', async () => {
+      const band = { id: 1, name: 'B', subdomain: 'b' };
+      const html = `<html><body>
+        <div data-band="${encode(band)}"></div>
+        <li data-item-id="album-100" data-band-id="1">
+          <a href="/album/x">
+            <img src="https://f4.bcbits.com/img/a1_5.jpg" />
+          </a>
+          <p class="title">Rock &#39;n&#39; Roll &amp; Blues</p>
+        </li>
+      </body></html>`;
+      mockFetcher = vi.fn().mockResolvedValue(html);
+
+      const result = await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
+      expect(result.items[0].title).toBe("Rock 'n' Roll & Blues");
+    });
+
+    it('merges HTML and JSON items, preferring HTML for duplicates', async () => {
+      const band = { id: 1, name: 'B', subdomain: 'b' };
+      const jsonItems = [
+        { id: 100, title: 'JSON Title', page_url: '/album/x', art_id: 1, type: 'album', band_id: 1 },
+        { id: 200, title: 'JSON Only', page_url: '/album/y', art_id: 2, type: 'album', band_id: 1 },
+      ];
+      const htmlPart = `
+        <li data-item-id="album-100" data-band-id="1">
+          <a href="/album/x">
+            <img src="https://f4.bcbits.com/img/a10_5.jpg" />
+          </a>
+          <p class="title">HTML Title</p>
+        </li>
+        <li data-item-id="album-300" data-band-id="1">
+          <a href="/album/z">
+            <img src="https://f4.bcbits.com/img/a30_5.jpg" />
+          </a>
+          <p class="title">HTML Only</p>
+        </li>
+      `;
+      const html = `<html><body>
+        <div data-band="${encode(band)}" data-client-items="${encode(jsonItems)}"></div>
+        ${htmlPart}
+      </body></html>`;
+      mockFetcher = vi.fn().mockResolvedValue(html);
+
+      const result = await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
+
+      expect(result.items).toHaveLength(3);
+      const byId = Object.fromEntries(result.items.map((i) => [i.id, i]));
+
+      // ID 100: HTML overwrites JSON
+      expect(byId[100].title).toBe('HTML Title');
+      // ID 200: JSON-only item preserved
+      expect(byId[200].title).toBe('JSON Only');
+      // ID 300: HTML-only item included
+      expect(byId[300].title).toBe('HTML Only');
+    });
+
+    it('resolves relative URLs against bandUrl for HTML items', async () => {
+      const band = { id: 1, name: 'B', subdomain: 'b' };
+      const html = `<html><body>
+        <div data-band="${encode(band)}"></div>
+        <li data-item-id="album-50" data-band-id="1">
+          <a href="/album/relative-path"><img src="" /></a>
+          <p class="title">Relative</p>
+        </li>
+        <li data-item-id="album-51" data-band-id="1">
+          <a href="https://other.com/album/absolute"><img src="" /></a>
+          <p class="title">Absolute</p>
+        </li>
+      </body></html>`;
+      mockFetcher = vi.fn().mockResolvedValue(html);
+
+      const result = await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
+      expect(result.items[0].pageUrl).toBe('https://b.bandcamp.com/album/relative-path');
+      expect(result.items[1].pageUrl).toBe('https://other.com/album/absolute');
     });
 
     it('throws when data-band is missing', async () => {

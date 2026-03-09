@@ -180,34 +180,33 @@ export function cacheAlbumTracks(
 ): CatalogTrack[] {
   const db = getDb();
 
-  db.prepare('DELETE FROM catalog_tracks WHERE release_id = ?').run(releaseId);
-
-  const insert = db.prepare(`
+  const insertTrack = db.prepare(`
     INSERT INTO catalog_tracks (release_id, track_num, title, duration, stream_url, track_url)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
 
-  const insertMany = db.transaction(() => {
+  const updateRelease = db.prepare(`
+    UPDATE catalog_releases
+    SET release_date = COALESCE(?, release_date),
+        tags = COALESCE(?, tags)
+    WHERE id = ?
+  `);
+
+  const doAll = db.transaction(() => {
+    db.prepare('DELETE FROM catalog_tracks WHERE release_id = ?').run(releaseId);
     for (const t of tracks) {
-      insert.run(releaseId, t.trackNum, t.title, t.duration, t.streamUrl, t.trackUrl);
+      insertTrack.run(releaseId, t.trackNum, t.title, t.duration, t.streamUrl, t.trackUrl);
+    }
+    if (releaseDate !== undefined || tags !== undefined) {
+      const normalizedDate = releaseDate ? normalizeDate(releaseDate) : null;
+      updateRelease.run(
+        normalizedDate,
+        tags ? JSON.stringify(tags) : null,
+        releaseId,
+      );
     }
   });
-  insertMany();
-
-  if (releaseDate !== undefined || tags !== undefined) {
-    const normalizedDate = releaseDate ? normalizeDate(releaseDate) : null;
-    const update = db.prepare(`
-      UPDATE catalog_releases
-      SET release_date = COALESCE(?, release_date),
-          tags = COALESCE(?, tags)
-      WHERE id = ?
-    `);
-    update.run(
-      normalizedDate,
-      tags ? JSON.stringify(tags) : null,
-      releaseId,
-    );
-  }
+  doAll();
 
   return getCachedAlbumTracks(releaseId) ?? [];
 }

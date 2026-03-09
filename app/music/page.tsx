@@ -1,5 +1,5 @@
 import { getSession } from '@/lib/session';
-import { MusicBrowse } from '@/components/music/ArtistGrid';
+import { MusicBrowse } from '@/components/music/MusicBrowse';
 import { AppHeader } from '@/components/AppHeader';
 
 export default async function MusicPage() {

@@ -1,0 +1,107 @@
+{
+  "items": [
+    {
+      "fan_id": 12345,
+      "tralbum_id": 2001,
+      "tralbum_type": "a",
+      "band_id": 601,
+      "band_name": "Khruangbin",
+      "band_url": "https://khruangbin.bandcamp.com",
+      "album_id": 2001,
+      "album_title": "Con Todo El Mundo",
+      "item_title": "Con Todo El Mundo",
+      "item_url": "https://khruangbin.bandcamp.com/album/con-todo-el-mundo",
+      "item_art_url": "https://f4.bcbits.com/img/a111_9.jpg",
+      "item_art_id": 111,
+      "item_type": "album",
+      "featured_track": 3001,
+      "featured_track_title": "Maria También",
+      "featured_track_duration": 238.5,
+      "purchased": "15 Jan 2025 10:30:00 GMT",
+      "price": 12.0,
+      "currency": "USD",
+      "also_collected_count": 42,
+      "token": "2001:1736937000:a:"
+    },
+    {
+      "fan_id": 12345,
+      "tralbum_id": 2002,
+      "tralbum_type": "t",
+      "band_id": 602,
+      "band_name": "Mdou Moctar",
+      "band_url": "https://mdoumoctar.bandcamp.com",
+      "album_id": 2003,
+      "album_title": "Afrique Victime",
+      "item_title": "Tala Tannam",
+      "item_url": "https://mdoumoctar.bandcamp.com/track/tala-tannam",
+      "item_art_url": "https://f4.bcbits.com/img/a222_9.jpg",
+      "item_art_id": 222,
+      "item_type": "track",
+      "featured_track": null,
+      "featured_track_title": null,
+      "featured_track_duration": null,
+      "purchased": "20 Feb 2025 18:00:00 GMT",
+      "price": 1.5,
+      "currency": "EUR",
+      "also_collected_count": 7,
+      "token": "2002:1740070800:t:"
+    },
+    {
+      "fan_id": 12345,
+      "tralbum_id": 2004,
+      "tralbum_type": "a",
+      "band_id": 603,
+      "band_name": "Nubya Garcia",
+      "band_url": "https://nubyagarcia.bandcamp.com",
+      "album_id": 2004,
+      "album_title": "Odyssey",
+      "item_title": "Odyssey",
+      "item_url": "https://nubyagarcia.bandcamp.com/album/odyssey",
+      "item_art_url": "https://f4.bcbits.com/img/a333_9.jpg",
+      "item_art_id": 333,
+      "item_type": "album",
+      "featured_track": 3003,
+      "featured_track_title": null,
+      "featured_track_duration": null,
+      "purchased": "01 Mar 2025 12:00:00 GMT",
+      "price": 0,
+      "currency": "GBP",
+      "also_collected_count": 0,
+      "token": "2004:1740825600:a:"
+    }
+  ],
+  "more_available": true,
+  "last_token": "2004:1740825600:a:",
+  "tracklists": {
+    "a2001": [
+      {
+        "id": 3001,
+        "file": { "mp3-v0": "https://stream.example.com/maria.mp3", "mp3-128": "https://stream.example.com/maria-128.mp3" },
+        "duration": 238.5,
+        "title": "Maria También"
+      },
+      {
+        "id": 3002,
+        "file": { "mp3-128": "https://stream.example.com/evan.mp3" },
+        "duration": 195.0,
+        "title": "Evan Finds the Third Room"
+      }
+    ],
+    "t2002": [
+      {
+        "id": 2002,
+        "file": { "mp3-128": "https://stream.example.com/tala.mp3" },
+        "duration": 412.0,
+        "title": "Tala Tannam"
+      }
+    ],
+    "a2004": [
+      {
+        "id": 3003,
+        "file": null,
+        "duration": 300.0,
+        "title": "The Message Continues"
+      }
+    ]
+  }
+}

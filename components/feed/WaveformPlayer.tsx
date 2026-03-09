@@ -4,22 +4,13 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import WavesurferPlayer from '@wavesurfer/react';
 import type WaveSurfer from 'wavesurfer.js';
 import type { FeedItem } from '@/lib/bandcamp';
+import { formatDuration, proxyUrl } from '@/lib/formatters';
 
 interface WaveformPlayerProps {
   item: FeedItem;
   trackUrl: string;
   isShortlisted?: boolean;
   onToggleShortlist?: () => void;
-}
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function proxyUrl(url: string): string {
-  return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
 }
 
 export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlist }: WaveformPlayerProps) {
@@ -65,7 +56,7 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
         </div>
 
         <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-500">
-          {formatTime(currentTime)}
+          {formatDuration(currentTime)}
         </span>
 
         <div className="min-w-0 flex-1">
@@ -87,7 +78,7 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
         </div>
 
         <span className="w-10 shrink-0 text-xs tabular-nums text-zinc-500">
-          {duration > 0 ? formatTime(duration) : '—'}
+          {duration > 0 ? formatDuration(duration) : '—'}
         </span>
 
         <button
