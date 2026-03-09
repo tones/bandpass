@@ -40,6 +40,7 @@ export interface AlbumDetail {
   title: string;
   artist: string;
   imageUrl: string;
+  releaseDate: string | null;
   tracks: AlbumTrack[];
 }
 
@@ -121,7 +122,8 @@ export async function fetchAlbumTracks(
   const html = await fetchHtml(albumUrl);
 
   const tralbum = extractJsonAttr(html, 'data-tralbum') as {
-    current?: { title?: string; artist?: string; art_id?: number };
+    current?: { title?: string; artist?: string; art_id?: number; release_date?: string; publish_date?: string };
+    album_release_date?: string;
     trackinfo?: Array<{
       track_num: number;
       title: string;
@@ -151,10 +153,16 @@ export async function fetchAlbumTracks(
       : null,
   }));
 
+  const releaseDate = tralbum.current?.release_date
+    ?? tralbum.album_release_date
+    ?? tralbum.current?.publish_date
+    ?? null;
+
   return {
     title: tralbum.current?.title ?? '',
     artist: tralbum.current?.artist ?? tralbum.artist ?? '',
     imageUrl: artId ? artIdToUrl(artId) : '',
+    releaseDate,
     tracks,
   };
 }

@@ -24,6 +24,10 @@ interface TrackCache {
   [releaseId: number]: CatalogTrack[];
 }
 
+interface ReleaseDateCache {
+  [releaseId: number]: string | null;
+}
+
 interface NowPlaying {
   track: CatalogTrack;
   release: CatalogRelease;
@@ -41,10 +45,8 @@ function proxyUrl(url: string): string {
 
 export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlist = [], loggedIn = false }: CatalogViewProps) {
   const [shortlist, setShortlist] = useState<Set<string>>(() => new Set(initialShortlist));
-  const [expanded, setExpanded] = useState<Set<number>>(
-    () => new Set(releases.map((r) => r.id)),
-  );
   const [trackCache, setTrackCache] = useState<TrackCache>({});
+  const [releaseDates, setReleaseDates] = useState<ReleaseDateCache>({});
   const [loading, setLoading] = useState<Set<number>>(new Set());
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [wavesurfer, setWavesurfer] = useState<WaveSurfer | null>(null);
@@ -68,6 +70,9 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
         });
         const data = await res.json();
         setTrackCache((prev) => ({ ...prev, [release.id]: data.tracks ?? [] }));
+        if (data.releaseDate) {
+          setReleaseDates((prev) => ({ ...prev, [release.id]: data.releaseDate }));
+        }
       } catch (err) {
         console.error('Failed to load tracks:', err);
       } finally {
@@ -95,24 +100,6 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
     }
     loadAll();
   }, [releases, fetchTracks]);
-
-  const toggleExpand = useCallback(
-    async (release: CatalogRelease) => {
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        if (next.has(release.id)) {
-          next.delete(release.id);
-        } else {
-          next.add(release.id);
-        }
-        return next;
-      });
-
-      if (trackCache[release.id] || loading.has(release.id)) return;
-      fetchTracks(release);
-    },
-    [trackCache, loading, fetchTracks],
-  );
 
   const playTrack = useCallback((track: CatalogTrack, release: CatalogRelease) => {
     if (!track.streamUrl) return;
@@ -177,13 +164,12 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
           <ReleaseCard
             key={release.id}
             release={release}
-            isExpanded={expanded.has(release.id)}
+            releaseDate={releaseDates[release.id] ?? null}
             isLoading={loading.has(release.id)}
             tracks={trackCache[release.id]}
             nowPlaying={nowPlaying}
             shortlist={shortlist}
             loggedIn={loggedIn}
-            onToggleExpand={() => toggleExpand(release)}
             onPlayTrack={(track) => playTrack(track, release)}
             onToggleShortlist={handleToggleShortlist}
           />
@@ -272,37 +258,38 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
   );
 }
 
+function formatReleaseDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 interface ReleaseCardProps {
   release: CatalogRelease;
-  isExpanded: boolean;
+  releaseDate: string | null;
   isLoading: boolean;
   tracks?: CatalogTrack[];
   nowPlaying: NowPlaying | null;
   shortlist: Set<string>;
   loggedIn: boolean;
-  onToggleExpand: () => void;
   onPlayTrack: (track: CatalogTrack) => void;
   onToggleShortlist: (trackId: number) => void;
 }
 
 function ReleaseCard({
   release,
-  isExpanded,
+  releaseDate,
   isLoading,
   tracks,
   nowPlaying,
   shortlist,
   loggedIn,
-  onToggleExpand,
   onPlayTrack,
   onToggleShortlist,
 }: ReleaseCardProps) {
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-800">
-      <button
-        onClick={onToggleExpand}
-        className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-zinc-900/50"
-      >
+      <div className="flex items-center gap-4 px-4 py-3">
         {release.imageUrl ? (
           <img
             src={release.imageUrl}
@@ -318,66 +305,71 @@ function ReleaseCard({
           <div className="truncate font-medium text-zinc-100">{release.title}</div>
           <div className="text-xs text-zinc-500">
             {release.releaseType === 'track' ? 'Single' : 'Album'}
+            {releaseDate && <> · {formatReleaseDate(releaseDate)}</>}
           </div>
         </div>
-        <span className="shrink-0 text-sm text-zinc-600">
-          {isExpanded ? '▾' : '▸'}
-        </span>
-      </button>
+        <a
+          href={release.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-sm text-zinc-600 transition-colors hover:text-zinc-400"
+          title="Open on Bandcamp"
+        >
+          ↗
+        </a>
+      </div>
 
-      {isExpanded && (
-        <div className="border-t border-zinc-800/50">
-          {isLoading ? (
-            <div className="px-4 py-4 text-center text-sm text-zinc-500">
-              Loading tracks...
-            </div>
-          ) : tracks && tracks.length > 0 ? (
-            <div>
-              {tracks.map((track) => {
-                const isActive =
-                  nowPlaying?.track.streamUrl === track.streamUrl &&
-                  track.streamUrl != null;
-                const sid = catalogTrackShortlistId(track.id);
-                const isSl = shortlist.has(sid);
-                return (
-                  <div
-                    key={track.id}
-                    className={`flex w-full items-center gap-3 px-4 py-2 transition-colors ${
-                      isActive ? 'bg-zinc-900' : 'hover:bg-zinc-900/30'
-                    } ${!track.streamUrl ? 'opacity-40' : ''}`}
+      <div className="border-t border-zinc-800/50">
+        {isLoading ? (
+          <div className="px-4 py-4 text-center text-sm text-zinc-500">
+            Loading tracks...
+          </div>
+        ) : tracks && tracks.length > 0 ? (
+          <div>
+            {tracks.map((track) => {
+              const isActive =
+                nowPlaying?.track.streamUrl === track.streamUrl &&
+                track.streamUrl != null;
+              const sid = catalogTrackShortlistId(track.id);
+              const isSl = shortlist.has(sid);
+              return (
+                <div
+                  key={track.id}
+                  className={`flex w-full items-center gap-3 px-4 py-2 transition-colors ${
+                    isActive ? 'bg-zinc-900' : 'hover:bg-zinc-900/30'
+                  } ${!track.streamUrl ? 'opacity-40' : ''}`}
+                >
+                  <span className="w-6 shrink-0 text-right text-xs tabular-nums text-zinc-600">
+                    {track.trackNum}
+                  </span>
+                  <span
+                    className="min-w-0 flex-1 cursor-pointer truncate text-sm text-zinc-200"
+                    onClick={() => onPlayTrack(track)}
                   >
-                    <span className="w-6 shrink-0 text-right text-xs tabular-nums text-zinc-600">
-                      {track.trackNum}
-                    </span>
-                    <span
-                      className="min-w-0 flex-1 cursor-pointer truncate text-sm text-zinc-200"
-                      onClick={() => onPlayTrack(track)}
-                    >
-                      {track.title}
-                    </span>
-                    <span className="shrink-0 text-xs tabular-nums text-zinc-600">
-                      {track.duration > 0 ? formatDuration(track.duration) : ''}
-                    </span>
-                    <TrackActions
-                      isPlaying={isActive}
-                      hasStream={!!track.streamUrl}
-                      isShortlisted={isSl}
-                      bandcampUrl={track.trackUrl ?? release.url}
-                      onPlay={() => onPlayTrack(track)}
-                      onToggleShortlist={() => onToggleShortlist(track.id)}
-                      showShortlist={loggedIn}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="px-4 py-4 text-center text-sm text-zinc-500">
-              No tracks available
-            </div>
-          )}
-        </div>
-      )}
+                    {track.title}
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-zinc-600">
+                    {track.duration > 0 ? formatDuration(track.duration) : ''}
+                  </span>
+                  <TrackActions
+                    isPlaying={isActive}
+                    hasStream={!!track.streamUrl}
+                    isShortlisted={isSl}
+                    bandcampUrl={track.trackUrl ?? release.url}
+                    onPlay={() => onPlayTrack(track)}
+                    onToggleShortlist={() => onToggleShortlist(track.id)}
+                    showShortlist={loggedIn}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="px-4 py-4 text-center text-sm text-zinc-500">
+            No tracks available
+          </div>
+        )}
+      </div>
     </div>
   );
 }
