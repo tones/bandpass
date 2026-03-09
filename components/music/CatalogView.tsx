@@ -193,13 +193,6 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
               </div>
             </div>
 
-            <button
-              onClick={togglePlayPause}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-200 transition-colors hover:bg-zinc-700"
-            >
-              {isPlaying ? '⏸' : '▶'}
-            </button>
-
             <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-500">
               {formatDuration(currentTime)}
             </span>
@@ -225,6 +218,13 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
             <span className="w-10 shrink-0 text-xs tabular-nums text-zinc-500">
               {duration > 0 ? formatDuration(duration) : '—'}
             </span>
+
+            <button
+              onClick={togglePlayPause}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-200 transition-colors hover:bg-zinc-700"
+            >
+              {isPlaying ? '⏸' : '▶'}
+            </button>
 
             {loggedIn && nowPlaying.track.id && (() => {
               const sid = catalogTrackShortlistId(nowPlaying.track.id);

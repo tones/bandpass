@@ -64,13 +64,6 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
           </div>
         </div>
 
-        <button
-          onClick={togglePlayPause}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-200 transition-colors hover:bg-zinc-700"
-        >
-          {isPlaying ? '⏸' : '▶'}
-        </button>
-
         <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-500">
           {formatTime(currentTime)}
         </span>
@@ -96,6 +89,13 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
         <span className="w-10 shrink-0 text-xs tabular-nums text-zinc-500">
           {duration > 0 ? formatTime(duration) : '—'}
         </span>
+
+        <button
+          onClick={togglePlayPause}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-200 transition-colors hover:bg-zinc-700"
+        >
+          {isPlaying ? '⏸' : '▶'}
+        </button>
 
         {onToggleShortlist && (
           <button
