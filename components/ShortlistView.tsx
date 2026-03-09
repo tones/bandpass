@@ -146,7 +146,7 @@ export function ShortlistView({
             Heart tracks in your feed or on artist pages to add them here.
           </p>
           <a
-            href="/"
+            href="/feed"
             className="mt-4 inline-block rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-700"
           >
             Back to feed

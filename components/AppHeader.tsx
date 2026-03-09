@@ -3,8 +3,8 @@ import { LogoutButton } from './LogoutButton';
 type NavTab = 'feed' | 'music' | 'shortlist';
 
 const NAV_ITEMS: { id: NavTab; label: string; href: string }[] = [
-  { id: 'feed', label: 'Feed', href: '/' },
   { id: 'music', label: 'Music', href: '/music' },
+  { id: 'feed', label: 'Feed', href: '/feed' },
   { id: 'shortlist', label: 'Shortlist', href: '/shortlist' },
 ];
 
@@ -17,21 +17,30 @@ export function AppHeader({ activeTab, username }: AppHeaderProps) {
   return (
     <header className="border-b border-zinc-800">
       <div className="flex items-center justify-between px-6 py-3">
-        <a href="/" className="text-lg font-semibold tracking-tight text-zinc-100">
+        <a href="/music" className="text-lg font-semibold tracking-tight text-zinc-100">
           Bandpass
         </a>
         <div className="flex items-center gap-3">
-          {username && (
+          {username ? (
+            <>
+              <a
+                href={`https://bandcamp.com/${username}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-zinc-400 hover:text-zinc-200"
+              >
+                {username}
+              </a>
+              <LogoutButton />
+            </>
+          ) : (
             <a
-              href={`https://bandcamp.com/${username}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-zinc-400 hover:text-zinc-200"
+              href="/login"
+              className="rounded px-3 py-1 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
             >
-              {username}
+              Log in
             </a>
           )}
-          <LogoutButton />
         </div>
       </div>
       <nav className="flex gap-1 px-6 pb-2">

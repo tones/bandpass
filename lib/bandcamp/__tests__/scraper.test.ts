@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { BandcampClient } from '../client';
+import type { HtmlFetcher } from '../scraper';
 import {
   fetchDiscography,
   fetchAlbumTracks,
@@ -23,10 +23,10 @@ function makeAlbumPageHtml(tralbum: Record<string, unknown>): string {
 }
 
 describe('scraper', () => {
-  let client: BandcampClient;
+  let mockFetcher: HtmlFetcher;
 
   beforeEach(() => {
-    client = new BandcampClient('test-cookie');
+    mockFetcher = vi.fn();
     vi.restoreAllMocks();
   });
 
@@ -39,9 +39,9 @@ describe('scraper', () => {
       ];
       const html = makeMusicPageHtml(band, items);
 
-      vi.spyOn(client, 'getHtml').mockResolvedValue(html);
+      mockFetcher = vi.fn().mockResolvedValue(html);
 
-      const result = await fetchDiscography(client, 'https://ghostfunkorchestra.bandcamp.com');
+      const result = await fetchDiscography(mockFetcher, 'https://ghostfunkorchestra.bandcamp.com');
 
       expect(result.band).toEqual({
         id: 42,
@@ -67,35 +67,35 @@ describe('scraper', () => {
         { id: 1, name: 'B', subdomain: 'b' },
         [{ id: 10, title: 'X', page_url: '/x', art_id: 1, type: 'compilation', band_id: 1 }],
       );
-      vi.spyOn(client, 'getHtml').mockResolvedValue(html);
+      mockFetcher = vi.fn().mockResolvedValue(html);
 
-      const result = await fetchDiscography(client, 'https://b.bandcamp.com');
+      const result = await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
       expect(result.items[0].type).toBe('album');
     });
 
     it('returns empty items when data-client-items is missing', async () => {
       const html = `<html><body><div data-band="${encode({ id: 1, name: 'B', subdomain: 'b' })}"></div></body></html>`;
-      vi.spyOn(client, 'getHtml').mockResolvedValue(html);
+      mockFetcher = vi.fn().mockResolvedValue(html);
 
-      const result = await fetchDiscography(client, 'https://b.bandcamp.com');
+      const result = await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
       expect(result.items).toEqual([]);
       expect(result.band.name).toBe('B');
     });
 
     it('throws when data-band is missing', async () => {
-      vi.spyOn(client, 'getHtml').mockResolvedValue('<html><body><div></div></body></html>');
+      mockFetcher = vi.fn().mockResolvedValue('<html><body><div></div></body></html>');
 
-      await expect(fetchDiscography(client, 'https://x.bandcamp.com')).rejects.toThrow(
+      await expect(fetchDiscography(mockFetcher, 'https://x.bandcamp.com')).rejects.toThrow(
         'Could not extract band data from page',
       );
     });
 
     it('fetches from bandUrl/music', async () => {
       const html = makeMusicPageHtml({ id: 1, name: 'B', subdomain: 'b' }, []);
-      const spy = vi.spyOn(client, 'getHtml').mockResolvedValue(html);
+      mockFetcher = vi.fn().mockResolvedValue(html);
 
-      await fetchDiscography(client, 'https://b.bandcamp.com');
-      expect(spy).toHaveBeenCalledWith('https://b.bandcamp.com/music');
+      await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
+      expect(mockFetcher).toHaveBeenCalledWith('https://b.bandcamp.com/music');
     });
   });
 
@@ -122,9 +122,9 @@ describe('scraper', () => {
         ],
       };
       const html = makeAlbumPageHtml(tralbum);
-      vi.spyOn(client, 'getHtml').mockResolvedValue(html);
+      mockFetcher = vi.fn().mockResolvedValue(html);
 
-      const result = await fetchAlbumTracks(client, 'https://testband.bandcamp.com/album/test-album');
+      const result = await fetchAlbumTracks(mockFetcher, 'https://testband.bandcamp.com/album/test-album');
 
       expect(result.title).toBe('Test Album');
       expect(result.artist).toBe('Test Artist');
@@ -145,9 +145,9 @@ describe('scraper', () => {
         url: 'https://x.bandcamp.com/album/a',
         trackinfo: [{ track_num: 1, title: 'No Stream', duration: 100 }],
       };
-      vi.spyOn(client, 'getHtml').mockResolvedValue(makeAlbumPageHtml(tralbum));
+      mockFetcher = vi.fn().mockResolvedValue(makeAlbumPageHtml(tralbum));
 
-      const result = await fetchAlbumTracks(client, 'https://x.bandcamp.com/album/a');
+      const result = await fetchAlbumTracks(mockFetcher, 'https://x.bandcamp.com/album/a');
       expect(result.tracks[0].streamUrl).toBeNull();
     });
 
@@ -157,9 +157,9 @@ describe('scraper', () => {
         url: 'https://x.bandcamp.com/album/a',
         trackinfo: [{ track_num: 1, title: 'No Link', duration: 100, file: { 'mp3-128': 'https://s.com/t.mp3' } }],
       };
-      vi.spyOn(client, 'getHtml').mockResolvedValue(makeAlbumPageHtml(tralbum));
+      mockFetcher = vi.fn().mockResolvedValue(makeAlbumPageHtml(tralbum));
 
-      const result = await fetchAlbumTracks(client, 'https://x.bandcamp.com/album/a');
+      const result = await fetchAlbumTracks(mockFetcher, 'https://x.bandcamp.com/album/a');
       expect(result.tracks[0].trackUrl).toBeNull();
     });
 
@@ -169,9 +169,9 @@ describe('scraper', () => {
         url: 'https://x.bandcamp.com/album/a',
         trackinfo: [{ track_num: 1, title: 'T', duration: 100, title_link: 'https://other.com/track/t' }],
       };
-      vi.spyOn(client, 'getHtml').mockResolvedValue(makeAlbumPageHtml(tralbum));
+      mockFetcher = vi.fn().mockResolvedValue(makeAlbumPageHtml(tralbum));
 
-      const result = await fetchAlbumTracks(client, 'https://x.bandcamp.com/album/a');
+      const result = await fetchAlbumTracks(mockFetcher, 'https://x.bandcamp.com/album/a');
       expect(result.tracks[0].trackUrl).toBe('https://other.com/track/t');
     });
 
@@ -182,9 +182,9 @@ describe('scraper', () => {
         url: 'https://x.bandcamp.com/album/a',
         trackinfo: [],
       };
-      vi.spyOn(client, 'getHtml').mockResolvedValue(makeAlbumPageHtml(tralbum));
+      mockFetcher = vi.fn().mockResolvedValue(makeAlbumPageHtml(tralbum));
 
-      const result = await fetchAlbumTracks(client, 'https://x.bandcamp.com/album/a');
+      const result = await fetchAlbumTracks(mockFetcher, 'https://x.bandcamp.com/album/a');
       expect(result.artist).toBe('Fallback Artist');
     });
 
@@ -195,25 +195,25 @@ describe('scraper', () => {
         url: 'https://x.bandcamp.com/album/a',
         trackinfo: [],
       };
-      vi.spyOn(client, 'getHtml').mockResolvedValue(makeAlbumPageHtml(tralbum));
+      mockFetcher = vi.fn().mockResolvedValue(makeAlbumPageHtml(tralbum));
 
-      const result = await fetchAlbumTracks(client, 'https://x.bandcamp.com/album/a');
+      const result = await fetchAlbumTracks(mockFetcher, 'https://x.bandcamp.com/album/a');
       expect(result.imageUrl).toBe('https://f4.bcbits.com/img/a777_5.jpg');
     });
 
     it('throws when data-tralbum is missing', async () => {
-      vi.spyOn(client, 'getHtml').mockResolvedValue('<html><body></body></html>');
+      mockFetcher = vi.fn().mockResolvedValue('<html><body></body></html>');
 
-      await expect(fetchAlbumTracks(client, 'https://x.bandcamp.com/album/a')).rejects.toThrow(
+      await expect(fetchAlbumTracks(mockFetcher, 'https://x.bandcamp.com/album/a')).rejects.toThrow(
         'Could not extract track data from album page',
       );
     });
 
     it('returns empty tracks when trackinfo is missing', async () => {
       const tralbum = { current: { title: 'A', artist: 'B' }, url: 'https://x.bandcamp.com/album/a' };
-      vi.spyOn(client, 'getHtml').mockResolvedValue(makeAlbumPageHtml(tralbum));
+      mockFetcher = vi.fn().mockResolvedValue(makeAlbumPageHtml(tralbum));
 
-      const result = await fetchAlbumTracks(client, 'https://x.bandcamp.com/album/a');
+      const result = await fetchAlbumTracks(mockFetcher, 'https://x.bandcamp.com/album/a');
       expect(result.tracks).toEqual([]);
     });
   });

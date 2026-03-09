@@ -1,7 +1,6 @@
-import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
-import { getBandcampClient } from '@/lib/bandcamp';
-import { fetchDiscography, artIdToUrl } from '@/lib/bandcamp/scraper';
+import { BandcampClient } from '@/lib/bandcamp/client';
+import { fetchDiscography, artIdToUrl, publicFetcher } from '@/lib/bandcamp/scraper';
 import { getCachedDiscography, cacheDiscography } from '@/lib/db/catalog';
 import { getShortlist } from '@/lib/db/shortlist';
 import { CatalogView } from '@/components/music/CatalogView';
@@ -20,12 +19,9 @@ function slugToBandUrl(slug: string): string {
 
 export default async function MusicDetailPage({ params }: MusicDetailPageProps) {
   const cookie = await getIdentityCookie();
-  if (!cookie) redirect('/login');
-
   const session = await getSession();
   const fanId = session.fanId;
   const username = session.username;
-  if (!fanId) redirect('/login');
 
   const { slug } = await params;
   const bandUrl = slugToBandUrl(slug);
@@ -35,8 +31,10 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
 
   if (!releases) {
     try {
-      const client = await getBandcampClient();
-      const result = await fetchDiscography(client, bandUrl);
+      const fetcher = cookie
+        ? (url: string) => new BandcampClient(cookie).getHtml(url)
+        : publicFetcher;
+      const result = await fetchDiscography(fetcher, bandUrl);
       bandName = result.band.name;
 
       releases = cacheDiscography(
@@ -58,6 +56,8 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
     }
   }
 
+  const shortlistIds = fanId ? getShortlist(fanId) : new Set<string>();
+
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <AppHeader activeTab="music" username={username} />
@@ -66,7 +66,7 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
         bandName={bandName}
         bandUrl={bandUrl}
         releases={releases}
-        initialShortlist={[...getShortlist(fanId)]}
+        initialShortlist={[...shortlistIds]}
       />
     </main>
   );

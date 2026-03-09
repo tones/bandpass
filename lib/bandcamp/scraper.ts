@@ -1,4 +1,10 @@
-import { BandcampClient } from './client';
+export type HtmlFetcher = (url: string) => Promise<string>;
+
+export const publicFetcher: HtmlFetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Fetch error: ${res.status}`);
+  return res.text();
+};
 
 export interface DiscographyItem {
   id: number;
@@ -61,10 +67,10 @@ function artIdToUrl(artId: number, size: number = 5): string {
 }
 
 export async function fetchDiscography(
-  client: BandcampClient,
+  fetchHtml: HtmlFetcher,
   bandUrl: string,
 ): Promise<DiscographyResult> {
-  const html = await client.getHtml(`${bandUrl}/music`);
+  const html = await fetchHtml(`${bandUrl}/music`);
 
   const bandData = extractJsonAttr(html, 'data-band') as {
     id: number;
@@ -109,10 +115,10 @@ export async function fetchDiscography(
 }
 
 export async function fetchAlbumTracks(
-  client: BandcampClient,
+  fetchHtml: HtmlFetcher,
   albumUrl: string,
 ): Promise<AlbumDetail> {
-  const html = await client.getHtml(albumUrl);
+  const html = await fetchHtml(albumUrl);
 
   const tralbum = extractJsonAttr(html, 'data-tralbum') as {
     current?: { title?: string; artist?: string; art_id?: number };

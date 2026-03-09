@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
-import { getBandcampClient } from '@/lib/bandcamp';
-import { fetchDiscography, fetchAlbumTracks, artIdToUrl } from '@/lib/bandcamp/scraper';
+import { getIdentityCookie } from '@/lib/session';
+import { BandcampClient } from '@/lib/bandcamp/client';
+import { fetchDiscography, fetchAlbumTracks, artIdToUrl, publicFetcher } from '@/lib/bandcamp/scraper';
+import type { HtmlFetcher } from '@/lib/bandcamp/scraper';
 import {
   getCachedDiscography,
   cacheDiscography,
@@ -10,6 +11,15 @@ import {
 } from '@/lib/db/catalog';
 
 export const dynamic = 'force-dynamic';
+
+async function getFetcher(): Promise<HtmlFetcher> {
+  const cookie = await getIdentityCookie();
+  if (cookie) {
+    const client = new BandcampClient(cookie);
+    return (url: string) => client.getHtml(url);
+  }
+  return publicFetcher;
+}
 
 function slugToBandUrl(slug: string): string {
   if (slug.includes('.')) {
@@ -22,11 +32,6 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
-  const session = await getSession();
-  if (!session.fanId) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
   const { slug } = await params;
   const cached = getCachedDiscography(slug);
   if (cached) {
@@ -34,9 +39,9 @@ export async function GET(
   }
 
   try {
-    const client = await getBandcampClient();
+    const fetcher = await getFetcher();
     const bandUrl = slugToBandUrl(slug);
-    const result = await fetchDiscography(client, bandUrl);
+    const result = await fetchDiscography(fetcher, bandUrl);
 
     const releases = cacheDiscography(
       slug,
@@ -66,11 +71,6 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
-  const session = await getSession();
-  if (!session.fanId) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
   await params;
 
   const body = await request.json();
@@ -92,8 +92,8 @@ export async function POST(
   }
 
   try {
-    const client = await getBandcampClient();
-    const album = await fetchAlbumTracks(client, albumUrl);
+    const fetcher = await getFetcher();
+    const album = await fetchAlbumTracks(fetcher, albumUrl);
 
     const tracks = cacheAlbumTracks(
       releaseId,

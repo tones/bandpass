@@ -38,5 +38,5 @@ export async function loginWithCookie(
     return { error: 'Could not reach Bandcamp. Please try again.' };
   }
 
-  redirect('/');
+  redirect('/feed');
 }
