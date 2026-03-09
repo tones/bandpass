@@ -29,6 +29,7 @@ interface FilterBarProps {
   onTagChange: (tag: string | null) => void;
   dateRange: DateRange | undefined;
   onDateRangeChange: (range: DateRange | undefined) => void;
+  oldestStoryDate?: number | null;
 }
 
 const FEED_OPTIONS: { value: FeedFilter; label: string }[] = [
@@ -38,17 +39,19 @@ const FEED_OPTIONS: { value: FeedFilter; label: string }[] = [
   { value: 'all', label: 'All Items' },
 ];
 
-const SIX_MONTHS_AGO = new Date(Date.now() - 180 * 86400000);
+const DEFAULT_OLDEST = new Date(Date.now() - 180 * 86400000);
 
 const CHEVRON_SVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`;
 const SELECT_CLASS = 'appearance-none rounded-full bg-zinc-800/50 py-1 pl-3 pr-7 text-sm text-zinc-400 outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-300 cursor-pointer bg-no-repeat bg-[right_0.5rem_center]';
 
-
-function formatDateLabel(range: DateRange | undefined): string {
-  const fmt = (d: Date) =>
-    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function formatDateLabel(range: DateRange | undefined, oldest: Date): string {
+  const now = new Date();
+  const fmt = (d: Date) => {
+    const sameYear = d.getFullYear() === now.getFullYear();
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(!sameYear && { year: 'numeric' }) });
+  };
   if (!range?.from) {
-    return `${fmt(SIX_MONTHS_AGO)} – Today`;
+    return `${fmt(oldest)} – Today`;
   }
   if (!range.to || range.from.getTime() === range.to.getTime()) {
     return fmt(range.from);
@@ -56,9 +59,10 @@ function formatDateLabel(range: DateRange | undefined): string {
   return `${fmt(range.from)} – ${fmt(range.to)}`;
 }
 
-export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFriend, onFriendChange, tags, selectedTag, onTagChange, dateRange, onDateRangeChange }: FilterBarProps) {
+export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFriend, onFriendChange, tags, selectedTag, onTagChange, dateRange, onDateRangeChange, oldestStoryDate }: FilterBarProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const oldestDate = oldestStoryDate ? new Date(oldestStoryDate * 1000) : DEFAULT_OLDEST;
 
   useEffect(() => {
     if (!calendarOpen) return;
@@ -138,7 +142,7 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
                 : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
             }`}
           >
-            {formatDateLabel(dateRange)}
+            {formatDateLabel(dateRange, oldestDate)}
           </button>
           {dateRange?.from && (
             <button
@@ -154,9 +158,9 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
                 mode="range"
                 selected={dateRange}
                 onSelect={onDateRangeChange}
-                disabled={{ before: SIX_MONTHS_AGO, after: new Date() }}
+                disabled={{ before: oldestDate, after: new Date() }}
                 defaultMonth={new Date()}
-                startMonth={SIX_MONTHS_AGO}
+                startMonth={oldestDate}
                 endMonth={new Date()}
                 classNames={{
                   root: 'rdp-dark',

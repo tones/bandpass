@@ -13,7 +13,7 @@ vi.mock('@/lib/bandcamp/api', () => ({
   BandcampAPI: vi.fn(),
 }));
 
-import { syncFeedIncremental, syncFeedFull, getSyncState } from '../sync';
+import { syncFeedIncremental, syncFeedInitial, getSyncState } from '../sync';
 import { BandcampAPI } from '@/lib/bandcamp/api';
 
 function makeFeedItem(id: string, dateOffset: number): FeedItem {
@@ -178,7 +178,7 @@ describe('syncFeedIncremental', () => {
   });
 });
 
-describe('syncFeedFull', () => {
+describe('syncFeedInitial', () => {
   const fanId = 99999;
 
   beforeEach(() => {
@@ -192,7 +192,7 @@ describe('syncFeedFull', () => {
       getFanId: vi.fn(),
     } as unknown as BandcampAPI;
 
-    const result = await syncFeedFull(mockApi, fanId);
+    const result = await syncFeedInitial(mockApi, fanId);
 
     expect(result).toBe(2);
     expect(getDbItemCount(fanId)).toBe(2);

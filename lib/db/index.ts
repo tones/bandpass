@@ -74,5 +74,13 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 3) {
+    db.exec(`
+      ALTER TABLE sync_state ADD COLUMN deep_sync_complete INTEGER NOT NULL DEFAULT 0;
+
+      PRAGMA user_version = 3;
+    `);
+  }
+
   return db;
 }

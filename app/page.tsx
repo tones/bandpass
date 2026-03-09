@@ -7,7 +7,6 @@ import { getSyncState } from '@/lib/db/sync';
 import { getShortlist, getShortlistCount } from '@/lib/db/shortlist';
 import { FeedView } from '@/components/feed/FeedView';
 import { LogoutButton } from '@/components/LogoutButton';
-import { InitialSyncGate } from '@/components/InitialSyncGate';
 
 export default async function Home() {
   const cookie = await getIdentityCookie();
@@ -30,19 +29,13 @@ export default async function Home() {
   }
 
   const syncState = getSyncState(fanId);
-  const needsInitialSync = !syncState?.lastSyncAt;
-
-  if (needsInitialSync) {
-    return <InitialSyncGate />;
-  }
-
   const exchangeRates = await getExchangeRates();
-  const items = getFeedItems(fanId, { storyType: 'new_release' });
-  const tags = getTagCounts(fanId);
-  const friends = getFriendCounts(fanId);
-  const totalItems = getItemCount(fanId);
-  const shortlistIds = getShortlist(fanId);
-  const shortlistCount = getShortlistCount(fanId);
+  const items = syncState?.lastSyncAt ? getFeedItems(fanId, { storyType: 'new_release' }) : [];
+  const tags = syncState?.lastSyncAt ? getTagCounts(fanId) : [];
+  const friends = syncState?.lastSyncAt ? getFriendCounts(fanId) : [];
+  const totalItems = syncState?.lastSyncAt ? getItemCount(fanId) : 0;
+  const shortlistIds = syncState?.lastSyncAt ? getShortlist(fanId) : new Set<string>();
+  const shortlistCount = syncState?.lastSyncAt ? getShortlistCount(fanId) : 0;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -77,6 +70,7 @@ export default async function Home() {
         initialTags={tags}
         initialFriends={friends}
         initialShortlist={[...shortlistIds]}
+        oldestStoryDate={syncState?.oldestStoryDate ?? null}
         exchangeRates={exchangeRates}
       />
     </main>

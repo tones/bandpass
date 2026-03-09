@@ -39,7 +39,8 @@ export function createTestDb(): Database.Database {
       newest_story_date INTEGER,
       total_items INTEGER NOT NULL DEFAULT 0,
       is_syncing INTEGER NOT NULL DEFAULT 0,
-      last_sync_at TEXT
+      last_sync_at TEXT,
+      deep_sync_complete INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE shortlist (

@@ -52,6 +52,7 @@ interface FeedViewProps {
   initialTags: { name: string; count: number }[];
   initialFriends: { name: string; username: string; count: number }[];
   initialShortlist?: string[];
+  oldestStoryDate?: number | null;
   exchangeRates?: Record<string, number>;
 }
 
@@ -61,6 +62,7 @@ export function FeedView({
   initialTags,
   initialFriends,
   initialShortlist = [],
+  oldestStoryDate,
   exchangeRates = {},
 }: FeedViewProps) {
   const [items, setItems] = useState<FeedItem[]>(initialItems);
@@ -75,6 +77,7 @@ export function FeedView({
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [dynamicOldestDate, setDynamicOldestDate] = useState(oldestStoryDate ?? null);
 
   const applyFilters = useCallback(
     (
@@ -147,6 +150,10 @@ export function FeedView({
     applyFilters(feedFilter, selectedFriend, selectedTag, dateRange);
   }, [feedFilter, selectedFriend, selectedTag, dateRange, applyFilters]);
 
+  const handleOldestDateChange = useCallback((timestamp: number) => {
+    setDynamicOldestDate((prev) => (prev === null || timestamp < prev) ? timestamp : prev);
+  }, []);
+
   const toggleShortlist = useCallback((id: string) => {
     setShortlist((prev) => {
       const next = new Set(prev);
@@ -179,9 +186,10 @@ export function FeedView({
         onTagChange={handleTagChange}
         dateRange={dateRange}
         onDateRangeChange={handleDateRangeChange}
+        oldestStoryDate={dynamicOldestDate}
       />
       <div className="flex items-center justify-between px-6 py-2">
-        <SyncStatus onSyncComplete={handleSyncComplete} />
+        <SyncStatus onSyncComplete={handleSyncComplete} onOldestDateChange={handleOldestDateChange} />
         <span className="ml-auto text-xs text-zinc-600">
           {isPending ? 'Filtering...' : `${items.length} items${totalItems > 0 ? ` of ${totalItems} total` : ''}`}
         </span>
@@ -204,10 +212,15 @@ export function FeedView({
         )}
       </div>
       {items.length === 0 && !isPending && (
-        <div className="px-6 py-12 text-center text-zinc-500">
-          {totalItems === 0
-            ? 'No feed items yet. Sync is starting...'
-            : 'No items match your filters.'}
+        <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
+          {totalItems === 0 ? (
+            <>
+              <p className="text-lg text-zinc-400">Your feed is loading</p>
+              <p className="mt-2 text-sm text-zinc-600">Items will appear here as they sync in</p>
+            </>
+          ) : (
+            <p className="text-sm text-zinc-500">No items match your filters.</p>
+          )}
         </div>
       )}
       {playingItem && playingTrackUrl && (

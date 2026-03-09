@@ -1,6 +1,31 @@
 import { getDb } from './index';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import type { FeedItem } from '@/lib/bandcamp/types/domain';
+import type { FeedItem, FeedPage } from '@/lib/bandcamp/types/domain';
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 5000;
+
+async function fetchWithRetry(
+  api: BandcampAPI,
+  options?: { olderThan?: number },
+): Promise<FeedPage> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await api.getFeed(options);
+    } catch (err) {
+      const is429 = err instanceof Error && err.message.includes('429');
+      if (!is429 || attempt === MAX_RETRIES) throw err;
+      const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+      console.warn(`Rate limited (429), backing off ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await sleep(backoff);
+    }
+  }
+  throw new Error('Unreachable');
+}
 
 const INSERT_ITEM = `
   INSERT OR REPLACE INTO feed_items (
@@ -59,6 +84,7 @@ export interface SyncState {
   totalItems: number;
   isSyncing: boolean;
   lastSyncAt: string | null;
+  deepSyncComplete: boolean;
 }
 
 export function getSyncState(fanId: number): SyncState | null {
@@ -72,6 +98,7 @@ export function getSyncState(fanId: number): SyncState | null {
     total_items: number;
     is_syncing: number;
     last_sync_at: string | null;
+    deep_sync_complete: number;
   } | undefined;
 
   if (!row) return null;
@@ -82,6 +109,7 @@ export function getSyncState(fanId: number): SyncState | null {
     totalItems: row.total_items,
     isSyncing: row.is_syncing === 1,
     lastSyncAt: row.last_sync_at,
+    deepSyncComplete: row.deep_sync_complete === 1,
   };
 }
 
@@ -113,10 +141,10 @@ function updateSyncProgress(fanId: number, oldestDate: number, newestDate: numbe
 const SIX_MONTHS_SECONDS = 180 * 24 * 60 * 60;
 
 /**
- * Full backward sync: pages through the feed history up to 6 months back,
+ * Initial sync: pages through the feed history up to 6 months back,
  * storing items as each page arrives. Returns the total number of items synced.
  */
-export async function syncFeedFull(api: BandcampAPI, fanId: number): Promise<number> {
+export async function syncFeedInitial(api: BandcampAPI, fanId: number): Promise<number> {
   const db = getDb();
   setSyncing(fanId, true);
 
@@ -159,7 +187,7 @@ const CONSECUTIVE_KNOWN_PAGES_THRESHOLD = 3;
 export async function syncFeedIncremental(api: BandcampAPI, fanId: number): Promise<number> {
   const state = getSyncState(fanId);
   if (!state?.newestStoryDate) {
-    return syncFeedFull(api, fanId);
+    return syncFeedInitial(api, fanId);
   }
 
   const db = getDb();
@@ -207,4 +235,54 @@ export async function syncFeedIncremental(api: BandcampAPI, fanId: number): Prom
   }
 
   return totalNew;
+}
+
+function setDeepSyncComplete(fanId: number) {
+  const db = getDb();
+  db.prepare(
+    'UPDATE sync_state SET deep_sync_complete = 1 WHERE fan_id = ?',
+  ).run(fanId);
+}
+
+const DEEP_SYNC_PAGE_DELAY_MS = 500;
+
+/**
+ * Deep background sync: continues paging backwards from the oldest known item,
+ * loading the full feed history. Runs throttled (500ms between pages) with
+ * 429 retry. Sets deep_sync_complete when the feed is exhausted.
+ */
+export async function syncFeedDeep(api: BandcampAPI, fanId: number): Promise<number> {
+  const db = getDb();
+  const state = getSyncState(fanId);
+  if (!state?.oldestStoryDate) return 0;
+
+  setSyncing(fanId, true);
+  let olderThan = state.oldestStoryDate;
+  let totalSynced = 0;
+
+  try {
+    while (true) {
+      await sleep(DEEP_SYNC_PAGE_DELAY_MS);
+
+      const page = await fetchWithRetry(api, { olderThan });
+
+      if (page.items.length === 0) break;
+
+      insertItems(fanId, page.items);
+      totalSynced += page.items.length;
+
+      const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
+      updateSyncProgress(fanId, page.oldestStoryDate, page.newestStoryDate, dbTotal);
+
+      if (!page.hasMore) break;
+      if (page.oldestStoryDate >= olderThan) break;
+      olderThan = page.oldestStoryDate;
+    }
+
+    setDeepSyncComplete(fanId);
+  } finally {
+    setSyncing(fanId, false);
+  }
+
+  return totalSynced;
 }
