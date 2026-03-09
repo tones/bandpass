@@ -115,22 +115,33 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
         )}
 
         {tags.length > 0 && (
-          <select
-            value={selectedTag ?? ''}
-            onChange={(e) => onTagChange(e.target.value || null)}
-            className={SELECT_CLASS}
-            style={{
-              backgroundImage: CHEVRON_SVG,
-              ...(selectedTag ? { backgroundColor: 'rgb(168 85 247 / 0.15)', color: 'rgb(192 132 252)' } : {}),
-            }}
-          >
-            <option value="">All tags</option>
-            {tags.map((t) => (
-              <option key={t.name} value={t.name}>
-                {t.name} ({t.count})
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-1">
+            <select
+              value={selectedTag ?? ''}
+              onChange={(e) => onTagChange(e.target.value || null)}
+              className={SELECT_CLASS}
+              style={{
+                backgroundImage: CHEVRON_SVG,
+                ...(selectedTag ? { backgroundColor: 'rgb(168 85 247 / 0.15)', color: 'rgb(192 132 252)' } : {}),
+              }}
+            >
+              <option value="">All tags</option>
+              {tags.map((t) => (
+                <option key={t.name} value={t.name}>
+                  {t.name} ({t.count})
+                </option>
+              ))}
+            </select>
+            {selectedTag && (
+              <button
+                onClick={() => onTagChange(null)}
+                className="flex h-6 w-6 items-center justify-center rounded-full text-xs text-purple-400 transition-colors hover:bg-purple-400/20 hover:text-purple-300"
+                title="Clear tag filter"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         )}
 
         <div className="relative ml-3 border-l border-zinc-800 pl-3" ref={popoverRef}>
