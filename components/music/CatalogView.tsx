@@ -28,6 +28,10 @@ interface ReleaseDateCache {
   [releaseId: number]: string | null;
 }
 
+interface TagsCache {
+  [releaseId: number]: string[];
+}
+
 interface NowPlaying {
   track: CatalogTrack;
   release: CatalogRelease;
@@ -47,6 +51,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
   const [shortlist, setShortlist] = useState<Set<string>>(() => new Set(initialShortlist));
   const [trackCache, setTrackCache] = useState<TrackCache>({});
   const [releaseDates, setReleaseDates] = useState<ReleaseDateCache>({});
+  const [tagsCache, setTagsCache] = useState<TagsCache>({});
   const [loading, setLoading] = useState<Set<number>>(new Set());
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [wavesurfer, setWavesurfer] = useState<WaveSurfer | null>(null);
@@ -72,6 +77,9 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
         setTrackCache((prev) => ({ ...prev, [release.id]: data.tracks ?? [] }));
         if (data.releaseDate) {
           setReleaseDates((prev) => ({ ...prev, [release.id]: data.releaseDate }));
+        }
+        if (data.tags?.length) {
+          setTagsCache((prev) => ({ ...prev, [release.id]: data.tags }));
         }
       } catch (err) {
         console.error('Failed to load tracks:', err);
@@ -165,6 +173,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
             key={release.id}
             release={release}
             releaseDate={releaseDates[release.id] ?? null}
+            tags={tagsCache[release.id] ?? []}
             isLoading={loading.has(release.id)}
             tracks={trackCache[release.id]}
             nowPlaying={nowPlaying}
@@ -267,6 +276,7 @@ function formatReleaseDate(dateStr: string): string {
 interface ReleaseCardProps {
   release: CatalogRelease;
   releaseDate: string | null;
+  tags: string[];
   isLoading: boolean;
   tracks?: CatalogTrack[];
   nowPlaying: NowPlaying | null;
@@ -279,6 +289,7 @@ interface ReleaseCardProps {
 function ReleaseCard({
   release,
   releaseDate,
+  tags,
   isLoading,
   tracks,
   nowPlaying,
@@ -307,6 +318,28 @@ function ReleaseCard({
             {release.releaseType === 'track' ? 'Single' : 'Album'}
             {releaseDate && <> · {formatReleaseDate(releaseDate)}</>}
           </div>
+          {tags.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {tags.map((tag) =>
+                loggedIn ? (
+                  <a
+                    key={tag}
+                    href={`/feed?tag=${encodeURIComponent(tag)}`}
+                    className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
+                  >
+                    {tag}
+                  </a>
+                ) : (
+                  <span
+                    key={tag}
+                    className="rounded bg-zinc-800/50 px-1.5 py-0.5 text-[11px] text-zinc-500"
+                  >
+                    {tag}
+                  </span>
+                ),
+              )}
+            </div>
+          )}
         </div>
         <a
           href={release.url}

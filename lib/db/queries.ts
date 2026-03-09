@@ -103,7 +103,7 @@ export function getFeedItems(fanId: number, filters: FeedFilters = {}): FeedItem
   let sql: string;
   if (filters.tag) {
     sql = `
-      SELECT fi.* FROM feed_items fi, json_each(fi.tags) AS t
+      SELECT DISTINCT fi.* FROM feed_items fi, json_each(fi.tags) AS t
       WHERE ${conditions.join(' AND ')} AND t.value = ?
       ORDER BY fi.date DESC
       LIMIT 500

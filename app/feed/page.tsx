@@ -8,7 +8,12 @@ import { getShortlist } from '@/lib/db/shortlist';
 import { FeedView } from '@/components/feed/FeedView';
 import { AppHeader } from '@/components/AppHeader';
 
-export default async function FeedPage() {
+interface FeedPageProps {
+  searchParams: Promise<{ tag?: string }>;
+}
+
+export default async function FeedPage({ searchParams }: FeedPageProps) {
+  const { tag: initialTag } = await searchParams;
   const cookie = await getIdentityCookie();
   const session = await getSession();
   const username = session.username ?? null;
@@ -46,7 +51,7 @@ export default async function FeedPage() {
 
   const syncState = getSyncState(fanId);
   const exchangeRates = await getExchangeRates();
-  const items = syncState?.lastSyncAt ? getFeedItems(fanId, { storyType: 'new_release' }) : [];
+  const items = syncState?.lastSyncAt ? getFeedItems(fanId, { storyType: initialTag ? undefined : 'new_release', tag: initialTag }) : [];
   const tags = syncState?.lastSyncAt ? getTagCounts(fanId) : [];
   const friends = syncState?.lastSyncAt ? getFriendCounts(fanId) : [];
   const totalItems = syncState?.lastSyncAt ? getItemCount(fanId) : 0;
@@ -63,6 +68,7 @@ export default async function FeedPage() {
         initialShortlist={[...shortlistIds]}
         oldestStoryDate={syncState?.oldestStoryDate ?? null}
         exchangeRates={exchangeRates}
+        initialTag={initialTag}
       />
     </main>
   );

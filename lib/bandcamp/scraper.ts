@@ -41,6 +41,7 @@ export interface AlbumDetail {
   artist: string;
   imageUrl: string;
   releaseDate: string | null;
+  tags: string[];
   tracks: AlbumTrack[];
 }
 
@@ -61,6 +62,17 @@ function extractJsonAttr(html: string, attrName: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+function parseTags(html: string): string[] {
+  const tags: string[] = [];
+  const tagPattern = /<a[^>]*class="tag"[^>]*>([^<]+)<\/a>/g;
+  let match;
+  while ((match = tagPattern.exec(html)) !== null) {
+    const tag = match[1].trim();
+    if (tag) tags.push(tag);
+  }
+  return tags;
 }
 
 function artIdToUrl(artId: number, size: number = 5): string {
@@ -158,11 +170,14 @@ export async function fetchAlbumTracks(
     ?? tralbum.current?.publish_date
     ?? null;
 
+  const tags = parseTags(html);
+
   return {
     title: tralbum.current?.title ?? '',
     artist: tralbum.current?.artist ?? tralbum.artist ?? '',
     imageUrl: artId ? artIdToUrl(artId) : '',
     releaseDate,
+    tags,
     tracks,
   };
 }

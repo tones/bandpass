@@ -54,6 +54,7 @@ interface FeedViewProps {
   initialShortlist?: string[];
   oldestStoryDate?: number | null;
   exchangeRates?: Record<string, number>;
+  initialTag?: string;
 }
 
 export function FeedView({
@@ -64,14 +65,15 @@ export function FeedView({
   initialShortlist = [],
   oldestStoryDate,
   exchangeRates = {},
+  initialTag,
 }: FeedViewProps) {
   const [items, setItems] = useState<FeedItem[]>(initialItems);
   const [totalItems, setTotalItems] = useState(initialTotalItems);
   const [tags, setTags] = useState(initialTags);
   const [friends, setFriends] = useState(initialFriends);
-  const [feedFilter, setFeedFilter] = useState<FeedFilter>('new_release');
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>(initialTag ? 'all' : 'new_release');
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string | null>(initialTag ?? null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [shortlist, setShortlist] = useState<Set<string>>(new Set(initialShortlist));
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);

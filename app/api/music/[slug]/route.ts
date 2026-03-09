@@ -106,7 +106,7 @@ export async function POST(
       })),
     );
 
-    return NextResponse.json({ tracks, releaseDate: album.releaseDate, fromCache: false });
+    return NextResponse.json({ tracks, releaseDate: album.releaseDate, tags: album.tags, fromCache: false });
   } catch (err) {
     console.error('Album tracks fetch error:', err);
     return NextResponse.json(
