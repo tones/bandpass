@@ -10,6 +10,7 @@ import type { FeedFilter } from './FilterBar';
 import { WaveformPlayer } from './WaveformPlayer';
 import { SyncStatus } from '@/components/SyncStatus';
 import { queryFeed } from '@/app/feed/actions';
+import { toggleShortlistItem } from '@/app/shortlist/actions';
 
 type FeedListEntry =
   | { type: 'header'; label: string }
@@ -50,6 +51,7 @@ interface FeedViewProps {
   initialTotalItems: number;
   initialTags: { name: string; count: number }[];
   initialFriends: { name: string; username: string; count: number }[];
+  initialShortlist?: string[];
   exchangeRates?: Record<string, number>;
 }
 
@@ -58,6 +60,7 @@ export function FeedView({
   initialTotalItems,
   initialTags,
   initialFriends,
+  initialShortlist = [],
   exchangeRates = {},
 }: FeedViewProps) {
   const [items, setItems] = useState<FeedItem[]>(initialItems);
@@ -68,7 +71,7 @@ export function FeedView({
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [shortlist, setShortlist] = useState<Set<string>>(new Set());
+  const [shortlist, setShortlist] = useState<Set<string>>(new Set(initialShortlist));
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -151,6 +154,7 @@ export function FeedView({
       else next.add(id);
       return next;
     });
+    toggleShortlistItem(id);
   }, []);
 
   const handlePlay = useCallback((item: FeedItem) => {

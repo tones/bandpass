@@ -9,7 +9,7 @@ export interface FeedFilters {
   dateTo?: string;
 }
 
-interface FeedItemRow {
+export interface FeedItemRow {
   id: string;
   fan_id: number;
   story_type: string;
@@ -41,7 +41,7 @@ function safeParseTags(json: string): string[] {
   }
 }
 
-function rowToFeedItem(row: FeedItemRow): FeedItem {
+export function rowToFeedItem(row: FeedItemRow): FeedItem {
   return {
     id: row.id,
     storyType: row.story_type as StoryType,

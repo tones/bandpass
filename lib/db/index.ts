@@ -61,5 +61,18 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 2) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS shortlist (
+        fan_id INTEGER NOT NULL,
+        feed_item_id TEXT NOT NULL,
+        added_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (fan_id, feed_item_id)
+      );
+
+      PRAGMA user_version = 2;
+    `);
+  }
+
   return db;
 }

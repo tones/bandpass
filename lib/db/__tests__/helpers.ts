@@ -41,6 +41,13 @@ export function createTestDb(): Database.Database {
       is_syncing INTEGER NOT NULL DEFAULT 0,
       last_sync_at TEXT
     );
+
+    CREATE TABLE shortlist (
+      fan_id INTEGER NOT NULL,
+      feed_item_id TEXT NOT NULL,
+      added_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (fan_id, feed_item_id)
+    );
   `);
 
   return db;

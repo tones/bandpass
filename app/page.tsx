@@ -4,6 +4,7 @@ import { getBandcamp } from '@/lib/bandcamp';
 import { getExchangeRates } from '@/lib/currency';
 import { getFeedItems, getTagCounts, getFriendCounts, getItemCount } from '@/lib/db/queries';
 import { getSyncState } from '@/lib/db/sync';
+import { getShortlist, getShortlistCount } from '@/lib/db/shortlist';
 import { FeedView } from '@/components/feed/FeedView';
 import { LogoutButton } from '@/components/LogoutButton';
 import { InitialSyncGate } from '@/components/InitialSyncGate';
@@ -40,11 +41,22 @@ export default async function Home() {
   const tags = getTagCounts(fanId);
   const friends = getFriendCounts(fanId);
   const totalItems = getItemCount(fanId);
+  const shortlistIds = getShortlist(fanId);
+  const shortlistCount = getShortlistCount(fanId);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
-        <h1 className="text-xl font-semibold tracking-tight">Bandpass</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-semibold tracking-tight">Bandpass</h1>
+          <a
+            href="/shortlist"
+            className="flex items-center gap-1.5 rounded-full bg-zinc-800 px-3 py-1 text-sm text-rose-400 transition-colors hover:bg-zinc-700"
+          >
+            <span>♥</span>
+            <span>{shortlistCount > 0 ? shortlistCount : 'Shortlist'}</span>
+          </a>
+        </div>
         <div className="flex items-center gap-3">
           {username && (
             <a
@@ -64,6 +76,7 @@ export default async function Home() {
         initialTotalItems={totalItems}
         initialTags={tags}
         initialFriends={friends}
+        initialShortlist={[...shortlistIds]}
         exchangeRates={exchangeRates}
       />
     </main>
