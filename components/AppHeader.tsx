@@ -1,8 +1,8 @@
-type NavTab = 'feed' | 'music' | 'shortlist';
+type NavTab = 'timeline' | 'music' | 'shortlist';
 
 const NAV_ITEMS: { id: NavTab; label: string; href: string }[] = [
   { id: 'music', label: 'Music', href: '/music' },
-  { id: 'feed', label: 'Timeline', href: '/feed' },
+  { id: 'timeline', label: 'Timeline', href: '/timeline' },
   { id: 'shortlist', label: 'Shortlist', href: '/shortlist' },
 ];
 

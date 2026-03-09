@@ -9,7 +9,7 @@ import { FilterBar } from './FilterBar';
 import type { FeedFilter } from './FilterBar';
 import { WaveformPlayer } from './WaveformPlayer';
 import { SyncStatus } from '@/components/SyncStatus';
-import { queryFeed } from '@/app/feed/actions';
+import { queryFeed } from '@/app/timeline/actions';
 import { toggleShortlistItem } from '@/app/shortlist/actions';
 
 type FeedListEntry =
