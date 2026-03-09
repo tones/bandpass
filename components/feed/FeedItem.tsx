@@ -143,7 +143,7 @@ export function FeedItemCard({
           </span>
         </div>
         <div className="mt-0.5 flex flex-wrap gap-1.5">
-          {[...new Set(item.tags)].slice(0, 4).map((tag) => (
+          {[...new Set(item.tags)].sort().slice(0, 4).map((tag) => (
             <span key={tag} className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">
               {tag}
             </span>
