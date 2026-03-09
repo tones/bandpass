@@ -4,62 +4,17 @@ A Bandcamp discovery app. Named after the bandpass filter — let the signal thr
 
 ## What It Does
 
-Shows your Bandcamp social feed (friend purchases, new releases from followed artists) in a dense, filterable UI with inline audio playback. Better than Bandcamp's own feed.
+Bandcamp's feed is noisy. New releases, friend purchases, and recommendations are all mashed together with no way to focus on what matters. Bandpass pulls your entire Bandcamp feed into a fast, filterable interface so you can actually find music worth buying.
 
-## Status (March 9, 2026)
+When you first connect your Bandcamp account, Bandpass syncs six months of your feed history. After that, it checks for new items each time you visit. Everything is stored locally so filtering is instant — no waiting for pages to load.
 
-**MVP is working and deployed to Fly.io.** The app syncs your Bandcamp feed to a local SQLite database, then renders it with rich filtering, waveform audio playback, and a persistent shortlist.
+**Browse your feed your way.** Filter by feed type (new releases, friend purchases, also purchased), by specific friends, by genre tag, or by date range. See counts for each filter so you know where the interesting stuff is.
 
-### What's built
-- Custom Bandcamp API client (`lib/bandcamp/`) — thin typed wrapper over Bandcamp's internal JSON APIs, no third-party scraping libraries
-- Feed fetching via `POST /fan_dash_feed_updates` with cookie auth
-- SQLite caching (`data/bandpass.db`) — background sync pulls ~6 months of feed history on first login, then smart incremental updates on subsequent visits (scans past known items to find backdated entries)
-- Feed page with story type filters (New Releases, Friend Purchases, Also Purchased), friend filter, tag filter, and date range picker
-- Waveform audio player (persistent bottom bar with wavesurfer.js, streams via CORS proxy)
-- Multi-user session auth via cookie paste (iron-session) — data keyed by Bandcamp `fanId`, survives cookie rotation
-- Currency conversion (prices shown in USD with original currency below)
-- Persistent shortlist — heart tracks in the feed, view/manage them on `/shortlist` with remove, clear all, and "Open all on Bandcamp" bulk action
-- Initial sync loading screen with progress bar for new accounts
-- Site-wide password gate (optional, via `SITE_PASSWORD` env var)
-- Deployed to Fly.io with GitHub Actions CI/CD (auto-deploy on push to `main`)
-- 31 tests covering HTTP client, API normalization, smart sync algorithm, DB queries, and session logic
+**Listen without leaving.** Every track has an inline waveform player. Click to play, scrub through the waveform, and keep browsing while it plays in a persistent bottom bar.
 
-### What's not built yet
-- Discovery/browse endpoint integration
-- Album detail page (full track listing)
-- Social graph analysis (which friends have the most taste overlap)
-- Browser extension for adding shortlisted items to Bandcamp cart
+**Build a shortlist.** Heart tracks as you scan your feed. They're saved to a shortlist page where you can relisten, remove items, or open them all on Bandcamp when you're ready to buy.
 
-## Getting Started
-
-### Prerequisites
-- Node.js 22+
-- A Bandcamp account with an active session
-
-### Setup
-
-```bash
-npm install
-```
-
-Create `.env.local`:
-```
-SESSION_SECRET=<any string at least 32 characters long>
-```
-
-### Run
-
-```bash
-npm run dev
-```
-
-Open http://localhost:3000 — you'll be prompted to connect your Bandcamp account by pasting your identity cookie (instructions are on the login page).
-
-### Test
-
-```bash
-npm test
-```
+**Multi-user.** Share the app with friends — each person connects their own Bandcamp account, and their feed data and shortlist are kept separate.
 
 ## Architecture
 
@@ -114,3 +69,18 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 - wavesurfer.js (waveform audio player)
 - react-day-picker (date range filter)
 - Vitest
+
+## Implementation Details
+
+- Custom Bandcamp API client (`lib/bandcamp/`) — thin typed wrapper over Bandcamp's internal JSON APIs, no third-party scraping libraries
+- Feed fetching via `POST /fan_dash_feed_updates` with cookie auth
+- SQLite caching (`data/bandpass.db`) — background sync pulls ~6 months of feed history on first login, then smart incremental updates on subsequent visits (scans past known items to find backdated entries)
+- Feed page with story type filters (New Releases, Friend Purchases, Also Purchased), friend filter, tag filter, and date range picker
+- Waveform audio player (persistent bottom bar with wavesurfer.js, streams via CORS proxy)
+- Multi-user session auth via cookie paste (iron-session) — data keyed by Bandcamp `fanId`, survives cookie rotation
+- Currency conversion (prices shown in USD with original currency below)
+- Persistent shortlist — heart tracks in the feed, view/manage them on `/shortlist` with remove, clear all, and "Open all on Bandcamp" bulk action
+- Initial sync loading screen with progress bar for new accounts
+- Site-wide password gate (optional, via `SITE_PASSWORD` env var)
+- Deployed to Fly.io with GitHub Actions CI/CD (auto-deploy on push to `main`)
+- 31 tests covering HTTP client, API normalization, smart sync algorithm, DB queries, and session logic
