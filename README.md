@@ -6,26 +6,29 @@ A Bandcamp discovery app. Named after the bandpass filter — let the signal thr
 
 Shows your Bandcamp social feed (friend purchases, new releases from followed artists) in a dense, filterable UI with inline audio playback. Better than Bandcamp's own feed.
 
-## Status (March 8, 2026)
+## Status (March 9, 2026)
 
-**MVP is working.** The app syncs your Bandcamp feed to a local SQLite database, then renders it with rich filtering, waveform audio playback, and a shortlist.
+**MVP is working and deployed to Fly.io.** The app syncs your Bandcamp feed to a local SQLite database, then renders it with rich filtering, waveform audio playback, and a persistent shortlist.
 
 ### What's built
 - Custom Bandcamp API client (`lib/bandcamp/`) — thin typed wrapper over Bandcamp's internal JSON APIs, no third-party scraping libraries
 - Feed fetching via `POST /fan_dash_feed_updates` with cookie auth
-- SQLite caching (`data/bandpass.db`) — background sync pulls ~6 months of feed history on first login, then incremental updates on subsequent visits
+- SQLite caching (`data/bandpass.db`) — background sync pulls ~6 months of feed history on first login, then smart incremental updates on subsequent visits (scans past known items to find backdated entries)
 - Feed page with story type filters (New Releases, Friend Purchases, Also Purchased), friend filter, tag filter, and date range picker
 - Waveform audio player (persistent bottom bar with wavesurfer.js, streams via CORS proxy)
-- Multi-user session auth via cookie paste (iron-session)
+- Multi-user session auth via cookie paste (iron-session) — data keyed by Bandcamp `fanId`, survives cookie rotation
 - Currency conversion (prices shown in USD with original currency below)
-- One-click shortlist (client-side state, not persisted yet)
-- 12 tests covering the HTTP client and API normalization layer
+- Persistent shortlist — heart tracks in the feed, view/manage them on `/shortlist` with remove, clear all, and "Open all on Bandcamp" bulk action
+- Initial sync loading screen with progress bar for new accounts
+- Site-wide password gate (optional, via `SITE_PASSWORD` env var)
+- Deployed to Fly.io with GitHub Actions CI/CD (auto-deploy on push to `main`)
+- 31 tests covering HTTP client, API normalization, smart sync algorithm, DB queries, and session logic
 
 ### What's not built yet
 - Discovery/browse endpoint integration
-- Persisted shortlist (saved to disk/DB)
 - Album detail page (full track listing)
 - Social graph analysis (which friends have the most taste overlap)
+- Browser extension for adding shortlisted items to Bandcamp cart
 
 ## Getting Started
 
@@ -67,9 +70,10 @@ UI Layer (app/ routes + React components)
   │
 Data Layer (lib/db/)
   │
-  ├── index.ts    — SQLite connection + schema (better-sqlite3)
-  ├── queries.ts  — getFeedItems(), getTagCounts(), getFriendCounts()
-  └── sync.ts     — Background sync (full 6-month + incremental)
+  ├── index.ts      — SQLite connection + schema (better-sqlite3, versioned migrations)
+  ├── queries.ts    — getFeedItems(), getTagCounts(), getFriendCounts()
+  ├── sync.ts       — Background sync (full 6-month + smart incremental)
+  └── shortlist.ts  — Shortlist CRUD (persisted to SQLite, keyed by fanId)
   │
 Bandcamp Client (lib/bandcamp/)
   │
@@ -79,7 +83,7 @@ Bandcamp Client (lib/bandcamp/)
   └── types/      — Raw API response types + normalized domain types
 ```
 
-Server components load initial data from SQLite. Client components handle audio playback, filtering (via server actions), and shortlist state. The sync API route (`/api/sync`) triggers background feed syncing into SQLite.
+Server components load initial data from SQLite. Client components handle audio playback, filtering (via server actions), and shortlist toggling (optimistic UI + server action persistence). The sync API route (`/api/sync`) triggers background feed syncing into SQLite.
 
 See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 
