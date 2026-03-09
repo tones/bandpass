@@ -172,8 +172,8 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
           <ReleaseCard
             key={release.id}
             release={release}
-            releaseDate={releaseDates[release.id] ?? null}
-            tags={tagsCache[release.id] ?? []}
+            releaseDate={releaseDates[release.id] ?? release.releaseDate ?? null}
+            tags={tagsCache[release.id] ?? release.tags ?? []}
             isLoading={loading.has(release.id)}
             tracks={trackCache[release.id]}
             nowPlaying={nowPlaying}

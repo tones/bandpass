@@ -96,7 +96,7 @@ export async function fetchDiscography(
     throw new Error('Could not extract band data from page');
   }
 
-  const rawItems = extractJsonAttr(html, 'data-client-items') as Array<{
+  let rawItems = extractJsonAttr(html, 'data-client-items') as Array<{
     id: number;
     title: string;
     page_url: string;
@@ -105,6 +105,51 @@ export async function fetchDiscography(
     band_id: number;
     artist?: string;
   }> | null;
+
+  // Fallback: parse items from <li data-item-id> elements if data-client-items is missing
+  if (!rawItems || rawItems.length === 0) {
+    const itemPattern = /<li[^>]*data-item-id="(track|album)-(\d+)"[^>]*data-band-id="(\d+)"[^>]*>([\s\S]*?)<\/li>/g;
+    const fallbackItems: Array<{
+      id: number;
+      title: string;
+      page_url: string;
+      art_id: number;
+      type: string;
+      band_id: number;
+    }> = [];
+    let match;
+    while ((match = itemPattern.exec(html)) !== null) {
+      const [, itemType, itemId, bandId, itemHtml] = match;
+      const hrefMatch = itemHtml.match(/<a[^>]*href="([^"]+)"/);
+      const imgMatch = itemHtml.match(/<img[^>]*src="([^"]+)"/);
+      const titleMatch = itemHtml.match(/<p[^>]*class="title"[^>]*>\s*([^<]+)/);
+      
+      if (!hrefMatch) continue;
+      
+      const href = hrefMatch[1];
+      const imgSrc = imgMatch?.[1] || '';
+      const artIdMatch = imgSrc.match(/\/img\/a(\d+)_/);
+      const artId = artIdMatch ? parseInt(artIdMatch[1], 10) : 0;
+      let title = titleMatch?.[1]?.trim() || href.split('/').pop()?.replace(/-/g, ' ') || '';
+      // Decode HTML entities
+      title = title
+        .replace(/&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+      
+      fallbackItems.push({
+        id: parseInt(itemId, 10),
+        title,
+        page_url: href.startsWith('http') ? href : `${bandUrl}${href}`,
+        art_id: artId,
+        type: itemType,
+        band_id: parseInt(bandId, 10),
+      });
+    }
+    rawItems = fallbackItems.length > 0 ? fallbackItems : null;
+  }
 
   const items: DiscographyItem[] = (rawItems ?? []).map((item) => ({
     id: item.id,

@@ -88,7 +88,26 @@ export async function POST(
 
   const cached = getCachedAlbumTracks(releaseId);
   if (cached) {
-    return NextResponse.json({ tracks: cached, fromCache: true });
+    // Get release metadata from catalog_releases
+    const db = (await import('@/lib/db/index')).getDb();
+    const release = db.prepare('SELECT release_date, tags FROM catalog_releases WHERE id = ?').get(releaseId) as {
+      release_date: string | null;
+      tags: string;
+    } | undefined;
+    let tags: string[] = [];
+    if (release?.tags) {
+      try {
+        tags = JSON.parse(release.tags);
+      } catch {
+        tags = [];
+      }
+    }
+    return NextResponse.json({
+      tracks: cached,
+      releaseDate: release?.release_date ?? null,
+      tags,
+      fromCache: true,
+    });
   }
 
   try {
@@ -104,6 +123,8 @@ export async function POST(
         streamUrl: t.streamUrl,
         trackUrl: t.trackUrl,
       })),
+      album.releaseDate,
+      album.tags,
     );
 
     return NextResponse.json({ tracks, releaseDate: album.releaseDate, tags: album.tags, fromCache: false });

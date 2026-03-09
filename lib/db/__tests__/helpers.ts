@@ -60,7 +60,9 @@ export function createTestDb(): Database.Database {
       url TEXT NOT NULL,
       image_url TEXT DEFAULT '',
       release_type TEXT NOT NULL DEFAULT 'album',
-      scraped_at TEXT NOT NULL DEFAULT (datetime('now'))
+      scraped_at TEXT NOT NULL DEFAULT (datetime('now')),
+      release_date TEXT,
+      tags TEXT DEFAULT '[]'
     );
 
     CREATE INDEX idx_catalog_band ON catalog_releases(band_slug);

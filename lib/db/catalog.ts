@@ -10,6 +10,8 @@ export interface CatalogRelease {
   imageUrl: string;
   releaseType: 'album' | 'track';
   scrapedAt: string;
+  releaseDate: string | null;
+  tags: string[];
 }
 
 export interface CatalogTrack {
@@ -40,6 +42,8 @@ export function getCachedDiscography(slug: string): CatalogRelease[] | null {
     image_url: string;
     release_type: string;
     scraped_at: string;
+    release_date: string | null;
+    tags: string;
   }>;
 
   if (rows.length === 0) return null;
@@ -62,7 +66,15 @@ function rowToRelease(row: {
   image_url: string;
   release_type: string;
   scraped_at: string;
+  release_date: string | null;
+  tags: string;
 }): CatalogRelease {
+  let tags: string[] = [];
+  try {
+    tags = JSON.parse(row.tags || '[]');
+  } catch {
+    tags = [];
+  }
   return {
     id: row.id,
     bandSlug: row.band_slug,
@@ -73,6 +85,8 @@ function rowToRelease(row: {
     imageUrl: row.image_url,
     releaseType: row.release_type as 'album' | 'track',
     scrapedAt: row.scraped_at,
+    releaseDate: row.release_date,
+    tags,
   };
 }
 
@@ -153,6 +167,8 @@ export function cacheAlbumTracks(
     streamUrl: string | null;
     trackUrl: string | null;
   }>,
+  releaseDate?: string | null,
+  tags?: string[],
 ): CatalogTrack[] {
   const db = getDb();
 
@@ -169,6 +185,21 @@ export function cacheAlbumTracks(
     }
   });
   insertMany();
+
+  // Update release metadata if provided
+  if (releaseDate !== undefined || tags !== undefined) {
+    const update = db.prepare(`
+      UPDATE catalog_releases
+      SET release_date = COALESCE(?, release_date),
+          tags = COALESCE(?, tags)
+      WHERE id = ?
+    `);
+    update.run(
+      releaseDate ?? null,
+      tags ? JSON.stringify(tags) : null,
+      releaseId,
+    );
+  }
 
   return getCachedAlbumTracks(releaseId) ?? [];
 }

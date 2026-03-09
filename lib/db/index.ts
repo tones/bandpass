@@ -129,5 +129,14 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 7) {
+    db.exec(`
+      ALTER TABLE catalog_releases ADD COLUMN release_date TEXT;
+      ALTER TABLE catalog_releases ADD COLUMN tags TEXT DEFAULT '[]';
+
+      PRAGMA user_version = 7;
+    `);
+  }
+
   return db;
 }
