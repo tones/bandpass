@@ -81,9 +81,7 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
         <select
           value={feedFilter}
           onChange={(e) => {
-            const value = e.target.value as FeedFilter;
-            onFeedFilterChange(value);
-            if (value !== 'friend_purchase') onFriendChange(null);
+            onFeedFilterChange(e.target.value as FeedFilter);
           }}
           className={SELECT_CLASS}
           style={{ backgroundImage: CHEVRON_SVG }}

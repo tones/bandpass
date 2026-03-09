@@ -397,9 +397,13 @@ function ReleaseCard({
               );
             })}
           </div>
-        ) : (
+        ) : tracks !== undefined ? (
           <div className="px-4 py-4 text-center text-sm text-zinc-500">
-            No tracks available
+            No tracks found
+          </div>
+        ) : (
+          <div className="px-4 py-4 text-center text-sm text-zinc-600">
+            Tracks not yet loaded
           </div>
         )}
       </div>

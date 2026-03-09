@@ -51,7 +51,7 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
 
   const syncState = getSyncState(fanId);
   const exchangeRates = await getExchangeRates();
-  const items = syncState?.lastSyncAt ? getFeedItems(fanId, { storyType: initialTag ? undefined : 'new_release', tag: initialTag }) : [];
+  const items = syncState?.lastSyncAt ? getFeedItems(fanId, { tag: initialTag }) : [];
   const tags = syncState?.lastSyncAt ? getTagCounts(fanId) : [];
   const friends = syncState?.lastSyncAt ? getFriendCounts(fanId) : [];
   const totalItems = syncState?.lastSyncAt ? getItemCount(fanId) : 0;

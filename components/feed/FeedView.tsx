@@ -71,7 +71,7 @@ export function FeedView({
   const [totalItems, setTotalItems] = useState(initialTotalItems);
   const [tags, setTags] = useState(initialTags);
   const [friends, setFriends] = useState(initialFriends);
-  const [feedFilter, setFeedFilter] = useState<FeedFilter>(initialTag ? 'all' : 'new_release');
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>('all');
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(initialTag ?? null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
