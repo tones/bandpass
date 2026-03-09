@@ -19,7 +19,7 @@ export default function GatePage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">
       <div className="w-full max-w-sm">
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight">BandPass</h1>
+        <h1 className="mb-2 text-2xl font-semibold tracking-tight">Bandpass</h1>
         <p className="mb-6 text-sm text-zinc-400">
           Enter the password to continue.
         </p>

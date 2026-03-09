@@ -69,7 +69,7 @@ export function InitialSyncScreen({ onComplete }: InitialSyncScreenProps) {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 text-zinc-100">
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight">BandPass</h1>
+      <h1 className="mb-8 text-2xl font-semibold tracking-tight">Bandpass</h1>
       <p className="mb-6 text-sm text-zinc-400">
         Loading 6 months of feed data...
       </p>
