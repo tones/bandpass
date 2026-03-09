@@ -45,9 +45,11 @@ const SELECT_CLASS = 'appearance-none rounded-full bg-zinc-800/50 py-1 pl-3 pr-7
 
 
 function formatDateLabel(range: DateRange | undefined): string {
-  if (!range?.from) return 'All time';
   const fmt = (d: Date) =>
     d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (!range?.from) {
+    return `${fmt(SIX_MONTHS_AGO)} – Today`;
+  }
   if (!range.to || range.from.getTime() === range.to.getTime()) {
     return fmt(range.from);
   }
