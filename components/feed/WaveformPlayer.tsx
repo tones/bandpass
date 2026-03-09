@@ -8,6 +8,8 @@ import type { FeedItem } from '@/lib/bandcamp';
 interface WaveformPlayerProps {
   item: FeedItem;
   trackUrl: string;
+  isShortlisted?: boolean;
+  onToggleShortlist?: () => void;
 }
 
 function formatTime(seconds: number): string {
@@ -20,7 +22,7 @@ function proxyUrl(url: string): string {
   return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
 }
 
-export function WaveformPlayer({ item, trackUrl }: WaveformPlayerProps) {
+export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlist }: WaveformPlayerProps) {
   const [wavesurfer, setWavesurfer] = useState<WaveSurfer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -94,6 +96,30 @@ export function WaveformPlayer({ item, trackUrl }: WaveformPlayerProps) {
         <span className="w-10 shrink-0 text-xs tabular-nums text-zinc-500">
           {duration > 0 ? formatTime(duration) : '—'}
         </span>
+
+        {onToggleShortlist && (
+          <button
+            onClick={onToggleShortlist}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded text-lg transition-colors ${
+              isShortlisted
+                ? 'text-rose-400 hover:text-rose-300'
+                : 'text-zinc-600 hover:text-zinc-400'
+            }`}
+            title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
+          >
+            <span className="leading-none">{isShortlisted ? '♥' : '♡'}</span>
+          </button>
+        )}
+
+        <a
+          href={item.album.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-sm text-zinc-600 transition-colors hover:text-zinc-400"
+          title="Open on Bandcamp"
+        >
+          ↗
+        </a>
       </div>
     </div>
   );

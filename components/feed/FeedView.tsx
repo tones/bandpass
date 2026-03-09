@@ -211,7 +211,12 @@ export function FeedView({
         </div>
       )}
       {playingItem && playingTrackUrl && (
-        <WaveformPlayer item={playingItem} trackUrl={playingTrackUrl} />
+        <WaveformPlayer
+          item={playingItem}
+          trackUrl={playingTrackUrl}
+          isShortlisted={shortlist.has(playingItem.id)}
+          onToggleShortlist={() => toggleShortlist(playingItem.id)}
+        />
       )}
     </div>
   );
