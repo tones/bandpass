@@ -42,3 +42,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# extension build artifacts
+/extension-cws/
+bandpass-extension-cws.zip
