@@ -26,6 +26,12 @@
       "matches": ["http://*/*", "https://*/*"],
       "js": ["connector.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.bandcamp.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
     }
   ],
   "icons": {

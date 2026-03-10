@@ -1,10 +1,6 @@
-const ENABLE_BANDCAMP_BUTTON = false;
-
 (async function bandpassContent() {
-  if (!ENABLE_BANDCAMP_BUTTON) return;
-
-  const storage = await chrome.storage.local.get(['bandpassUrl', 'connected']);
-  if (!storage.connected || !storage.bandpassUrl) return;
+  const storage = await chrome.storage.local.get(['bandpassUrl']);
+  if (!storage.bandpassUrl) return;
 
   const bandpassUrl = storage.bandpassUrl.replace(/\/+$/, '');
   const hostname = window.location.hostname;
