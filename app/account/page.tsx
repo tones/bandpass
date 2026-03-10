@@ -10,7 +10,7 @@ export default async function AccountPage() {
   const username = session.username ?? null;
 
   if (!session.fanId || !session.identityCookie) {
-    redirect('/login');
+    redirect('/music');
   }
 
   const fanId = session.fanId;

@@ -16,9 +16,11 @@ When you first connect your Bandcamp account, Bandpass syncs your feed history a
 
 **Explore artist and label catalogs.** Browse any Bandcamp artist or label at `/music`. See their full discography with all tracks expanded, release dates, and genre tags. Play any track inline and add it to your shortlist. Tags link back to your feed filtered by that genre.
 
-**Works without logging in.** The Music section is fully browsable without a Bandcamp account. Log in to unlock your personal feed and shortlist.
+**Works without logging in.** The Music section is fully browsable without a Bandcamp account. Connect via the browser extension to unlock your personal feed and shortlist.
 
 **Multi-user.** Share the app with friends — each person connects their own Bandcamp account, and their feed data and shortlist are kept separate.
+
+**Browser extension.** A Chrome extension reads your Bandcamp identity cookie directly — no manual copy-paste. It also adds "Open in Bandpass" buttons on Bandcamp artist and album pages.
 
 ## Architecture
 
@@ -66,6 +68,37 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 
 > **Note:** The diagnostic scripts in `scripts/` require a `BANDCAMP_IDENTITY` environment variable containing a valid Bandcamp identity cookie. Example: `BANDCAMP_IDENTITY="..." npx tsx scripts/inspect-feed.ts`
 
+## Browser Extension
+
+Bandpass uses a Chrome extension to connect your Bandcamp account. The extension reads your Bandcamp identity cookie and sends it securely to your Bandpass server — no manual cookie copying required.
+
+### Installation (Developer Mode)
+
+1. Open Chrome and navigate to `chrome://extensions`
+2. Enable **Developer mode** (toggle in the top-right corner)
+3. Click **Load unpacked**
+4. Select the `extension/` directory from this repository
+5. The Bandpass icon will appear in your toolbar
+
+### Usage
+
+1. Make sure you're logged in to [bandcamp.com](https://bandcamp.com)
+2. Click the Bandpass extension icon in your toolbar
+3. Enter your Bandpass server URL (e.g. `http://localhost:3000`)
+4. Click **Connect**
+
+Once connected, you'll see "Open in Bandpass" buttons when browsing Bandcamp artist and album pages.
+
+### Configuration
+
+Set the `EXTENSION_ORIGIN` environment variable on your Bandpass server if you need to restrict CORS to a specific extension ID:
+
+```
+EXTENSION_ORIGIN=chrome-extension://your-extension-id
+```
+
+During development, you can set `EXTENSION_ORIGIN=*` to allow any origin.
+
 ## Tech Stack
 
 - Next.js 16 (App Router)
@@ -88,7 +121,7 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 - Feed page with story type filters (New Releases, Friend Purchases, Also Purchased), friend filter, tag filter with one-click clear, and date range picker
 - Tag deep linking — clicking a tag on an artist page links to `/feed?tag=` pre-filtered
 - Waveform audio player (persistent bottom bar with wavesurfer.js, streams via CORS proxy)
-- Multi-user session auth via cookie paste (iron-session) — data keyed by Bandcamp `fanId`, survives cookie rotation
+- Multi-user session auth via Chrome extension (iron-session) — the extension reads your Bandcamp identity cookie and sends it to Bandpass; data keyed by Bandcamp `fanId`, survives cookie rotation
 - Currency conversion (prices shown in USD with original currency below)
 - Persistent shortlist — heart tracks in the feed or on artist pages, view/manage on `/shortlist` with remove, clear all, and "Open all on Bandcamp" bulk action
 - Deep background sync with progress indicator — continues loading older feed history while you browse

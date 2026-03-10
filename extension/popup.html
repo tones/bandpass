@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {
+      --bg: #18181b;
+      --bg-card: #27272a;
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --text-dim: #71717a;
+      --amber: #d97706;
+      --amber-hover: #f59e0b;
+      --border: #3f3f46;
+      --green: #22c55e;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 300px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .header {
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .content { padding: 16px; }
+
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .status-dot.connected { background: var(--green); }
+
+    .connected-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: var(--bg-card);
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+
+    .connected-info .username {
+      font-weight: 500;
+      flex: 1;
+    }
+
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--amber);
+      color: #fff;
+    }
+
+    .btn-primary:hover { background: var(--amber-hover); }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .btn + .btn { margin-top: 8px; }
+
+    .hint {
+      color: var(--text-dim);
+      font-size: 12px;
+      margin-top: 8px;
+      line-height: 1.6;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-dim);
+    }
+
+    #view-loading,
+    #view-not-connected,
+    #view-connected { display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Bandpass</h1>
+  </div>
+
+  <div class="content">
+    <div id="view-loading" class="loading">Checking...</div>
+
+    <div id="view-not-connected">
+      <p style="color: var(--text-muted); margin-bottom: 12px;">
+        Not connected yet.
+      </p>
+      <p class="hint">
+        Visit your Bandpass server and follow the setup instructions to connect your Bandcamp account.
+      </p>
+    </div>
+
+    <div id="view-connected">
+      <div class="connected-info">
+        <span class="status-dot connected"></span>
+        <span class="username" id="connected-username"></span>
+      </div>
+      <a id="link-open-bandpass" class="btn btn-primary" target="_blank">Open Bandpass</a>
+      <div style="margin-top: 8px;">
+        <button id="btn-disconnect" class="btn btn-secondary">Disconnect</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

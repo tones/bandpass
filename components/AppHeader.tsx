@@ -28,10 +28,10 @@ export function AppHeader({ activeTab, username }: AppHeaderProps) {
             </a>
           ) : (
             <a
-              href="/login"
+              href="/setup"
               className="rounded px-3 py-1 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
             >
-              Log in
+              Connect
             </a>
           )}
         </div>

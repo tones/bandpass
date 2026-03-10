@@ -15,12 +15,12 @@ export default async function ShortlistPage() {
       <main className="min-h-screen bg-zinc-950 text-zinc-100">
         <AppHeader activeTab="shortlist" username={username} />
         <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
-          <p className="text-lg text-zinc-400">Log in to see your shortlist</p>
+          <p className="text-lg text-zinc-400">Connect your Bandcamp account to see your shortlist</p>
           <a
-            href="/login"
+            href="/setup"
             className="mt-4 rounded-lg bg-amber-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
           >
-            Log in
+            Get started
           </a>
         </div>
       </main>

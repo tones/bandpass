@@ -16,6 +16,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <meta name="bandpass" content="true" />
+      </head>
       <body className={`${inter.className} bg-zinc-950 text-zinc-100 antialiased`}>
         {children}
       </body>
