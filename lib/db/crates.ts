@@ -30,7 +30,7 @@ const CATALOG_PREFIX = 'catalog-track-';
 export function getCrates(fanId: number): Crate[] {
   const db = getDb();
   const rows = db.prepare(
-    'SELECT id, fan_id, name, source, created_at FROM crates WHERE fan_id = ? ORDER BY created_at ASC',
+    "SELECT id, fan_id, name, source, created_at FROM crates WHERE fan_id = ? ORDER BY (source = 'bandcamp_wishlist') DESC, created_at ASC",
   ).all(fanId) as Array<{ id: number; fan_id: number; name: string; source: string; created_at: string }>;
   return rows.map((r) => ({
     id: r.id,

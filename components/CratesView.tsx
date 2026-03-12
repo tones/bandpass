@@ -283,7 +283,7 @@ export function CratesView({
   return (
     <div className="flex pb-24">
       {/* Sidebar */}
-      <div className="flex w-56 shrink-0 flex-col border-r border-zinc-800">
+      <div className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-zinc-800">
         <nav className="flex-1 overflow-y-auto py-2">
           {crates.map((crate) => {
             const isActive = activeCrateId === crate.id;
