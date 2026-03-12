@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/gate', '/api/gate'];
+const PUBLIC_PATHS = ['/gate', '/api/gate', '/privacy'];
 
 export function middleware(request: NextRequest) {
   const sitePassword = process.env.SITE_PASSWORD;
