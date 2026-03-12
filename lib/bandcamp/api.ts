@@ -7,7 +7,7 @@ import type {
   BandcampFeedStory,
   BandcampFanInfo,
 } from './types/api';
-import type { CollectionPage, FeedItem, FeedPage, StoryType } from './types/domain';
+import type { CollectionPage, FeedItem, FeedPage, StoryType, WishlistItem, WishlistPage } from './types/domain';
 
 const STORY_TYPE_MAP: Record<string, StoryType> = {
   nr: 'new_release',
@@ -88,6 +88,59 @@ export class BandcampAPI {
     };
   }
 
+  async getWishlist(options?: { olderThanToken?: string; count?: number }): Promise<WishlistPage> {
+    const fanId = await this.getFanId();
+    const count = options?.count ?? 100;
+    const olderThanToken = options?.olderThanToken ?? `${Math.floor(Date.now() / 1000)}::a:`;
+
+    const raw = await this.client.postJson<BandcampCollectionResponse>(
+      '/api/fancollection/1/wishlist_items',
+      {
+        fan_id: fanId,
+        older_than_token: olderThanToken,
+        count,
+      },
+    );
+
+    const items = raw.items.map((item) =>
+      this.normalizeWishlistItem(item, raw.tracklists),
+    );
+
+    return {
+      items,
+      lastToken: raw.last_token,
+      hasMore: raw.more_available,
+    };
+  }
+
+  private normalizeWishlistItem(
+    item: BandcampCollectionItem,
+    tracklists: Record<string, { file: Record<string, string> | null; duration: number | null; title: string }[]>,
+  ): WishlistItem {
+    const tracklistKey = item.tralbum_type === 'a' ? `a${item.tralbum_id}` : `t${item.tralbum_id}`;
+    const tracklistArr = tracklists[tracklistKey];
+    const featuredId = item.featured_track ?? item.tralbum_id;
+    const tracklist = tracklistArr?.find((t) => (t as { id?: number }).id === featuredId) ?? tracklistArr?.[0];
+    const streamUrl = tracklist?.file?.['mp3-v0'] ?? tracklist?.file?.['mp3-128'] ?? null;
+
+    return {
+      id: `wl-${item.tralbum_type}${item.tralbum_id}`,
+      tralbumId: item.tralbum_id,
+      tralbumType: item.tralbum_type,
+      title: item.tralbum_type === 'a' ? (item.album_title || item.item_title) : item.item_title,
+      artistName: item.band_name,
+      artistUrl: item.band_url,
+      imageUrl: item.item_art_url,
+      itemUrl: item.item_url,
+      featuredTrackTitle: item.featured_track_title ?? tracklist?.title ?? null,
+      featuredTrackDuration: item.featured_track_duration ?? tracklist?.duration ?? null,
+      streamUrl,
+      alsoCollectedCount: item.also_collected_count,
+      isPreorder: false,
+      tags: [],
+    };
+  }
+
   private normalizeCollectionItem(
     item: BandcampCollectionItem,
     fanId: number,
@@ -103,9 +156,9 @@ export class BandcampAPI {
     const trackDuration = item.featured_track_duration ?? tracklist?.duration ?? null;
 
     return {
-      id: `mp-${item.tralbum_id}-${fanId}-${item.purchased}`,
+      id: `mp-${item.tralbum_id}-${fanId}-${item.purchased ?? '0'}`,
       storyType: 'my_purchase',
-      date: new Date(item.purchased),
+      date: new Date(item.purchased ?? 0),
       album: {
         id: item.album_id,
         title: item.album_title || item.item_title,

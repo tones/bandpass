@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { getSyncState } from '@/lib/db/sync';
 import { getItemCount, getItemCountByType } from '@/lib/db/queries';
+import { getWishlistItemCount } from '@/lib/db/crates';
 import { AppHeader } from '@/components/AppHeader';
 import { AccountView } from '@/components/AccountView';
 
@@ -16,8 +17,8 @@ export default async function AccountPage() {
   const fanId = session.fanId;
   const syncState = getSyncState(fanId);
   const totalItems = getItemCount(fanId);
-  const feedItems = getItemCountByType(fanId, 'new_release') + getItemCountByType(fanId, 'friend_purchase');
   const purchaseItems = getItemCountByType(fanId, 'my_purchase');
+  const wishlistItemCount = getWishlistItemCount(fanId);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -25,11 +26,12 @@ export default async function AccountPage() {
       <AccountView
         username={username ?? 'Unknown'}
         totalItems={totalItems}
-        feedItems={feedItems}
         purchaseItems={purchaseItems}
         lastSyncAt={syncState?.lastSyncAt ?? null}
         deepSyncComplete={syncState?.deepSyncComplete ?? false}
         collectionSynced={syncState?.collectionSynced ?? false}
+        wishlistSynced={syncState?.wishlistSynced ?? false}
+        wishlistItemCount={wishlistItemCount}
         oldestStoryDate={syncState?.oldestStoryDate ?? null}
       />
     </main>

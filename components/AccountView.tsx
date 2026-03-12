@@ -7,11 +7,12 @@ import { useSyncPolling } from '@/hooks/useSyncPolling';
 interface AccountViewProps {
   username: string;
   totalItems: number;
-  feedItems: number;
   purchaseItems: number;
   lastSyncAt: string | null;
   deepSyncComplete: boolean;
   collectionSynced: boolean;
+  wishlistSynced: boolean;
+  wishlistItemCount: number;
   oldestStoryDate: number | null;
 }
 
@@ -40,12 +41,15 @@ export function AccountView({
   lastSyncAt: initialLastSync,
   deepSyncComplete: initialDeepComplete,
   collectionSynced: initialCollectionSynced,
+  wishlistSynced: initialWishlistSynced,
+  wishlistItemCount: initialWishlistCount,
   oldestStoryDate: initialOldestDate,
 }: AccountViewProps) {
   const [totalItems, setTotalItems] = useState(initialTotal);
   const [lastSyncAt, setLastSyncAt] = useState(initialLastSync);
   const [deepSyncComplete, setDeepSyncComplete] = useState(initialDeepComplete);
   const [collectionSynced, setCollectionSynced] = useState(initialCollectionSynced);
+  const [wishlistSynced, setWishlistSynced] = useState(initialWishlistSynced);
   const [oldestDate, setOldestDate] = useState(initialOldestDate);
 
   const { state, isActive: anySyncing, triggerSync } = useSyncPolling({
@@ -54,13 +58,17 @@ export function AccountView({
       setLastSyncAt(s.lastSyncAt);
       setDeepSyncComplete(s.deepSyncComplete);
       setCollectionSynced(s.collectionSynced);
+      setWishlistSynced(s.wishlistSynced);
       if (s.oldestStoryDate) setOldestDate(s.oldestStoryDate);
     },
   });
 
-  const isSyncing = state?.isSyncing ?? false;
   const isDeepSyncing = state?.isDeepSyncing ?? false;
   const isCollectionSyncing = state?.isCollectionSyncing ?? false;
+  const isWishlistSyncing = state?.isWishlistSyncing ?? false;
+  const isEnrichingTags = state?.isEnrichingTags ?? false;
+  const tagsEnriched = state?.tagsEnriched ?? 0;
+  const enrichmentPendingCount = state?.enrichmentPendingCount ?? null;
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
@@ -101,6 +109,24 @@ export function AccountView({
               doneLabel={`${initialPurchaseItems.toLocaleString()} items`}
               activeLabel="Syncing..."
               pendingLabel="Pending"
+            />
+          </Row>
+          <Row label="Wishlist">
+            <StatusBadge
+              done={wishlistSynced}
+              active={isWishlistSyncing}
+              doneLabel={`${initialWishlistCount.toLocaleString()} items`}
+              activeLabel="Syncing..."
+              pendingLabel="Pending"
+            />
+          </Row>
+          <Row label="Tag enrichment">
+            <StatusBadge
+              done={!isEnrichingTags && enrichmentPendingCount === 0 && wishlistSynced && collectionSynced}
+              active={isEnrichingTags}
+              doneLabel="Complete"
+              activeLabel={tagsEnriched > 0 ? `Enriching... (${tagsEnriched} done${enrichmentPendingCount ? `, ${enrichmentPendingCount.toLocaleString()} remaining` : ''})` : enrichmentPendingCount ? `Enriching... (${enrichmentPendingCount.toLocaleString()} remaining)` : 'Enriching...'}
+              pendingLabel={enrichmentPendingCount !== null && enrichmentPendingCount > 0 ? `${enrichmentPendingCount.toLocaleString()} items remaining` : 'Pending'}
             />
           </Row>
         </Section>

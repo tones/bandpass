@@ -1,0 +1,70 @@
+{
+  "items": [
+    {
+      "fan_id": 12345,
+      "tralbum_id": 5001,
+      "tralbum_type": "a",
+      "band_id": 701,
+      "band_name": "SMBD",
+      "band_url": "https://gammenterprises.bandcamp.com",
+      "album_id": 5001,
+      "album_title": "Gospel Bangers (re-up)",
+      "item_title": "Gospel Bangers (re-up)",
+      "item_url": "https://gammenterprises.bandcamp.com/album/gospel-bangers-re-up",
+      "item_art_url": "https://f4.bcbits.com/img/a884_5.jpg",
+      "item_art_id": 884,
+      "item_type": "album",
+      "featured_track": 6001,
+      "featured_track_title": "Space Is The Place",
+      "featured_track_duration": 395.41,
+      "purchased": null,
+      "price": 7.0,
+      "currency": "EUR",
+      "also_collected_count": 9,
+      "token": "5001:1585701596:a:"
+    },
+    {
+      "fan_id": 12345,
+      "tralbum_id": 5002,
+      "tralbum_type": "t",
+      "band_id": 702,
+      "band_name": "Clear Soul Forces",
+      "band_url": "https://clearsoulforces.bandcamp.com",
+      "album_id": 5003,
+      "album_title": "Forceswithyou",
+      "item_title": "Chip$ (feat. Meftah)",
+      "item_url": "https://clearsoulforces.bandcamp.com/track/chips-feat-meftah",
+      "item_art_url": "https://f4.bcbits.com/img/a555_5.jpg",
+      "item_art_id": 555,
+      "item_type": "track",
+      "featured_track": null,
+      "featured_track_title": null,
+      "featured_track_duration": null,
+      "purchased": null,
+      "price": 1.0,
+      "currency": "USD",
+      "also_collected_count": 177,
+      "token": "5002:1585701000:t:"
+    }
+  ],
+  "more_available": false,
+  "last_token": "5002:1585701000:t:",
+  "tracklists": {
+    "a5001": [
+      {
+        "id": 6001,
+        "file": { "mp3-128": "https://bandcamp.com/stream_redirect?track_id=6001" },
+        "duration": 395.41,
+        "title": "Space Is The Place"
+      }
+    ],
+    "t5002": [
+      {
+        "id": 5002,
+        "file": { "mp3-128": "https://bandcamp.com/stream_redirect?track_id=5002" },
+        "duration": 194.299,
+        "title": "Chip$ (feat. Meftah)"
+      }
+    ]
+  }
+}

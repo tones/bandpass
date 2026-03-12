@@ -1,6 +1,9 @@
 import { getDb } from './index';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import type { CollectionPage, FeedItem, FeedPage } from '@/lib/bandcamp/types/domain';
+import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
+import { fetchAlbumTracks, publicFetcher, extractSlug } from '@/lib/bandcamp/scraper';
+import { ensureCatalogRelease, cacheAlbumTracks } from './catalog';
+import { ensureCrateBySource } from './crates';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -83,6 +86,7 @@ export interface SyncState {
   lastSyncAt: string | null;
   deepSyncComplete: boolean;
   collectionSynced: boolean;
+  wishlistSynced: boolean;
 }
 
 export function getSyncState(fanId: number): SyncState | null {
@@ -98,6 +102,7 @@ export function getSyncState(fanId: number): SyncState | null {
     last_sync_at: string | null;
     deep_sync_complete: number;
     collection_synced: number;
+    wishlist_synced: number;
   } | undefined;
 
   if (!row) return null;
@@ -110,6 +115,7 @@ export function getSyncState(fanId: number): SyncState | null {
     lastSyncAt: row.last_sync_at,
     deepSyncComplete: row.deep_sync_complete === 1,
     collectionSynced: row.collection_synced === 1,
+    wishlistSynced: row.wishlist_synced === 1,
   };
 }
 
@@ -419,4 +425,282 @@ export async function syncCollectionIncremental(api: BandcampAPI, fanId: number)
   }
 
   return totalNew;
+}
+
+function setWishlistSynced(fanId: number) {
+  const db = getDb();
+  db.prepare(
+    'UPDATE sync_state SET wishlist_synced = 1 WHERE fan_id = ?',
+  ).run(fanId);
+}
+
+const UPSERT_WISHLIST_ITEM = `
+  INSERT INTO wishlist_items (
+    id, fan_id, tralbum_id, tralbum_type, title,
+    artist_name, artist_url, image_url, item_url,
+    featured_track_title, featured_track_duration, stream_url,
+    also_collected_count, is_preorder, tags
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id, fan_id) DO UPDATE SET
+    tralbum_id = excluded.tralbum_id,
+    tralbum_type = excluded.tralbum_type,
+    title = excluded.title,
+    artist_name = excluded.artist_name,
+    artist_url = excluded.artist_url,
+    image_url = excluded.image_url,
+    item_url = excluded.item_url,
+    featured_track_title = excluded.featured_track_title,
+    featured_track_duration = excluded.featured_track_duration,
+    stream_url = excluded.stream_url,
+    also_collected_count = excluded.also_collected_count,
+    is_preorder = excluded.is_preorder,
+    synced_at = datetime('now'),
+    tags = CASE WHEN wishlist_items.tags != '[]' THEN wishlist_items.tags ELSE excluded.tags END
+`;
+
+function insertWishlistItems(fanId: number, items: WishlistItem[]) {
+  const db = getDb();
+  const stmt = db.prepare(UPSERT_WISHLIST_ITEM);
+  const tx = db.transaction((batch: WishlistItem[]) => {
+    for (const item of batch) {
+      stmt.run(
+        item.id,
+        fanId,
+        item.tralbumId,
+        item.tralbumType,
+        item.title,
+        item.artistName,
+        item.artistUrl,
+        item.imageUrl,
+        item.itemUrl,
+        item.featuredTrackTitle,
+        item.featuredTrackDuration,
+        item.streamUrl,
+        item.alsoCollectedCount,
+        item.isPreorder ? 1 : 0,
+        JSON.stringify(item.tags ?? []),
+      );
+    }
+  });
+  tx(items);
+}
+
+function ensureWishlistCrate(fanId: number): number {
+  return ensureCrateBySource(fanId, 'bandcamp_wishlist', 'Bandcamp Wishlist');
+}
+
+const WISHLIST_PAGE_DELAY_MS = 500;
+
+/**
+ * Full wishlist sync: pages through Bandcamp wishlist items and upserts them
+ * into wishlist_items. Creates the bandcamp_wishlist crate if needed.
+ */
+export async function syncWishlist(api: BandcampAPI, fanId: number): Promise<number> {
+  setSyncing(fanId, true);
+  let lastToken: string | undefined;
+  let totalSynced = 0;
+  const syncedIds = new Set<string>();
+
+  try {
+    ensureWishlistCrate(fanId);
+
+    while (true) {
+      await sleep(WISHLIST_PAGE_DELAY_MS);
+
+      const page = await withRetry(() => api.getWishlist({
+        olderThanToken: lastToken,
+      }));
+
+      if (page.items.length === 0) break;
+
+      insertWishlistItems(fanId, page.items);
+      for (const item of page.items) syncedIds.add(item.id);
+      totalSynced += page.items.length;
+
+      if (!page.hasMore) break;
+      lastToken = page.lastToken;
+    }
+
+    if (syncedIds.size > 0) {
+      deleteStaleWishlistItems(fanId, syncedIds);
+    }
+
+    setWishlistSynced(fanId);
+  } finally {
+    setSyncing(fanId, false);
+  }
+
+  return totalSynced;
+}
+
+function deleteStaleWishlistItems(fanId: number, keepIds: Set<string>) {
+  if (keepIds.size === 0) return;
+  const db = getDb();
+  const ids = [...keepIds];
+  const BATCH_SIZE = 500;
+  const del = db.prepare('DELETE FROM wishlist_items WHERE fan_id = ? AND id = ?');
+
+  if (ids.length <= BATCH_SIZE) {
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(
+      `DELETE FROM wishlist_items WHERE fan_id = ? AND id NOT IN (${placeholders})`,
+    ).run(fanId, ...ids);
+  } else {
+    const existing = db.prepare(
+      'SELECT id FROM wishlist_items WHERE fan_id = ?',
+    ).all(fanId) as Array<{ id: string }>;
+    const toDelete = existing.filter((row) => !keepIds.has(row.id));
+    if (toDelete.length === 0) return;
+    const tx = db.transaction(() => {
+      for (const row of toDelete) del.run(fanId, row.id);
+    });
+    tx();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tag enrichment queue
+// ---------------------------------------------------------------------------
+
+/**
+ * Populate the enrichment queue with album URLs from purchases missing tags
+ * and all wishlist items. Resets previously failed items so they get retried.
+ */
+export function enqueueForEnrichment(fanId: number): number {
+  const db = getDb();
+
+  db.prepare(
+    "UPDATE enrichment_queue SET status = 'pending', processed_at = NULL WHERE status = 'failed'",
+  ).run();
+
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO enrichment_queue (album_url) VALUES (?)",
+  );
+
+  let enqueued = 0;
+  const tx = db.transaction(() => {
+    const purchases = db.prepare(`
+      SELECT DISTINCT album_url FROM feed_items
+      WHERE fan_id = ? AND story_type = 'my_purchase' AND tags = '[]' AND album_url != ''
+    `).all(fanId) as Array<{ album_url: string }>;
+
+    for (const row of purchases) {
+      const result = insert.run(row.album_url);
+      if (result.changes > 0) enqueued++;
+    }
+
+    const wishlist = db.prepare(`
+      SELECT DISTINCT item_url FROM wishlist_items
+      WHERE fan_id = ? AND tags = '[]' AND item_url != ''
+    `).all(fanId) as Array<{ item_url: string }>;
+
+    for (const row of wishlist) {
+      const result = insert.run(row.item_url);
+      if (result.changes > 0) enqueued++;
+    }
+  });
+  tx();
+
+  return enqueued;
+}
+
+/**
+ * Returns the number of items still needing tag enrichment: items with empty
+ * tags, non-empty URLs, and whose URLs have NOT already been attempted in the
+ * enrichment queue (any status). This prevents endless retriggers for albums
+ * that genuinely have no tags or that repeatedly fail to scrape.
+ */
+export function getEnrichmentPendingCount(fanId: number): number {
+  const db = getDb();
+  const purchases = db.prepare(`
+    SELECT COUNT(*) AS c FROM feed_items fi
+    WHERE fi.fan_id = ? AND fi.story_type = 'my_purchase' AND fi.tags = '[]'
+      AND fi.album_url != ''
+      AND fi.album_url NOT IN (SELECT album_url FROM enrichment_queue)
+  `).get(fanId) as { c: number };
+  const wishlist = db.prepare(`
+    SELECT COUNT(*) AS c FROM wishlist_items wi
+    WHERE wi.fan_id = ? AND wi.tags = '[]'
+      AND wi.item_url != ''
+      AND wi.item_url NOT IN (SELECT album_url FROM enrichment_queue)
+  `).get(fanId) as { c: number };
+  return purchases.c + wishlist.c;
+}
+
+const ENRICHMENT_DELAY_MS = 1000;
+
+/**
+ * Process pending items from the enrichment queue: fetch each album page,
+ * extract tags, cache in catalog_releases/catalog_tracks, and backfill tags
+ * to feed_items and wishlist_items.
+ */
+export async function processEnrichmentQueue(
+  onProgress?: (processed: number, remaining: number) => void,
+): Promise<number> {
+  const db = getDb();
+
+  const pending = db.prepare(
+    "SELECT album_url FROM enrichment_queue WHERE status = 'pending' ORDER BY created_at ASC",
+  ).all() as Array<{ album_url: string }>;
+
+  if (pending.length === 0) return 0;
+
+  const markDone = db.prepare(
+    "UPDATE enrichment_queue SET status = 'done', processed_at = datetime('now') WHERE album_url = ?",
+  );
+  const markFailed = db.prepare(
+    "UPDATE enrichment_queue SET status = 'failed', processed_at = datetime('now') WHERE album_url = ?",
+  );
+  const updateFeedTags = db.prepare(
+    "UPDATE feed_items SET tags = ? WHERE album_url = ? AND tags = '[]'",
+  );
+  const updateWishlistTags = db.prepare(
+    "UPDATE wishlist_items SET tags = ? WHERE item_url = ? AND tags = '[]'",
+  );
+
+  let processed = 0;
+
+  for (const { album_url } of pending) {
+    try {
+      const album = await withRetry(() => fetchAlbumTracks(publicFetcher, album_url));
+      const tagsJson = JSON.stringify(album.tags ?? []);
+
+      const slug = extractSlug(new URL(album_url).origin);
+      const releaseId = ensureCatalogRelease(
+        album_url,
+        album.artist,
+        slug,
+        album.title,
+        album.imageUrl,
+      );
+      cacheAlbumTracks(
+        releaseId,
+        album.tracks.map((t) => ({
+          trackNum: t.trackNum,
+          title: t.title,
+          duration: t.duration,
+          streamUrl: t.streamUrl,
+          trackUrl: t.trackUrl,
+        })),
+        album.releaseDate,
+        album.tags,
+      );
+
+      updateFeedTags.run(tagsJson, album_url);
+      updateWishlistTags.run(tagsJson, album_url);
+      markDone.run(album_url);
+    } catch (err) {
+      console.error(`Enrichment failed for ${album_url}:`, err);
+      markFailed.run(album_url);
+    }
+
+    processed++;
+    onProgress?.(processed, pending.length - processed);
+
+    if (processed < pending.length) {
+      await sleep(ENRICHMENT_DELAY_MS);
+    }
+  }
+
+  return processed;
 }

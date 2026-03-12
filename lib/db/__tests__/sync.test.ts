@@ -13,9 +13,9 @@ vi.mock('@/lib/bandcamp/api', () => ({
   BandcampAPI: vi.fn(),
 }));
 
-import { syncFeedIncremental, syncFeedInitial, syncFeedDeep, syncCollection, syncCollectionIncremental, getSyncState } from '../sync';
+import { syncFeedIncremental, syncFeedInitial, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, getSyncState } from '../sync';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import type { CollectionPage } from '@/lib/bandcamp/types/domain';
+import type { CollectionPage, WishlistItem, WishlistPage } from '@/lib/bandcamp/types/domain';
 
 function makeFeedItem(id: string, dateOffset: number): FeedItem {
   const now = Date.now();
@@ -452,5 +452,111 @@ describe('syncCollectionIncremental', () => {
 
     expect(result).toBe(1);
     expect(mockApi.getCollection).toHaveBeenCalledTimes(2);
+  });
+});
+
+function makeWishlistItem(id: string, tralbumId: number): WishlistItem {
+  return {
+    id,
+    tralbumId,
+    tralbumType: 'a',
+    title: `Wishlist Album ${tralbumId}`,
+    artistName: 'Test Artist',
+    artistUrl: 'https://test.bandcamp.com',
+    imageUrl: 'https://f4.bcbits.com/img/a1_5.jpg',
+    itemUrl: `https://test.bandcamp.com/album/test-${tralbumId}`,
+    featuredTrackTitle: 'Featured',
+    featuredTrackDuration: 200.0,
+    streamUrl: `https://bandcamp.com/stream?id=${tralbumId}`,
+    alsoCollectedCount: 5,
+    isPreorder: false,
+    tags: [],
+  };
+}
+
+function makeWishlistPage(items: WishlistItem[], hasMore: boolean, lastToken: string = 'wl-tok'): WishlistPage {
+  return { items, hasMore, lastToken };
+}
+
+describe('syncWishlist', () => {
+  const fanId = 33333;
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    seedSyncState(fanId, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000) - 86400);
+  });
+
+  it('inserts wishlist items and marks wishlist_synced', async () => {
+    const items = [makeWishlistItem('wl-a1001', 1001), makeWishlistItem('wl-a1002', 1002)];
+
+    const mockApi = {
+      getWishlist: vi.fn(async () => makeWishlistPage(items, false)),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncWishlist(mockApi, fanId);
+
+    expect(result).toBe(2);
+    expect(getSyncState(fanId)?.wishlistSynced).toBe(true);
+
+    const rows = testDb.prepare('SELECT * FROM wishlist_items WHERE fan_id = ?').all(fanId);
+    expect(rows).toHaveLength(2);
+  });
+
+  it('creates a bandcamp_wishlist crate', async () => {
+    const items = [makeWishlistItem('wl-a2001', 2001)];
+
+    const mockApi = {
+      getWishlist: vi.fn(async () => makeWishlistPage(items, false)),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    await syncWishlist(mockApi, fanId);
+
+    const crate = testDb.prepare(
+      "SELECT * FROM crates WHERE fan_id = ? AND source = 'bandcamp_wishlist'",
+    ).get(fanId) as { id: number; name: string; source: string } | undefined;
+    expect(crate).toBeDefined();
+    expect(crate!.name).toBe('Bandcamp Wishlist');
+  });
+
+  it('pages through multiple pages until hasMore=false', async () => {
+    const page1 = [makeWishlistItem('wl-a3001', 3001)];
+    const page2 = [makeWishlistItem('wl-a3002', 3002)];
+
+    let callCount = 0;
+    const mockApi = {
+      getWishlist: vi.fn(async () => {
+        callCount++;
+        if (callCount === 1) return makeWishlistPage(page1, true, 'tok1');
+        return makeWishlistPage(page2, false, 'tok2');
+      }),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    const result = await syncWishlist(mockApi, fanId);
+
+    expect(result).toBe(2);
+    expect(mockApi.getWishlist).toHaveBeenCalledTimes(2);
+  });
+
+  it('is idempotent — running twice does not duplicate items', async () => {
+    const items = [makeWishlistItem('wl-a4001', 4001)];
+
+    const mockApi = {
+      getWishlist: vi.fn(async () => makeWishlistPage(items, false)),
+      getFanId: vi.fn(),
+    } as unknown as BandcampAPI;
+
+    await syncWishlist(mockApi, fanId);
+    await syncWishlist(mockApi, fanId);
+
+    const rows = testDb.prepare('SELECT * FROM wishlist_items WHERE fan_id = ?').all(fanId);
+    expect(rows).toHaveLength(1);
+
+    const crates = testDb.prepare(
+      "SELECT * FROM crates WHERE fan_id = ? AND source = 'bandcamp_wishlist'",
+    ).all(fanId);
+    expect(crates).toHaveLength(1);
   });
 });

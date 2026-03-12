@@ -158,5 +158,103 @@ export function getDb(): Database.Database {
     db.exec(`PRAGMA user_version = 8;`);
   }
 
+  if (schemaVersion < 9) {
+    db.exec(`
+      CREATE TABLE crates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fan_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX idx_crates_fan ON crates(fan_id);
+
+      CREATE TABLE crate_items (
+        crate_id INTEGER NOT NULL REFERENCES crates(id) ON DELETE CASCADE,
+        feed_item_id TEXT NOT NULL,
+        added_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (crate_id, feed_item_id)
+      );
+
+      CREATE TABLE wishlist_items (
+        id TEXT NOT NULL,
+        fan_id INTEGER NOT NULL,
+        tralbum_id INTEGER NOT NULL,
+        tralbum_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        artist_name TEXT NOT NULL,
+        artist_url TEXT DEFAULT '',
+        image_url TEXT DEFAULT '',
+        item_url TEXT NOT NULL,
+        featured_track_title TEXT,
+        featured_track_duration REAL,
+        stream_url TEXT,
+        also_collected_count INTEGER DEFAULT 0,
+        is_preorder INTEGER DEFAULT 0,
+        synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (id, fan_id)
+      );
+
+      ALTER TABLE sync_state ADD COLUMN wishlist_synced INTEGER NOT NULL DEFAULT 0;
+    `);
+
+    const fans = db.prepare(
+      `SELECT DISTINCT fan_id FROM shortlist`
+    ).all() as Array<{ fan_id: number }>;
+
+    const insertCrate = db.prepare(
+      `INSERT INTO crates (fan_id, name, source) VALUES (?, 'My Crate', 'user')`
+    );
+    const migrateFanItems = db.prepare(`
+      INSERT INTO crate_items (crate_id, feed_item_id, added_at)
+      SELECT ?, feed_item_id, added_at FROM shortlist WHERE fan_id = ?
+    `);
+
+    const migrateShortlist = db.transaction(() => {
+      for (const { fan_id } of fans) {
+        const result = insertCrate.run(fan_id);
+        migrateFanItems.run(result.lastInsertRowid, fan_id);
+      }
+    });
+    migrateShortlist();
+
+    db.exec(`
+      DROP TABLE shortlist;
+      PRAGMA user_version = 9;
+    `);
+  }
+
+  if (schemaVersion < 10) {
+    db.exec(`
+      CREATE TABLE enrichment_queue (
+        album_url TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        processed_at TEXT
+      );
+
+      ALTER TABLE wishlist_items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
+
+      PRAGMA user_version = 10;
+    `);
+  }
+
+  if (schemaVersion < 11) {
+    db.exec(`
+      ALTER TABLE catalog_releases ADD COLUMN source TEXT NOT NULL DEFAULT 'enrichment';
+
+      PRAGMA user_version = 11;
+    `);
+  }
+
+  if (schemaVersion < 12) {
+    db.exec(`
+      UPDATE catalog_releases SET source = 'enrichment' WHERE source != 'enrichment';
+
+      PRAGMA user_version = 12;
+    `);
+  }
+
   return db;
 }

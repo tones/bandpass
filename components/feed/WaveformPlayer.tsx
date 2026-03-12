@@ -1,19 +1,27 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import WavesurferPlayer from '@wavesurfer/react';
 import type WaveSurfer from 'wavesurfer.js';
 import type { FeedItem } from '@/lib/bandcamp';
 import { formatDuration, proxyUrl } from '@/lib/formatters';
 
+import { CrateIcon } from '@/components/icons/CrateIcon';
+
 interface WaveformPlayerProps {
   item: FeedItem;
   trackUrl: string;
-  isShortlisted?: boolean;
-  onToggleShortlist?: () => void;
+  isInCrate?: boolean;
+  onToggleCrate?: () => void;
+  onPlayStateChange?: (playing: boolean) => void;
 }
 
-export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlist }: WaveformPlayerProps) {
+export interface WaveformPlayerHandle {
+  togglePlayPause: () => void;
+}
+
+export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerProps>(
+  function WaveformPlayer({ item, trackUrl, isInCrate, onToggleCrate, onPlayStateChange }, ref) {
   const [wavesurfer, setWavesurfer] = useState<WaveSurfer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -38,12 +46,14 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
     wavesurfer?.playPause();
   }, [wavesurfer]);
 
+  useImperativeHandle(ref, () => ({ togglePlayPause }), [togglePlayPause]);
+
   return (
     <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-800 bg-zinc-950 px-6 py-3">
       <div className="mx-auto flex max-w-5xl items-center gap-4">
         <img
           src={item.album.imageUrl}
-          alt=""
+          alt={item.album.title}
           className="h-14 w-14 shrink-0 rounded"
         />
         <div className="w-40 shrink-0">
@@ -59,7 +69,7 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
           {formatDuration(currentTime)}
         </span>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 cursor-pointer">
           <WavesurferPlayer
             key={trackUrl}
             height={48}
@@ -71,8 +81,8 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
             cursorColor="transparent"
             url={proxied}
             onReady={onReady}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
+            onPlay={() => { setIsPlaying(true); onPlayStateChange?.(true); }}
+            onPause={() => { setIsPlaying(false); onPlayStateChange?.(false); }}
             onTimeupdate={(ws: WaveSurfer) => setCurrentTime(ws.getCurrentTime())}
           />
         </div>
@@ -88,17 +98,17 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
           {isPlaying ? '⏸' : '▶'}
         </button>
 
-        {onToggleShortlist && (
+        {onToggleCrate && (
           <button
-            onClick={onToggleShortlist}
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded text-lg transition-colors ${
-              isShortlisted
-                ? 'text-rose-400 hover:text-rose-300'
+            onClick={onToggleCrate}
+            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded transition-colors ${
+              isInCrate
+                ? 'text-amber-400 hover:text-amber-300'
                 : 'text-zinc-600 hover:text-zinc-400'
             }`}
-            title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
+            title={isInCrate ? 'Remove from crate' : 'Add to crate'}
           >
-            <span className="leading-none">{isShortlisted ? '♥' : '♡'}</span>
+            <CrateIcon filled={!!isInCrate} />
           </button>
         )}
 
@@ -114,4 +124,4 @@ export function WaveformPlayer({ item, trackUrl, isShortlisted, onToggleShortlis
       </div>
     </div>
   );
-}
+});

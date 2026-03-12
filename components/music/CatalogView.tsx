@@ -5,10 +5,13 @@ import WavesurferPlayer from '@wavesurfer/react';
 import type WaveSurfer from 'wavesurfer.js';
 import type { CatalogRelease, CatalogTrack } from '@/lib/db/catalog';
 import { formatDuration, proxyUrl } from '@/lib/formatters';
-import { toggleShortlistItem } from '@/app/shortlist/actions';
+import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
 import { TrackActions } from '@/components/TrackActions';
+import type { CrateInfo } from '@/components/TrackActions';
+import { CrateIcon } from '@/components/icons/CrateIcon';
+import { TagPill } from '@/components/TagPill';
 
-function catalogTrackShortlistId(trackId: number): string {
+function catalogTrackCrateId(trackId: number): string {
   return `catalog-track-${trackId}`;
 }
 
@@ -17,7 +20,9 @@ interface CatalogViewProps {
   bandName: string;
   bandUrl: string;
   releases: CatalogRelease[];
-  initialShortlist?: string[];
+  initialCrateItemIds?: string[];
+  initialCrates?: CrateInfo[];
+  initialItemCrateMap?: Record<string, number[]>;
   loggedIn?: boolean;
 }
 
@@ -38,8 +43,10 @@ interface NowPlaying {
   release: CatalogRelease;
 }
 
-export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlist = [], loggedIn = false }: CatalogViewProps) {
-  const [shortlist, setShortlist] = useState<Set<string>>(() => new Set(initialShortlist));
+export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateItemIds = [], initialCrates = [], initialItemCrateMap = {}, loggedIn = false }: CatalogViewProps) {
+  const [crates] = useState<CrateInfo[]>(initialCrates);
+  const [crateItemIds, setCrateItemIds] = useState<Set<string>>(() => new Set(initialCrateItemIds));
+  const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
   const [trackCache, setTrackCache] = useState<TrackCache>({});
   const [releaseDates, setReleaseDates] = useState<ReleaseDateCache>({});
   const [tagsCache, setTagsCache] = useState<TagsCache>({});
@@ -128,15 +135,71 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
     wavesurfer?.playPause();
   }, [wavesurfer]);
 
-  const handleToggleShortlist = useCallback((trackId: number) => {
-    const id = catalogTrackShortlistId(trackId);
-    setShortlist((prev) => {
+  const handleToggleCrate = useCallback(async (trackId: number) => {
+    const id = catalogTrackCrateId(trackId);
+    setCrateItemIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-    toggleShortlistItem(id);
+    try {
+      await toggleDefaultCrate(id);
+    } catch {
+      setCrateItemIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
+  }, []);
+
+  const handleAddToCrate = useCallback(async (trackId: number, crateId: number) => {
+    const id = catalogTrackCrateId(trackId);
+    setCrateItemIds((prev) => new Set(prev).add(id));
+    setItemCrateMap((prev) => ({
+      ...prev,
+      [id]: [...(prev[id] ?? []), crateId],
+    }));
+    try {
+      await addToCrateAction(crateId, id);
+    } catch {
+      setItemCrateMap((prev) => {
+        const updated = (prev[id] ?? []).filter((c) => c !== crateId);
+        const next = { ...prev };
+        if (updated.length === 0) delete next[id];
+        else next[id] = updated;
+        return next;
+      });
+    }
+  }, []);
+
+  const handleRemoveFromCrate = useCallback(async (trackId: number, crateId: number) => {
+    const id = catalogTrackCrateId(trackId);
+    setItemCrateMap((prev) => {
+      const updated = (prev[id] ?? []).filter((c) => c !== crateId);
+      const next = { ...prev };
+      if (updated.length === 0) {
+        delete next[id];
+        setCrateItemIds((prevIds) => {
+          const s = new Set(prevIds);
+          s.delete(id);
+          return s;
+        });
+      } else {
+        next[id] = updated;
+      }
+      return next;
+    });
+    try {
+      await removeFromCrateAction(crateId, id);
+    } catch {
+      setItemCrateMap((prev) => ({
+        ...prev,
+        [id]: [...(prev[id] ?? []), crateId],
+      }));
+    }
   }, []);
 
   return (
@@ -168,10 +231,15 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
             isLoading={loading.has(release.id)}
             tracks={trackCache[release.id]}
             nowPlaying={nowPlaying}
-            shortlist={shortlist}
+            isPlayerPlaying={isPlaying}
+            crateItemIds={crateItemIds}
+            itemCrateMap={itemCrateMap}
+            crates={crates}
             loggedIn={loggedIn}
             onPlayTrack={(track) => playTrack(track, release)}
-            onToggleShortlist={handleToggleShortlist}
+            onToggleCrate={handleToggleCrate}
+            onAddToCrate={handleAddToCrate}
+            onRemoveFromCrate={handleRemoveFromCrate}
           />
         ))}
       </div>
@@ -181,7 +249,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
           <div className="mx-auto flex max-w-5xl items-center gap-4">
             <img
               src={nowPlaying.release.imageUrl}
-              alt=""
+              alt={nowPlaying.release.title}
               className="h-14 w-14 shrink-0 rounded"
             />
             <div className="w-40 shrink-0">
@@ -197,7 +265,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
               {formatDuration(currentTime)}
             </span>
 
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 cursor-pointer">
               <WavesurferPlayer
                 key={nowPlaying.track.streamUrl}
                 height={48}
@@ -227,17 +295,17 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialShortlis
             </button>
 
             {loggedIn && nowPlaying.track.id && (() => {
-              const sid = catalogTrackShortlistId(nowPlaying.track.id);
-              const isSl = shortlist.has(sid);
+              const cid = catalogTrackCrateId(nowPlaying.track.id);
+              const inCrate = crateItemIds.has(cid);
               return (
                 <button
-                  onClick={() => handleToggleShortlist(nowPlaying.track.id)}
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded text-lg transition-colors ${
-                    isSl ? 'text-rose-400 hover:text-rose-300' : 'text-zinc-600 hover:text-zinc-400'
+                  onClick={() => handleToggleCrate(nowPlaying.track.id)}
+                  className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded transition-colors ${
+                    inCrate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'
                   }`}
-                  title={isSl ? 'Remove from shortlist' : 'Add to shortlist'}
+                  title={inCrate ? 'Remove from crate' : 'Add to crate'}
                 >
-                  <span className="leading-none">{isSl ? '♥' : '♡'}</span>
+                  <CrateIcon filled={inCrate} className="h-5 w-5" />
                 </button>
               );
             })()}
@@ -271,10 +339,15 @@ interface ReleaseCardProps {
   isLoading: boolean;
   tracks?: CatalogTrack[];
   nowPlaying: NowPlaying | null;
-  shortlist: Set<string>;
+  isPlayerPlaying: boolean;
+  crateItemIds: Set<string>;
+  itemCrateMap: Record<string, number[]>;
+  crates: CrateInfo[];
   loggedIn: boolean;
   onPlayTrack: (track: CatalogTrack) => void;
-  onToggleShortlist: (trackId: number) => void;
+  onToggleCrate: (trackId: number) => void;
+  onAddToCrate: (trackId: number, crateId: number) => void;
+  onRemoveFromCrate: (trackId: number, crateId: number) => void;
 }
 
 function ReleaseCard({
@@ -284,10 +357,15 @@ function ReleaseCard({
   isLoading,
   tracks,
   nowPlaying,
-  shortlist,
+  isPlayerPlaying,
+  crateItemIds,
+  itemCrateMap,
+  crates,
   loggedIn,
   onPlayTrack,
-  onToggleShortlist,
+  onToggleCrate,
+  onAddToCrate,
+  onRemoveFromCrate,
 }: ReleaseCardProps) {
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-800">
@@ -295,7 +373,7 @@ function ReleaseCard({
         {release.imageUrl ? (
           <img
             src={release.imageUrl}
-            alt=""
+            alt={release.title}
             className="h-14 w-14 shrink-0 rounded"
           />
         ) : (
@@ -311,24 +389,9 @@ function ReleaseCard({
           </div>
           {tags.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
-              {tags.map((tag) =>
-                loggedIn ? (
-                  <a
-                    key={tag}
-                    href={`/timeline?tag=${encodeURIComponent(tag)}`}
-                    className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
-                  >
-                    {tag}
-                  </a>
-                ) : (
-                  <span
-                    key={tag}
-                    className="rounded bg-zinc-800/50 px-1.5 py-0.5 text-[11px] text-zinc-500"
-                  >
-                    {tag}
-                  </span>
-                ),
-              )}
+              {tags.map((tag) => (
+                <TagPill key={tag} tag={tag} />
+              ))}
             </div>
           )}
         </div>
@@ -353,9 +416,10 @@ function ReleaseCard({
             {tracks.map((track) => {
               const isActive =
                 nowPlaying?.track.streamUrl === track.streamUrl &&
-                track.streamUrl != null;
-              const sid = catalogTrackShortlistId(track.id);
-              const isSl = shortlist.has(sid);
+                track.streamUrl != null &&
+                isPlayerPlaying;
+              const cid = catalogTrackCrateId(track.id);
+              const inCrate = crateItemIds.has(cid);
               return (
                 <div
                   key={track.id}
@@ -366,23 +430,28 @@ function ReleaseCard({
                   <span className="w-6 shrink-0 text-right text-xs tabular-nums text-zinc-600">
                     {track.trackNum}
                   </span>
-                  <span
-                    className="min-w-0 flex-1 cursor-pointer truncate text-sm text-zinc-200"
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 cursor-pointer truncate text-left text-sm text-zinc-200"
                     onClick={() => onPlayTrack(track)}
                   >
                     {track.title}
-                  </span>
+                  </button>
                   <span className="shrink-0 text-xs tabular-nums text-zinc-600">
                     {track.duration > 0 ? formatDuration(track.duration) : ''}
                   </span>
                   <TrackActions
                     isPlaying={isActive}
                     hasStream={!!track.streamUrl}
-                    isShortlisted={isSl}
+                    isInCrate={inCrate}
                     bandcampUrl={track.trackUrl ?? release.url}
                     onPlay={() => onPlayTrack(track)}
-                    onToggleShortlist={() => onToggleShortlist(track.id)}
-                    showShortlist={loggedIn}
+                    onToggleCrate={() => onToggleCrate(track.id)}
+                    showCrate={loggedIn}
+                    crates={crates}
+                    itemCrateIds={itemCrateMap[cid]}
+                    onAddToCrate={(crateId) => onAddToCrate(track.id, crateId)}
+                    onRemoveFromCrate={(crateId) => onRemoveFromCrate(track.id, crateId)}
                   />
                 </div>
               );

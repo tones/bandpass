@@ -11,6 +11,12 @@ export interface SyncState {
   collectionSynced: boolean;
   collectionItemsFound?: number;
   newItemsFound?: number | null;
+  isWishlistSyncing: boolean;
+  wishlistSynced: boolean;
+  wishlistItemsFound?: number;
+  isEnrichingTags: boolean;
+  tagsEnriched?: number;
+  enrichmentPendingCount?: number;
 }
 
 interface UseSyncPollingOptions {
@@ -37,7 +43,7 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
   }, []);
 
   const isActive = useCallback((s: SyncState) => {
-    return s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing;
+    return s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing || s.isWishlistSyncing || s.isEnrichingTags;
   }, []);
 
   useEffect(() => {
@@ -46,7 +52,7 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
       setState(data);
       optionsRef.current.onStateChange?.(data);
 
-      const needsSync = !data.deepSyncComplete || !data.collectionSynced;
+      const needsSync = !data.deepSyncComplete || !data.collectionSynced || !data.wishlistSynced || (data.enrichmentPendingCount ?? 0) > 0;
       if (isActive(data) || needsSync) {
         setPolling(true);
       }

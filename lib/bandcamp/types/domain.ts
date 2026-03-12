@@ -42,3 +42,26 @@ export interface CollectionPage {
   lastToken: string;
   hasMore: boolean;
 }
+
+export interface WishlistItem {
+  id: string;
+  tralbumId: number;
+  tralbumType: 'a' | 't';
+  title: string;
+  artistName: string;
+  artistUrl: string;
+  imageUrl: string;
+  itemUrl: string;
+  featuredTrackTitle: string | null;
+  featuredTrackDuration: number | null;
+  streamUrl: string | null;
+  alsoCollectedCount: number;
+  isPreorder: boolean;
+  tags: string[];
+}
+
+export interface WishlistPage {
+  items: WishlistItem[];
+  lastToken: string;
+  hasMore: boolean;
+}

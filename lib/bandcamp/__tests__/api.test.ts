@@ -3,6 +3,7 @@ import { BandcampAPI } from '../api';
 import { BandcampClient } from '../client';
 import feedFixture from './fixtures/feed-response.json';
 import collectionFixture from './fixtures/collection-response.json';
+import wishlistFixture from './fixtures/wishlist-response.json';
 
 vi.mock('../client');
 
@@ -202,6 +203,99 @@ describe('BandcampAPI', () => {
       // All IDs are unique
       const ids = page.items.map((i) => i.id);
       expect(new Set(ids).size).toBe(ids.length);
+    });
+  });
+
+  describe('getWishlist', () => {
+    it('normalizes wishlist items with correct fields', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postJson.mockResolvedValue(wishlistFixture);
+
+      const page = await api.getWishlist();
+
+      expect(page.items).toHaveLength(2);
+      expect(page.hasMore).toBe(false);
+      expect(page.lastToken).toBe('5002:1585701000:t:');
+    });
+
+    it('normalizes album wishlist items', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postJson.mockResolvedValue(wishlistFixture);
+
+      const page = await api.getWishlist();
+      const album = page.items[0];
+
+      expect(album.id).toBe('wl-a5001');
+      expect(album.tralbumId).toBe(5001);
+      expect(album.tralbumType).toBe('a');
+      expect(album.title).toBe('Gospel Bangers (re-up)');
+      expect(album.artistName).toBe('SMBD');
+      expect(album.artistUrl).toBe('https://gammenterprises.bandcamp.com');
+      expect(album.imageUrl).toBe('https://f4.bcbits.com/img/a884_5.jpg');
+      expect(album.itemUrl).toBe('https://gammenterprises.bandcamp.com/album/gospel-bangers-re-up');
+      expect(album.alsoCollectedCount).toBe(9);
+    });
+
+    it('resolves stream URLs from tracklists', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postJson.mockResolvedValue(wishlistFixture);
+
+      const page = await api.getWishlist();
+
+      expect(page.items[0].streamUrl).toBe('https://bandcamp.com/stream_redirect?track_id=6001');
+      expect(page.items[1].streamUrl).toBe('https://bandcamp.com/stream_redirect?track_id=5002');
+    });
+
+    it('uses featured track title and duration when available', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postJson.mockResolvedValue(wishlistFixture);
+
+      const page = await api.getWishlist();
+
+      expect(page.items[0].featuredTrackTitle).toBe('Space Is The Place');
+      expect(page.items[0].featuredTrackDuration).toBe(395.41);
+    });
+
+    it('falls back to tracklist title/duration when featured_track fields are null', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postJson.mockResolvedValue(wishlistFixture);
+
+      const page = await api.getWishlist();
+      const track = page.items[1];
+
+      expect(track.featuredTrackTitle).toBe('Chip$ (feat. Meftah)');
+      expect(track.featuredTrackDuration).toBe(194.299);
+    });
+
+    it('uses item_title for track-type items', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postJson.mockResolvedValue(wishlistFixture);
+
+      const page = await api.getWishlist();
+
+      expect(page.items[1].title).toBe('Chip$ (feat. Meftah)');
+    });
+
+    it('generates IDs with wl- prefix and tralbum type+id', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postJson.mockResolvedValue(wishlistFixture);
+
+      const page = await api.getWishlist();
+
+      expect(page.items[0].id).toBe('wl-a5001');
+      expect(page.items[1].id).toBe('wl-t5002');
+    });
+
+    it('calls the correct API endpoint', async () => {
+      mockClient.get.mockResolvedValue({ fan_id: 12345 });
+      mockClient.postJson.mockResolvedValue(wishlistFixture);
+
+      await api.getWishlist({ olderThanToken: 'test-token', count: 50 });
+
+      expect(mockClient.postJson).toHaveBeenCalledWith(
+        '/api/fancollection/1/wishlist_items',
+        { fan_id: 12345, older_than_token: 'test-token', count: 50 },
+      );
     });
   });
 

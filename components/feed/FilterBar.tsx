@@ -124,6 +124,9 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
               }}
             >
               <option value="">All tags</option>
+              {selectedTag && !tags.some((t) => t.name === selectedTag) && (
+                <option value={selectedTag}>{selectedTag}</option>
+              )}
               {tags.map((t) => (
                 <option key={t.name} value={t.name}>
                   {t.name} ({t.count})

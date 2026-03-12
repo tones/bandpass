@@ -34,6 +34,19 @@ const STALE_HOURS = 24;
 
 export function getCachedDiscography(slug: string): CatalogRelease[] | null {
   const db = getDb();
+
+  const freshCheck = db.prepare(`
+    SELECT scraped_at FROM catalog_releases
+    WHERE band_slug = ? AND source = 'discography'
+    ORDER BY scraped_at DESC LIMIT 1
+  `).get(slug) as { scraped_at: string } | undefined;
+
+  if (!freshCheck) return null;
+
+  const scrapedAt = new Date(freshCheck.scraped_at + 'Z');
+  const ageMs = Date.now() - scrapedAt.getTime();
+  if (ageMs > STALE_HOURS * 60 * 60 * 1000) return null;
+
   const rows = db.prepare(`
     SELECT * FROM catalog_releases
     WHERE band_slug = ?
@@ -55,11 +68,6 @@ export function getCachedDiscography(slug: string): CatalogRelease[] | null {
   }>;
 
   if (rows.length === 0) return null;
-
-  const oldest = rows[0];
-  const scrapedAt = new Date(oldest.scraped_at + 'Z');
-  const ageMs = Date.now() - scrapedAt.getTime();
-  if (ageMs > STALE_HOURS * 60 * 60 * 1000) return null;
 
   return rows.map(rowToRelease);
 }
@@ -114,8 +122,8 @@ export function cacheDiscography(
   db.prepare('DELETE FROM catalog_releases WHERE band_slug = ?').run(slug);
 
   const insert = db.prepare(`
-    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'discography')
   `);
 
   const insertMany = db.transaction(() => {
@@ -209,6 +217,26 @@ export function cacheAlbumTracks(
   doAll();
 
   return getCachedAlbumTracks(releaseId) ?? [];
+}
+
+export function ensureCatalogRelease(
+  url: string,
+  bandName: string,
+  bandSlug: string,
+  title: string,
+  imageUrl: string,
+): number {
+  const db = getDb();
+  const existing = db.prepare(
+    'SELECT id FROM catalog_releases WHERE url = ?',
+  ).get(url) as { id: number } | undefined;
+  if (existing) return existing.id;
+
+  const result = db.prepare(`
+    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source)
+    VALUES (?, ?, ?, ?, ?, ?, 'album', 'enrichment')
+  `).run(bandSlug, bandName, `https://${bandSlug}.bandcamp.com`, title, url, imageUrl);
+  return Number(result.lastInsertRowid);
 }
 
 export function getArtistsFromFeed(fanId: number): Array<{

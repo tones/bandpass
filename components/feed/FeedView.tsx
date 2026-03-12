@@ -10,7 +10,9 @@ import type { FeedFilter } from './FilterBar';
 import { WaveformPlayer } from './WaveformPlayer';
 import { SyncStatus } from '@/components/SyncStatus';
 import { queryFeed } from '@/app/timeline/actions';
-import { toggleShortlistItem } from '@/app/shortlist/actions';
+import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
+import type { CrateInfo } from '@/components/TrackActions';
+import { useTrackPlayer } from '@/hooks/useTrackPlayer';
 
 type FeedListEntry =
   | { type: 'header'; label: string }
@@ -51,7 +53,9 @@ interface FeedViewProps {
   initialTotalItems: number;
   initialTags: { name: string; count: number }[];
   initialFriends: { name: string; username: string; count: number }[];
-  initialShortlist?: string[];
+  initialCrateItemIds?: string[];
+  initialCrates?: CrateInfo[];
+  initialItemCrateMap?: Record<string, number[]>;
   oldestStoryDate?: number | null;
   exchangeRates?: Record<string, number>;
   initialTag?: string;
@@ -62,7 +66,9 @@ export function FeedView({
   initialTotalItems,
   initialTags,
   initialFriends,
-  initialShortlist = [],
+  initialCrateItemIds = [],
+  initialCrates = [],
+  initialItemCrateMap = {},
   oldestStoryDate,
   exchangeRates = {},
   initialTag,
@@ -75,9 +81,10 @@ export function FeedView({
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(initialTag ?? null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [shortlist, setShortlist] = useState<Set<string>>(new Set(initialShortlist));
-  const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
-  const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
+  const [crates] = useState<CrateInfo[]>(initialCrates);
+  const [crateItemIds, setCrateItemIds] = useState<Set<string>>(new Set(initialCrateItemIds));
+  const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
+  const { playingTrackUrl, playingItem, isPlaying: isPlayerPlaying, playerRef, play: handlePlay, setIsPlaying } = useTrackPlayer();
   const [isPending, startTransition] = useTransition();
   const [dynamicOldestDate, setDynamicOldestDate] = useState(oldestStoryDate ?? null);
 
@@ -156,26 +163,68 @@ export function FeedView({
     setDynamicOldestDate((prev) => (prev === null || timestamp < prev) ? timestamp : prev);
   }, []);
 
-  const toggleShortlist = useCallback((id: string) => {
-    setShortlist((prev) => {
+  const toggleCrate = useCallback(async (id: string) => {
+    setCrateItemIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-    toggleShortlistItem(id);
+    try {
+      await toggleDefaultCrate(id);
+    } catch {
+      setCrateItemIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
   }, []);
 
-  const handlePlay = useCallback((item: FeedItem) => {
-    if (!item.track?.streamUrl) return;
-    setPlayingTrackUrl((prev) => {
-      if (prev === item.track!.streamUrl) {
-        setPlayingItem(null);
-        return null;
+  const handleAddToCrate = useCallback(async (itemId: string, crateId: number) => {
+    setCrateItemIds((prev) => new Set(prev).add(itemId));
+    setItemCrateMap((prev) => ({
+      ...prev,
+      [itemId]: [...(prev[itemId] ?? []), crateId],
+    }));
+    try {
+      await addToCrateAction(crateId, itemId);
+    } catch {
+      setItemCrateMap((prev) => {
+        const updated = (prev[itemId] ?? []).filter((id) => id !== crateId);
+        const next = { ...prev };
+        if (updated.length === 0) delete next[itemId];
+        else next[itemId] = updated;
+        return next;
+      });
+    }
+  }, []);
+
+  const handleRemoveFromCrate = useCallback(async (itemId: string, crateId: number) => {
+    setItemCrateMap((prev) => {
+      const updated = (prev[itemId] ?? []).filter((id) => id !== crateId);
+      const next = { ...prev };
+      if (updated.length === 0) {
+        delete next[itemId];
+        setCrateItemIds((prevIds) => {
+          const s = new Set(prevIds);
+          s.delete(itemId);
+          return s;
+        });
+      } else {
+        next[itemId] = updated;
       }
-      setPlayingItem(item);
-      return item.track!.streamUrl;
+      return next;
     });
+    try {
+      await removeFromCrateAction(crateId, itemId);
+    } catch {
+      setItemCrateMap((prev) => ({
+        ...prev,
+        [itemId]: [...(prev[itemId] ?? []), crateId],
+      }));
+    }
   }, []);
 
   const grouped = groupByDate(items);
@@ -209,11 +258,15 @@ export function FeedView({
             <FeedItemCard
               key={entry.item.id}
               item={entry.item}
-              isShortlisted={shortlist.has(entry.item.id)}
-              isPlaying={playingTrackUrl === entry.item.track?.streamUrl}
-              onToggleShortlist={() => toggleShortlist(entry.item.id)}
+              isInCrate={crateItemIds.has(entry.item.id)}
+              isPlaying={isPlayerPlaying && playingTrackUrl === entry.item.track?.streamUrl}
+              onToggleCrate={() => toggleCrate(entry.item.id)}
               onPlay={() => handlePlay(entry.item)}
               exchangeRates={exchangeRates}
+              crates={crates}
+              itemCrateIds={itemCrateMap[entry.item.id]}
+              onAddToCrate={(crateId) => handleAddToCrate(entry.item.id, crateId)}
+              onRemoveFromCrate={(crateId) => handleRemoveFromCrate(entry.item.id, crateId)}
             />
           ),
         )}
@@ -232,10 +285,12 @@ export function FeedView({
       )}
       {playingItem && playingTrackUrl && (
         <WaveformPlayer
+          ref={playerRef}
           item={playingItem}
           trackUrl={playingTrackUrl}
-          isShortlisted={shortlist.has(playingItem.id)}
-          onToggleShortlist={() => toggleShortlist(playingItem.id)}
+          isInCrate={crateItemIds.has(playingItem.id)}
+          onToggleCrate={() => toggleCrate(playingItem.id)}
+          onPlayStateChange={setIsPlaying}
         />
       )}
     </div>

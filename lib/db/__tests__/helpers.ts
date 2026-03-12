@@ -41,14 +41,52 @@ export function createTestDb(): Database.Database {
       is_syncing INTEGER NOT NULL DEFAULT 0,
       last_sync_at TEXT,
       deep_sync_complete INTEGER NOT NULL DEFAULT 0,
-      collection_synced INTEGER NOT NULL DEFAULT 0
+      collection_synced INTEGER NOT NULL DEFAULT 0,
+      wishlist_synced INTEGER NOT NULL DEFAULT 0
     );
 
-    CREATE TABLE shortlist (
+    CREATE TABLE crates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       fan_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'user',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX idx_crates_fan ON crates(fan_id);
+
+    CREATE TABLE crate_items (
+      crate_id INTEGER NOT NULL REFERENCES crates(id) ON DELETE CASCADE,
       feed_item_id TEXT NOT NULL,
       added_at TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (fan_id, feed_item_id)
+      PRIMARY KEY (crate_id, feed_item_id)
+    );
+
+    CREATE TABLE wishlist_items (
+      id TEXT NOT NULL,
+      fan_id INTEGER NOT NULL,
+      tralbum_id INTEGER NOT NULL,
+      tralbum_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      artist_name TEXT NOT NULL,
+      artist_url TEXT DEFAULT '',
+      image_url TEXT DEFAULT '',
+      item_url TEXT NOT NULL,
+      featured_track_title TEXT,
+      featured_track_duration REAL,
+      stream_url TEXT,
+      also_collected_count INTEGER DEFAULT 0,
+      is_preorder INTEGER DEFAULT 0,
+      tags TEXT NOT NULL DEFAULT '[]',
+      synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (id, fan_id)
+    );
+
+    CREATE TABLE enrichment_queue (
+      album_url TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      processed_at TEXT
     );
 
     CREATE TABLE catalog_releases (
@@ -62,7 +100,8 @@ export function createTestDb(): Database.Database {
       release_type TEXT NOT NULL DEFAULT 'album',
       scraped_at TEXT NOT NULL DEFAULT (datetime('now')),
       release_date TEXT,
-      tags TEXT DEFAULT '[]'
+      tags TEXT DEFAULT '[]',
+      source TEXT NOT NULL DEFAULT 'discography'
     );
 
     CREATE INDEX idx_catalog_band ON catalog_releases(band_slug);
@@ -175,6 +214,72 @@ export function seedFeedItem(
     overrides.priceCurrency ?? null,
     overrides.fanName ?? null,
     overrides.fanUsername ?? null,
+  );
+  return id;
+}
+
+export function seedCrate(
+  db: Database.Database,
+  fanId: number,
+  overrides: Partial<{
+    name: string;
+    source: string;
+  }> = {},
+): number {
+  const result = db.prepare(`
+    INSERT INTO crates (fan_id, name, source) VALUES (?, ?, ?)
+  `).run(
+    fanId,
+    overrides.name ?? 'My Crate',
+    overrides.source ?? 'user',
+  );
+  return Number(result.lastInsertRowid);
+}
+
+export function seedWishlistItem(
+  db: Database.Database,
+  fanId: number,
+  overrides: Partial<{
+    id: string;
+    tralbumId: number;
+    tralbumType: string;
+    title: string;
+    artistName: string;
+    artistUrl: string;
+    imageUrl: string;
+    itemUrl: string;
+    featuredTrackTitle: string | null;
+    featuredTrackDuration: number | null;
+    streamUrl: string | null;
+    alsoCollectedCount: number;
+    isPreorder: boolean;
+    tags: string[];
+  }> = {},
+): string {
+  const id = overrides.id ?? `wl-${Math.random().toString(36).slice(2)}`;
+  db.prepare(`
+    INSERT OR REPLACE INTO wishlist_items (
+      id, fan_id, tralbum_id, tralbum_type, title,
+      artist_name, artist_url, image_url, item_url,
+      featured_track_title, featured_track_duration, stream_url,
+      also_collected_count, is_preorder, tags
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    fanId,
+    overrides.tralbumId ?? 12345,
+    overrides.tralbumType ?? 'a',
+    overrides.title ?? 'Test Wishlist Album',
+    overrides.artistName ?? 'Test Artist',
+    overrides.artistUrl ?? 'https://testartist.bandcamp.com',
+    overrides.imageUrl ?? 'https://f4.bcbits.com/img/a456_5.jpg',
+    overrides.itemUrl ?? 'https://testartist.bandcamp.com/album/test',
+    overrides.featuredTrackTitle ?? 'Featured Track',
+    overrides.featuredTrackDuration ?? 240.0,
+    overrides.streamUrl ?? 'https://bandcamp.com/stream_redirect?track_id=999',
+    overrides.alsoCollectedCount ?? 0,
+    overrides.isPreorder ? 1 : 0,
+    JSON.stringify(overrides.tags ?? []),
   );
   return id;
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental } from '@/lib/db/sync';
+import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, processEnrichmentQueue, getEnrichmentPendingCount } from '@/lib/db/sync';
 import { getItemCount } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,10 @@ interface SyncProgress {
   deepSyncItemsFound: number;
   isCollectionSyncing: boolean;
   collectionItemsFound: number;
+  isWishlistSyncing: boolean;
+  wishlistItemsFound: number;
+  isEnrichingTags: boolean;
+  tagsEnriched: number;
 }
 
 const activeSyncs = new Map<number, SyncProgress>();
@@ -25,6 +29,10 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
     deepSyncItemsFound: 0,
     isCollectionSyncing: false,
     collectionItemsFound: 0,
+    isWishlistSyncing: false,
+    wishlistItemsFound: 0,
+    isEnrichingTags: false,
+    tagsEnriched: 0,
   };
   activeSyncs.set(fanId, progress);
 
@@ -61,6 +69,29 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
     } finally {
       progress.isCollectionSyncing = false;
     }
+
+    progress.isWishlistSyncing = true;
+    try {
+      const wishlistCount = await syncWishlist(api, fanId);
+      progress.wishlistItemsFound = wishlistCount;
+    } catch (err) {
+      console.error('Wishlist sync error:', err);
+    } finally {
+      progress.isWishlistSyncing = false;
+    }
+
+    progress.isEnrichingTags = true;
+    try {
+      enqueueForEnrichment(fanId);
+      const enriched = await processEnrichmentQueue((processed) => {
+        progress.tagsEnriched = processed;
+      });
+      progress.tagsEnriched = enriched;
+    } catch (err) {
+      console.error('Tag enrichment error:', err);
+    } finally {
+      progress.isEnrichingTags = false;
+    }
   } catch (err) {
     console.error('Sync error:', err);
   } finally {
@@ -79,7 +110,11 @@ export async function GET() {
   const totalItems = getItemCount(fanId);
   const progress = activeSyncs.get(fanId);
 
-  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced;
+  const enrichmentPendingCount = state?.collectionSynced && state?.wishlistSynced
+    ? getEnrichmentPendingCount(fanId)
+    : 0;
+
+  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
   if (needsSync && !activeSyncs.has(fanId) && session.identityCookie) {
     startSync(fanId, session.identityCookie, !state?.lastSyncAt).catch((err) =>
       console.error('Auto-triggered sync error:', err),
@@ -99,6 +134,12 @@ export async function GET() {
     isCollectionSyncing: progress?.isCollectionSyncing ?? false,
     collectionSynced: state?.collectionSynced ?? false,
     collectionItemsFound: progress?.collectionItemsFound ?? 0,
+    isWishlistSyncing: progress?.isWishlistSyncing ?? false,
+    wishlistSynced: state?.wishlistSynced ?? false,
+    wishlistItemsFound: progress?.wishlistItemsFound ?? 0,
+    isEnrichingTags: progress?.isEnrichingTags ?? false,
+    tagsEnriched: progress?.tagsEnriched ?? 0,
+    enrichmentPendingCount,
   });
 }
 

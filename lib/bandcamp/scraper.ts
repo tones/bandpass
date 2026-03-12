@@ -188,9 +188,38 @@ export async function fetchDiscography(
     itemsMap.set(item.id, item);
   }
 
+  // Broad URL scan: catch any /album/ or /track/ URLs anywhere in the page
+  // as defense-in-depth against Bandcamp hiding items from structured data.
+  const knownUrls = new Set<string>();
+  for (const item of itemsMap.values()) {
+    const url = item.page_url.startsWith('http')
+      ? new URL(item.page_url).pathname
+      : item.page_url.split('?')[0];
+    knownUrls.add(url);
+  }
+
+  const broadUrlPattern = /\/(album|track)\/([a-z0-9][a-z0-9-]*)/g;
+  let urlMatch;
+  let nextId = -1;
+  while ((urlMatch = broadUrlPattern.exec(html)) !== null) {
+    const [, type, slug] = urlMatch;
+    const relativePath = `/${type}/${slug}`;
+    if (!knownUrls.has(relativePath)) {
+      knownUrls.add(relativePath);
+      itemsMap.set(nextId--, {
+        id: nextId,
+        title: slug.replace(/-/g, ' '),
+        page_url: `${bandUrl}${relativePath}`,
+        art_id: 0,
+        type,
+        band_id: bandData.id,
+      });
+    }
+  }
+
   const rawItems = Array.from(itemsMap.values());
 
-  const items: DiscographyItem[] = (rawItems ?? []).map((item) => ({
+  const items: DiscographyItem[] = rawItems.map((item) => ({
     id: item.id,
     title: item.title,
     pageUrl: item.page_url,

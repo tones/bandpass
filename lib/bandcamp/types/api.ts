@@ -178,7 +178,7 @@ export interface BandcampCollectionItem {
   featured_track: number | null;
   featured_track_title: string | null;
   featured_track_duration: number | null;
-  purchased: string;
+  purchased: string | null;
   price: number;
   currency: string;
   also_collected_count: number;

@@ -3,14 +3,21 @@ import { extractSlug } from '@/lib/bandcamp/scraper';
 import { convertToUsd } from '@/lib/currency';
 import { formatDuration, formatPrice } from '@/lib/formatters';
 import { TrackActions } from '@/components/TrackActions';
+import type { CrateInfo } from '@/components/TrackActions';
+import { TagPill } from '@/components/TagPill';
 
 interface FeedItemCardProps {
   item: FeedItem;
-  isShortlisted: boolean;
+  isInCrate: boolean;
   isPlaying: boolean;
-  onToggleShortlist: () => void;
+  onToggleCrate: () => void;
   onPlay: () => void;
   exchangeRates?: Record<string, number>;
+  crates?: CrateInfo[];
+  itemCrateIds?: number[];
+  onAddToCrate?: (crateId: number) => void;
+  onRemoveFromCrate?: (crateId: number) => void;
+  variant?: 'feed' | 'crate';
 }
 
 const STORY_BADGES: Record<string, { label: string; className: string }> = {
@@ -48,20 +55,25 @@ function formatRelativeDate(date: Date): string {
 
 export function FeedItemCard({
   item,
-  isShortlisted,
+  isInCrate,
   isPlaying,
-  onToggleShortlist,
+  onToggleCrate,
   onPlay,
   exchangeRates = {},
+  crates,
+  itemCrateIds,
+  onAddToCrate,
+  onRemoveFromCrate,
+  variant = 'feed',
 }: FeedItemCardProps) {
+  const isCrate = variant === 'crate';
+
   const signal = item.socialSignal;
   const signalText = signal.fan
     ? signal.alsoCollectedCount > 0
       ? `${signal.fan.name} and ${signal.alsoCollectedCount} others`
       : signal.fan.name
-    : signal.alsoCollectedCount > 0
-      ? `${signal.alsoCollectedCount} collectors`
-      : null;
+    : null;
 
   return (
     <div
@@ -72,9 +84,9 @@ export function FeedItemCard({
       <button
         onClick={onPlay}
         disabled={!item.track?.streamUrl}
-        className="group relative h-16 w-16 shrink-0 overflow-hidden rounded"
+        className="group relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded"
       >
-        <img src={item.album.imageUrl} alt="" className="h-full w-full object-cover" />
+        <img src={item.album.imageUrl} alt={item.album.title} className="h-full w-full object-cover" />
         {item.track?.streamUrl && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
             <span className="text-xl">{isPlaying ? '⏸' : '▶'}</span>
@@ -87,12 +99,16 @@ export function FeedItemCard({
           <span className="truncate font-medium">
             {item.track?.title ?? item.album.title}
           </span>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STORY_BADGES[item.storyType]?.className ?? 'bg-zinc-800 text-zinc-400'}`}>
-            {STORY_BADGES[item.storyType]?.label ?? item.storyType}
-          </span>
-          <span className="shrink-0 text-xs text-zinc-600">
-            {formatRelativeDate(new Date(item.date))}
-          </span>
+          {!isCrate && (
+            <>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STORY_BADGES[item.storyType]?.className ?? 'bg-zinc-800 text-zinc-400'}`}>
+                {STORY_BADGES[item.storyType]?.label ?? item.storyType}
+              </span>
+              <span className="shrink-0 text-xs text-zinc-600">
+                {formatRelativeDate(new Date(item.date))}
+              </span>
+            </>
+          )}
         </div>
         <div className="truncate text-sm text-zinc-400">
           <a
@@ -116,11 +132,9 @@ export function FeedItemCard({
         </div>
         <div className="mt-0.5 flex flex-wrap gap-1.5">
           {[...new Set(item.tags)].sort().slice(0, 4).map((tag) => (
-            <span key={tag} className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">
-              {tag}
-            </span>
+            <TagPill key={tag} tag={tag} />
           ))}
-          {signalText && (
+          {!isCrate && signalText && (
             <span className="text-xs text-amber-500/80">{signalText}</span>
           )}
         </div>
@@ -129,10 +143,14 @@ export function FeedItemCard({
       <TrackActions
         isPlaying={isPlaying}
         hasStream={!!item.track?.streamUrl}
-        isShortlisted={isShortlisted}
+        isInCrate={isInCrate}
         bandcampUrl={item.album.url}
         onPlay={onPlay}
-        onToggleShortlist={onToggleShortlist}
+        onToggleCrate={onToggleCrate}
+        crates={crates}
+        itemCrateIds={itemCrateIds}
+        onAddToCrate={onAddToCrate}
+        onRemoveFromCrate={onRemoveFromCrate}
       />
     </div>
   );

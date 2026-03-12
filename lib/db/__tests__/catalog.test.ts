@@ -14,6 +14,7 @@ import {
   getCachedAlbumTracks,
   cacheAlbumTracks,
   getArtistsFromFeed,
+  ensureCatalogRelease,
 } from '../catalog';
 
 beforeEach(() => {
@@ -199,5 +200,104 @@ describe('getArtistsFromFeed', () => {
 
   it('returns empty array when no feed items', () => {
     expect(getArtistsFromFeed(fanId)).toEqual([]);
+  });
+});
+
+describe('getCachedDiscography source filtering', () => {
+  it('returns null when only enrichment-sourced rows exist', () => {
+    testDb.prepare(`
+      INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source)
+      VALUES ('testband', 'Test', 'https://testband.bandcamp.com', 'Enriched Album', 'https://testband.bandcamp.com/album/e', '', 'album', 'enrichment')
+    `).run();
+
+    expect(getCachedDiscography('testband')).toBeNull();
+  });
+
+  it('returns data when discography-sourced rows exist', () => {
+    cacheDiscography('testband', 'Test', 'https://testband.bandcamp.com', [
+      { title: 'Full Album', url: 'https://testband.bandcamp.com/album/full', imageUrl: '', releaseType: 'album' },
+    ]);
+
+    const result = getCachedDiscography('testband');
+    expect(result).toHaveLength(1);
+    expect(result![0].title).toBe('Full Album');
+  });
+
+  it('enrichment rows do not prevent a full scrape from being triggered', () => {
+    ensureCatalogRelease(
+      'https://testband.bandcamp.com/album/enriched',
+      'Test', 'testband', 'Enriched', '',
+    );
+
+    expect(getCachedDiscography('testband')).toBeNull();
+  });
+
+  it('cacheDiscography replaces enrichment rows with full discography', () => {
+    ensureCatalogRelease(
+      'https://testband.bandcamp.com/album/enriched',
+      'Test', 'testband', 'Enriched', '',
+    );
+
+    const countBefore = (testDb.prepare('SELECT COUNT(*) AS c FROM catalog_releases WHERE band_slug = ?').get('testband') as { c: number }).c;
+    expect(countBefore).toBe(1);
+
+    cacheDiscography('testband', 'Test', 'https://testband.bandcamp.com', [
+      { title: 'Album A', url: 'https://testband.bandcamp.com/album/a', imageUrl: '', releaseType: 'album' },
+      { title: 'Album B', url: 'https://testband.bandcamp.com/album/b', imageUrl: '', releaseType: 'album' },
+    ]);
+
+    const result = getCachedDiscography('testband');
+    expect(result).toHaveLength(2);
+  });
+
+  it('ensureCatalogRelease sets source to enrichment', () => {
+    ensureCatalogRelease(
+      'https://testband.bandcamp.com/album/e',
+      'Test', 'testband', 'E', '',
+    );
+
+    const row = testDb.prepare('SELECT source FROM catalog_releases WHERE band_slug = ?').get('testband') as { source: string };
+    expect(row.source).toBe('enrichment');
+  });
+});
+
+describe('ensureCatalogRelease', () => {
+  const url = 'https://testband.bandcamp.com/album/test';
+  const bandName = 'Test Band';
+  const bandSlug = 'testband';
+  const title = 'Test Album';
+  const imageUrl = 'https://f4.bcbits.com/img/a123.jpg';
+
+  it('creates a new release when none exists for the URL', () => {
+    const id = ensureCatalogRelease(url, bandName, bandSlug, title, imageUrl);
+    expect(id).toBeGreaterThan(0);
+
+    const row = testDb.prepare('SELECT * FROM catalog_releases WHERE id = ?').get(id) as {
+      band_slug: string;
+      band_name: string;
+      title: string;
+      url: string;
+      image_url: string;
+    };
+    expect(row.band_slug).toBe(bandSlug);
+    expect(row.band_name).toBe(bandName);
+    expect(row.title).toBe(title);
+    expect(row.url).toBe(url);
+    expect(row.image_url).toBe(imageUrl);
+  });
+
+  it('returns existing release ID when URL already exists', () => {
+    const first = ensureCatalogRelease(url, bandName, bandSlug, title, imageUrl);
+    const second = ensureCatalogRelease(url, bandName, bandSlug, title, imageUrl);
+    expect(first).toBe(second);
+
+    const count = (testDb.prepare('SELECT COUNT(*) AS c FROM catalog_releases WHERE url = ?').get(url) as { c: number }).c;
+    expect(count).toBe(1);
+  });
+
+  it('creates separate releases for different URLs', () => {
+    const id1 = ensureCatalogRelease(url, bandName, bandSlug, title, imageUrl);
+    const id2 = ensureCatalogRelease(url + '-2', bandName, bandSlug, 'Another Album', imageUrl);
+    expect(id1).not.toBe(id2);
   });
 });

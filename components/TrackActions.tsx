@@ -1,12 +1,25 @@
+'use client';
+
+import { useState, useRef, useEffect, useCallback } from 'react';
+
+export interface CrateInfo {
+  id: number;
+  name: string;
+}
+
 interface TrackActionsProps {
   isPlaying: boolean;
   hasStream: boolean;
-  isShortlisted: boolean;
+  isInCrate: boolean;
   bandcampUrl: string;
   onPlay: () => void;
-  onToggleShortlist: () => void;
+  onToggleCrate: () => void;
   size?: 'sm' | 'md';
-  showShortlist?: boolean;
+  showCrate?: boolean;
+  crates?: CrateInfo[];
+  itemCrateIds?: number[];
+  onAddToCrate?: (crateId: number) => void;
+  onRemoveFromCrate?: (crateId: number) => void;
 }
 
 const SIZE_CLASSES = {
@@ -20,17 +33,56 @@ const SIZE_CLASSES = {
   },
 };
 
+import { CrateIcon } from '@/components/icons/CrateIcon';
+export { CrateIcon };
+
 export function TrackActions({
   isPlaying,
   hasStream,
-  isShortlisted,
+  isInCrate,
   bandcampUrl,
   onPlay,
-  onToggleShortlist,
+  onToggleCrate,
   size = 'sm',
-  showShortlist = true,
+  showCrate = true,
+  crates,
+  itemCrateIds,
+  onAddToCrate,
+  onRemoveFromCrate,
 }: TrackActionsProps) {
   const s = SIZE_CLASSES[size];
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  const multiCrate = crates && crates.length > 1;
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [pickerOpen]);
+
+  const handleCrateClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (multiCrate) {
+      setPickerOpen((prev) => !prev);
+    } else {
+      onToggleCrate();
+    }
+  }, [multiCrate, onToggleCrate]);
+
+  const handlePickerToggle = useCallback((crateId: number, isIn: boolean) => {
+    if (isIn) {
+      onRemoveFromCrate?.(crateId);
+    } else {
+      onAddToCrate?.(crateId);
+    }
+  }, [onAddToCrate, onRemoveFromCrate]);
 
   return (
     <div className="flex shrink-0 items-center gap-1">
@@ -49,18 +101,45 @@ export function TrackActions({
         <span className="leading-none">{isPlaying ? '⏸' : '▶'}</span>
       </button>
 
-      {showShortlist && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleShortlist(); }}
-          className={`flex items-center justify-center rounded transition-colors ${s.button} ${
-            isShortlisted
-              ? 'text-rose-400 hover:text-rose-300'
-              : 'text-zinc-600 hover:text-zinc-400'
-          }`}
-          title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
-        >
-          <span className="leading-none">{isShortlisted ? '♥' : '♡'}</span>
-        </button>
+      {showCrate && (
+        <div className="relative" ref={pickerRef}>
+          <button
+            onClick={handleCrateClick}
+            className={`flex cursor-pointer items-center justify-center rounded transition-colors ${s.button} ${
+              isInCrate
+                ? 'text-amber-400 hover:text-amber-300'
+                : 'text-zinc-600 hover:text-zinc-400'
+            }`}
+            title={isInCrate ? 'Remove from crate' : 'Add to crate'}
+          >
+            <CrateIcon filled={isInCrate} />
+          </button>
+
+          {pickerOpen && multiCrate && (
+            <div className="absolute right-0 top-full z-30 mt-1 min-w-[160px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+              {crates.map((crate) => {
+                const isIn = itemCrateIds?.includes(crate.id) ?? false;
+                return (
+                  <button
+                    key={crate.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePickerToggle(crate.id, isIn);
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-zinc-800"
+                  >
+                    <span className={`w-4 text-center text-xs ${isIn ? 'text-amber-400' : 'text-zinc-700'}`}>
+                      {isIn ? '✓' : ''}
+                    </span>
+                    <span className={isIn ? 'text-zinc-100' : 'text-zinc-400'}>
+                      {crate.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       <a

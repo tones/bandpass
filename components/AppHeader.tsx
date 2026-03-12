@@ -1,9 +1,9 @@
-type NavTab = 'timeline' | 'music' | 'shortlist';
+type NavTab = 'timeline' | 'music' | 'crates';
 
 const NAV_ITEMS: { id: NavTab; label: string; href: string }[] = [
   { id: 'music', label: 'Music', href: '/music' },
   { id: 'timeline', label: 'Timeline', href: '/timeline' },
-  { id: 'shortlist', label: 'Shortlist', href: '/shortlist' },
+  { id: 'crates', label: 'Crates', href: '/crates' },
 ];
 
 interface AppHeaderProps {

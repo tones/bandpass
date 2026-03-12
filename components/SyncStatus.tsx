@@ -34,9 +34,16 @@ export function SyncStatus({ onSyncComplete, onOldestDateChange }: SyncStatusPro
         onOldestDateChange?.(data.oldestStoryDate);
       }
 
-      const active = data.isSyncing || data.isDeepSyncing || data.isCollectionSyncing;
+      const active = data.isSyncing || data.isDeepSyncing || data.isCollectionSyncing || data.isWishlistSyncing || data.isEnrichingTags;
       if (active) {
-        if (data.isCollectionSyncing) {
+        if (data.isEnrichingTags) {
+          const parts: string[] = [];
+          if (data.tagsEnriched) parts.push(`${data.tagsEnriched} done`);
+          if (data.enrichmentPendingCount) parts.push(`${data.enrichmentPendingCount.toLocaleString()} remaining`);
+          setMessage(parts.length ? `Enriching tags... (${parts.join(', ')})` : 'Enriching tags...');
+        } else if (data.isWishlistSyncing) {
+          setMessage('Syncing wishlist...');
+        } else if (data.isCollectionSyncing) {
           setMessage('Syncing purchases...');
         } else if (data.isDeepSyncing) {
           setMessage('Syncing older history...');

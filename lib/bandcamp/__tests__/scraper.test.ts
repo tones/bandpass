@@ -209,6 +209,59 @@ describe('scraper', () => {
       await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
       expect(mockFetcher).toHaveBeenCalledWith('https://b.bandcamp.com/music');
     });
+
+    it('discovers URLs from broad HTML scan not in JSON or <li> items', async () => {
+      const band = { id: 1, name: 'Label', subdomain: 'label' };
+      const jsonItems = [
+        { id: 100, title: 'Known Album', page_url: '/album/known-album', art_id: 1, type: 'album', band_id: 1 },
+      ];
+      const html = `<html><body>
+        <div data-band="${encode(band)}" data-client-items="${encode(jsonItems)}"></div>
+        <script>var urls = ["/album/known-album", "/album/hidden-gem", "/track/bonus-track"];</script>
+      </body></html>`;
+      mockFetcher = vi.fn().mockResolvedValue(html);
+
+      const result = await fetchDiscography(mockFetcher, 'https://label.bandcamp.com');
+
+      expect(result.items.length).toBe(3);
+      const urls = result.items.map((i) => i.pageUrl);
+      expect(urls).toContain('/album/known-album');
+      expect(urls).toContain('https://label.bandcamp.com/album/hidden-gem');
+      expect(urls).toContain('https://label.bandcamp.com/track/bonus-track');
+    });
+
+    it('does not create duplicates when broad scan finds already-known URLs', async () => {
+      const band = { id: 1, name: 'B', subdomain: 'b' };
+      const jsonItems = [
+        { id: 100, title: 'Album One', page_url: '/album/album-one', art_id: 1, type: 'album', band_id: 1 },
+      ];
+      const html = `<html><body>
+        <div data-band="${encode(band)}" data-client-items="${encode(jsonItems)}"></div>
+        <li data-item-id="album-100" data-band-id="1">
+          <a href="/album/album-one"><img src="" /></a>
+          <p class="title">Album One</p>
+        </li>
+        <script>window.data = { url: "/album/album-one" };</script>
+      </body></html>`;
+      mockFetcher = vi.fn().mockResolvedValue(html);
+
+      const result = await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
+      expect(result.items).toHaveLength(1);
+    });
+
+    it('derives readable title from URL slug for broad-scan items', async () => {
+      const band = { id: 1, name: 'B', subdomain: 'b' };
+      const html = `<html><body>
+        <div data-band="${encode(band)}"></div>
+        <script>"/album/cool-new-album"</script>
+      </body></html>`;
+      mockFetcher = vi.fn().mockResolvedValue(html);
+
+      const result = await fetchDiscography(mockFetcher, 'https://b.bandcamp.com');
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].title).toBe('cool new album');
+      expect(result.items[0].type).toBe('album');
+    });
   });
 
   describe('fetchAlbumTracks', () => {

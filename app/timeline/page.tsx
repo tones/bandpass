@@ -4,7 +4,7 @@ import { getBandcamp } from '@/lib/bandcamp';
 import { getExchangeRates } from '@/lib/currency';
 import { getFeedItems, getTagCounts, getFriendCounts, getItemCount } from '@/lib/db/queries';
 import { getSyncState } from '@/lib/db/sync';
-import { getShortlist } from '@/lib/db/shortlist';
+import { getAllCrateItemIds, getCrates, getItemCrateMultiMap } from '@/lib/db/crates';
 import { FeedView } from '@/components/feed/FeedView';
 import { AppHeader } from '@/components/AppHeader';
 
@@ -55,7 +55,9 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   const tags = syncState?.lastSyncAt ? getTagCounts(fanId) : [];
   const friends = syncState?.lastSyncAt ? getFriendCounts(fanId) : [];
   const totalItems = syncState?.lastSyncAt ? getItemCount(fanId) : 0;
-  const shortlistIds = syncState?.lastSyncAt ? getShortlist(fanId) : new Set<string>();
+  const crateItemIds = syncState?.lastSyncAt ? getAllCrateItemIds(fanId) : new Set<string>();
+  const crates = syncState?.lastSyncAt ? getCrates(fanId).filter((c) => c.source === 'user') : [];
+  const itemCrateMap = syncState?.lastSyncAt ? getItemCrateMultiMap(fanId) : {};
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -65,7 +67,9 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
         initialTotalItems={totalItems}
         initialTags={tags}
         initialFriends={friends}
-        initialShortlist={[...shortlistIds]}
+        initialCrateItemIds={[...crateItemIds]}
+        initialCrates={crates}
+        initialItemCrateMap={itemCrateMap}
         oldestStoryDate={syncState?.oldestStoryDate ?? null}
         exchangeRates={exchangeRates}
         initialTag={initialTag}
