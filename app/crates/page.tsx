@@ -43,7 +43,7 @@ export default async function CratesPage() {
   const initialItemCrateMap = getItemCrateMultiMap(fanId);
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
+    <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
       <AppHeader activeTab="crates" username={username} />
       <CratesView
         crates={crates}

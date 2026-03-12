@@ -281,9 +281,9 @@ export function CratesView({
   }, [activeCrateId, selectCrate]);
 
   return (
-    <div className="flex pb-24">
+    <div className="flex min-h-0 flex-1">
       {/* Sidebar */}
-      <div className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-zinc-800">
+      <div className="flex w-56 shrink-0 flex-col border-r border-zinc-800">
         <nav className="flex-1 overflow-y-auto py-2">
           {crates.map((crate) => {
             const isActive = activeCrateId === crate.id;
@@ -352,7 +352,7 @@ export function CratesView({
           })}
         </nav>
 
-        <div className="border-t border-zinc-800 px-3 py-3">
+        <div className={`border-t border-zinc-800 px-3 py-3 ${playingItem ? 'pb-24' : ''}`}>
           {showNewCrate ? (
             <div className="flex flex-col gap-2">
               <input
@@ -472,7 +472,7 @@ export function CratesView({
       })()}
 
       {/* Main content */}
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 overflow-y-auto ${playingItem ? 'pb-24' : ''}`}>
         {/* Toolbar */}
         {activeCrate && (
           <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
