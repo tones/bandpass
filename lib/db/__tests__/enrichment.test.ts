@@ -81,17 +81,34 @@ describe('enqueueForEnrichment', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('resets failed items to pending', () => {
+  it('resets failed items to pending when URL belongs to fan', () => {
+    const url = 'https://band.bandcamp.com/album/old';
+    seedFeedItem(testDb, fanId, { id: 'p-old', storyType: 'my_purchase', tags: [] });
+    testDb.prepare("UPDATE feed_items SET album_url = ? WHERE id = ?").run(url, 'p-old');
+
     testDb.prepare(
       "INSERT INTO enrichment_queue (album_url, status) VALUES (?, 'failed')",
-    ).run('https://band.bandcamp.com/album/old');
+    ).run(url);
 
     enqueueForEnrichment(fanId);
 
     const row = testDb.prepare(
       "SELECT status FROM enrichment_queue WHERE album_url = ?",
-    ).get('https://band.bandcamp.com/album/old') as { status: string };
+    ).get(url) as { status: string };
     expect(row.status).toBe('pending');
+  });
+
+  it('does not reset failed items belonging to other fans', () => {
+    testDb.prepare(
+      "INSERT INTO enrichment_queue (album_url, status) VALUES (?, 'failed')",
+    ).run('https://other.bandcamp.com/album/theirs');
+
+    enqueueForEnrichment(fanId);
+
+    const row = testDb.prepare(
+      "SELECT status FROM enrichment_queue WHERE album_url = ?",
+    ).get('https://other.bandcamp.com/album/theirs') as { status: string };
+    expect(row.status).toBe('failed');
   });
 
   it('does not enqueue items with empty album_url', () => {

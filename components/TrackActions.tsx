@@ -34,7 +34,6 @@ const SIZE_CLASSES = {
 };
 
 import { CrateIcon } from '@/components/icons/CrateIcon';
-export { CrateIcon };
 
 export function TrackActions({
   isPlaying,

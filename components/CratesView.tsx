@@ -162,16 +162,19 @@ export function CratesView({
     if (!activeCrateId) return;
     const prevItems = items;
     const prevCatalog = catalogItems;
+    const prevWishlist = wishlistItems;
     setItems([]);
     setCatalogItems([]);
+    setWishlistItems([]);
     setConfirmClear(false);
     try {
       await clearCrateAction(activeCrateId);
     } catch {
       setItems(prevItems);
       setCatalogItems(prevCatalog);
+      setWishlistItems(prevWishlist);
     }
-  }, [activeCrateId, items, catalogItems]);
+  }, [activeCrateId, items, catalogItems, wishlistItems]);
 
   const handleOpenAll = useCallback(() => {
     for (const item of items) {
@@ -549,7 +552,6 @@ export function CratesView({
             {catalogItems.map((item) => (
               <CrateItemRow
                 key={item.crateItemId}
-                itemId={item.crateItemId}
                 title={item.trackTitle}
                 subtitle={<><a href={`/music/${extractSlug(item.bandUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.bandName}</a><span className="text-zinc-600">{' · '}{item.releaseTitle}</span></>}
                 imageUrl={item.imageUrl}
@@ -568,7 +570,6 @@ export function CratesView({
             {wishlistItems.map((item) => (
               <CrateItemRow
                 key={item.id}
-                itemId={item.id}
                 title={item.featuredTrackTitle ?? item.title}
                 subtitle={<><a href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.artistName}</a><span className="text-zinc-600">{' · '}{item.title}</span></>}
                 imageUrl={item.imageUrl}
@@ -601,7 +602,6 @@ export function CratesView({
 }
 
 interface CrateItemRowProps {
-  itemId: string;
   title: string;
   subtitle: React.ReactNode;
   imageUrl: string;
@@ -618,7 +618,6 @@ interface CrateItemRowProps {
 }
 
 function CrateItemRow({
-  itemId,
   title,
   subtitle,
   imageUrl,

@@ -177,30 +177,29 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
 
   const handleRemoveFromCrate = useCallback(async (trackId: number, crateId: number) => {
     const id = catalogTrackCrateId(trackId);
-    setItemCrateMap((prev) => {
-      const updated = (prev[id] ?? []).filter((c) => c !== crateId);
-      const next = { ...prev };
-      if (updated.length === 0) {
+    const prevCrateIds = itemCrateMap[id] ?? [];
+    const updated = prevCrateIds.filter((c) => c !== crateId);
+    if (updated.length === 0) {
+      setCrateItemIds((prevIds) => {
+        const s = new Set(prevIds);
+        s.delete(id);
+        return s;
+      });
+      setItemCrateMap((prev) => {
+        const next = { ...prev };
         delete next[id];
-        setCrateItemIds((prevIds) => {
-          const s = new Set(prevIds);
-          s.delete(id);
-          return s;
-        });
-      } else {
-        next[id] = updated;
-      }
-      return next;
-    });
+        return next;
+      });
+    } else {
+      setItemCrateMap((prev) => ({ ...prev, [id]: updated }));
+    }
     try {
       await removeFromCrateAction(crateId, id);
     } catch {
-      setItemCrateMap((prev) => ({
-        ...prev,
-        [id]: [...(prev[id] ?? []), crateId],
-      }));
+      setCrateItemIds((prevIds) => new Set(prevIds).add(id));
+      setItemCrateMap((prev) => ({ ...prev, [id]: prevCrateIds }));
     }
-  }, []);
+  }, [itemCrateMap]);
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-6 pb-28">

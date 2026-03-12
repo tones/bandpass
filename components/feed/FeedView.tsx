@@ -202,30 +202,29 @@ export function FeedView({
   }, []);
 
   const handleRemoveFromCrate = useCallback(async (itemId: string, crateId: number) => {
-    setItemCrateMap((prev) => {
-      const updated = (prev[itemId] ?? []).filter((id) => id !== crateId);
-      const next = { ...prev };
-      if (updated.length === 0) {
+    const prevCrateIds = itemCrateMap[itemId] ?? [];
+    const updated = prevCrateIds.filter((id) => id !== crateId);
+    if (updated.length === 0) {
+      setCrateItemIds((prevIds) => {
+        const s = new Set(prevIds);
+        s.delete(itemId);
+        return s;
+      });
+      setItemCrateMap((prev) => {
+        const next = { ...prev };
         delete next[itemId];
-        setCrateItemIds((prevIds) => {
-          const s = new Set(prevIds);
-          s.delete(itemId);
-          return s;
-        });
-      } else {
-        next[itemId] = updated;
-      }
-      return next;
-    });
+        return next;
+      });
+    } else {
+      setItemCrateMap((prev) => ({ ...prev, [itemId]: updated }));
+    }
     try {
       await removeFromCrateAction(crateId, itemId);
     } catch {
-      setItemCrateMap((prev) => ({
-        ...prev,
-        [itemId]: [...(prev[itemId] ?? []), crateId],
-      }));
+      setCrateItemIds((prevIds) => new Set(prevIds).add(itemId));
+      setItemCrateMap((prev) => ({ ...prev, [itemId]: prevCrateIds }));
     }
-  }, []);
+  }, [itemCrateMap]);
 
   const grouped = groupByDate(items);
 

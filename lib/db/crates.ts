@@ -42,9 +42,16 @@ export function getCrates(fanId: number): Crate[] {
 }
 
 const MAX_CRATE_NAME_LENGTH = 64;
+const MAX_USER_CRATES = 100;
 
 export function createCrate(fanId: number, name: string): number {
   const db = getDb();
+  const count = db.prepare(
+    "SELECT COUNT(*) AS c FROM crates WHERE fan_id = ? AND source = 'user'",
+  ).get(fanId) as { c: number };
+  if (count.c >= MAX_USER_CRATES) {
+    throw new Error(`Cannot create more than ${MAX_USER_CRATES} crates`);
+  }
   const result = db.prepare(
     'INSERT INTO crates (fan_id, name, source) VALUES (?, ?, ?)',
   ).run(fanId, name.slice(0, MAX_CRATE_NAME_LENGTH), 'user');
@@ -96,6 +103,8 @@ export function getCrateItems(crateId: number, fanId: number): FeedItem[] {
 
 export function getCrateCatalogItems(crateId: number, fanId: number): CrateCatalogItem[] {
   const db = getDb();
+  const owns = db.prepare('SELECT 1 FROM crates WHERE id = ? AND fan_id = ?').get(crateId, fanId);
+  if (!owns) return [];
   const rows = db.prepare(`
     SELECT ci.feed_item_id, ct.id as track_id, ct.title as track_title,
            ct.duration, ct.stream_url, ct.track_url, cr.title as release_title,
@@ -189,6 +198,8 @@ export function clearCrate(crateId: number, fanId: number): void {
 
 export function getCrateWishlistItems(crateId: number, fanId: number): WishlistItem[] {
   const db = getDb();
+  const owns = db.prepare('SELECT 1 FROM crates WHERE id = ? AND fan_id = ?').get(crateId, fanId);
+  if (!owns) return [];
   const rows = db.prepare(`
     SELECT wi.id, wi.tralbum_id, wi.tralbum_type, wi.title, wi.artist_name, wi.artist_url,
            wi.image_url, wi.item_url, wi.featured_track_title, wi.featured_track_duration,

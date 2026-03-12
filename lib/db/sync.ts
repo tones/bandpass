@@ -569,10 +569,6 @@ function deleteStaleWishlistItems(fanId: number, keepIds: Set<string>) {
 export function enqueueForEnrichment(fanId: number): number {
   const db = getDb();
 
-  db.prepare(
-    "UPDATE enrichment_queue SET status = 'pending', processed_at = NULL WHERE status = 'failed'",
-  ).run();
-
   const insert = db.prepare(
     "INSERT OR IGNORE INTO enrichment_queue (album_url) VALUES (?)",
   );
@@ -584,15 +580,28 @@ export function enqueueForEnrichment(fanId: number): number {
       WHERE fan_id = ? AND story_type = 'my_purchase' AND tags = '[]' AND album_url != ''
     `).all(fanId) as Array<{ album_url: string }>;
 
-    for (const row of purchases) {
-      const result = insert.run(row.album_url);
-      if (result.changes > 0) enqueued++;
-    }
-
     const wishlist = db.prepare(`
       SELECT DISTINCT item_url FROM wishlist_items
       WHERE fan_id = ? AND tags = '[]' AND item_url != ''
     `).all(fanId) as Array<{ item_url: string }>;
+
+    const fanUrls = new Set([
+      ...purchases.map((r) => r.album_url),
+      ...wishlist.map((r) => r.item_url),
+    ]);
+
+    if (fanUrls.size > 0) {
+      const placeholders = [...fanUrls].map(() => '?').join(',');
+      db.prepare(
+        `UPDATE enrichment_queue SET status = 'pending', processed_at = NULL
+         WHERE status = 'failed' AND album_url IN (${placeholders})`,
+      ).run(...fanUrls);
+    }
+
+    for (const row of purchases) {
+      const result = insert.run(row.album_url);
+      if (result.changes > 0) enqueued++;
+    }
 
     for (const row of wishlist) {
       const result = insert.run(row.item_url);
@@ -616,13 +625,13 @@ export function getEnrichmentPendingCount(fanId: number): number {
     SELECT COUNT(*) AS c FROM feed_items fi
     WHERE fi.fan_id = ? AND fi.story_type = 'my_purchase' AND fi.tags = '[]'
       AND fi.album_url != ''
-      AND fi.album_url NOT IN (SELECT album_url FROM enrichment_queue)
+      AND NOT EXISTS (SELECT 1 FROM enrichment_queue eq WHERE eq.album_url = fi.album_url)
   `).get(fanId) as { c: number };
   const wishlist = db.prepare(`
     SELECT COUNT(*) AS c FROM wishlist_items wi
     WHERE wi.fan_id = ? AND wi.tags = '[]'
       AND wi.item_url != ''
-      AND wi.item_url NOT IN (SELECT album_url FROM enrichment_queue)
+      AND NOT EXISTS (SELECT 1 FROM enrichment_queue eq WHERE eq.album_url = wi.item_url)
   `).get(fanId) as { c: number };
   return purchases.c + wishlist.c;
 }
