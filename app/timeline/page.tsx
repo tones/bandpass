@@ -52,17 +52,17 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
     }
   }
 
-  const syncState = getSyncState(fanId);
+  const syncState = await getSyncState(fanId);
   const exchangeRates = await getExchangeRates();
   const validTypes = ['new_release', 'friend_purchase', 'my_purchase'] as const;
   const storyType = validTypes.find((t) => t === initialType);
-  const items = syncState?.lastSyncAt ? getFeedItems(fanId, { tag: initialTag, storyType, friendUsername: initialFriend }) : [];
-  const tags = syncState?.lastSyncAt ? getTagCounts(fanId) : [];
-  const friends = syncState?.lastSyncAt ? getFriendCounts(fanId) : [];
-  const totalItems = syncState?.lastSyncAt ? getItemCount(fanId) : 0;
-  const crateItemIds = syncState?.lastSyncAt ? getAllCrateItemIds(fanId) : new Set<string>();
-  const crates = syncState?.lastSyncAt ? getCrates(fanId).filter((c) => c.source === 'user') : [];
-  const itemCrateMap = syncState?.lastSyncAt ? getItemCrateMultiMap(fanId) : {};
+  const items = syncState?.lastSyncAt ? await getFeedItems(fanId, { tag: initialTag, storyType, friendUsername: initialFriend }) : [];
+  const tags = syncState?.lastSyncAt ? await getTagCounts(fanId) : [];
+  const friends = syncState?.lastSyncAt ? await getFriendCounts(fanId) : [];
+  const totalItems = syncState?.lastSyncAt ? await getItemCount(fanId) : 0;
+  const crateItemIds = syncState?.lastSyncAt ? await getAllCrateItemIds(fanId) : new Set<string>();
+  const crates = syncState?.lastSyncAt ? (await getCrates(fanId)).filter((c) => c.source === 'user') : [];
+  const itemCrateMap = syncState?.lastSyncAt ? await getItemCrateMultiMap(fanId) : {};
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">

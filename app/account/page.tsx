@@ -18,10 +18,10 @@ export default async function AccountPage() {
   }
 
   const fanId = session.fanId;
-  const syncState = getSyncState(fanId);
-  const totalItems = getItemCount(fanId);
-  const purchaseItems = getItemCountByType(fanId, 'my_purchase');
-  const wishlistItemCount = getWishlistItemCount(fanId);
+  const syncState = await getSyncState(fanId);
+  const totalItems = await getItemCount(fanId);
+  const purchaseItems = await getItemCountByType(fanId, 'my_purchase');
+  const wishlistItemCount = await getWishlistItemCount(fanId);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">

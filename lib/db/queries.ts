@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { query, queryOne } from './index';
 import type { FeedItem, StoryType } from '@/lib/bandcamp/types/domain';
 
 export interface FeedFilters {
@@ -13,7 +13,7 @@ export interface FeedItemRow {
   id: string;
   fan_id: number;
   story_type: string;
-  date: string;
+  date: Date | string;
   album_id: number;
   album_title: string;
   album_url: string;
@@ -24,7 +24,7 @@ export interface FeedItemRow {
   track_title: string | null;
   track_duration: number | null;
   track_stream_url: string | null;
-  tags: string;
+  tags: string | string[];
   price_amount: number | null;
   price_currency: string | null;
   fan_name: string | null;
@@ -34,9 +34,10 @@ export interface FeedItemRow {
   musical_key: string | null;
 }
 
-function safeParseTags(json: string): string[] {
+function safeParseTags(tags: string | string[]): string[] {
+  if (Array.isArray(tags)) return tags;
   try {
-    const parsed = JSON.parse(json);
+    const parsed = JSON.parse(tags);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -82,37 +83,43 @@ export function rowToFeedItem(row: FeedItemRow): FeedItem {
   };
 }
 
-export function getFeedItems(fanId: number, filters: FeedFilters = {}): FeedItem[] {
-  const db = getDb();
-  const conditions: string[] = ['fi.fan_id = ?'];
+export async function getFeedItems(fanId: number, filters: FeedFilters = {}): Promise<FeedItem[]> {
   const params: (string | number)[] = [fanId];
+  let paramIndex = 2;
+
+  const conditions: string[] = ['fi.fan_id = $1'];
 
   if (filters.storyType) {
-    conditions.push('fi.story_type = ?');
+    conditions.push(`fi.story_type = $${paramIndex}`);
     params.push(filters.storyType);
+    paramIndex++;
   }
   if (filters.friendUsername) {
-    conditions.push('fi.fan_username = ?');
+    conditions.push(`fi.fan_username = $${paramIndex}`);
     params.push(filters.friendUsername);
+    paramIndex++;
   }
   if (filters.dateFrom) {
-    conditions.push('fi.date >= ?');
+    conditions.push(`fi.date >= $${paramIndex}`);
     params.push(filters.dateFrom);
+    paramIndex++;
   }
   if (filters.dateTo) {
-    conditions.push('fi.date < ?');
+    conditions.push(`fi.date < $${paramIndex}`);
     params.push(filters.dateTo);
+    paramIndex++;
   }
 
   let sql: string;
   if (filters.tag) {
+    conditions.push(`t.value = $${paramIndex}`);
+    params.push(filters.tag);
     sql = `
-      SELECT DISTINCT fi.* FROM feed_items fi, json_each(fi.tags) AS t
-      WHERE ${conditions.join(' AND ')} AND t.value = ?
+      SELECT DISTINCT fi.* FROM feed_items fi, jsonb_array_elements_text(fi.tags) AS t(value)
+      WHERE ${conditions.join(' AND ')}
       ORDER BY fi.date DESC
       LIMIT 500
     `;
-    params.push(filters.tag);
   } else {
     sql = `
       SELECT fi.* FROM feed_items fi
@@ -122,7 +129,7 @@ export function getFeedItems(fanId: number, filters: FeedFilters = {}): FeedItem
     `;
   }
 
-  const rows = db.prepare(sql).all(...params) as FeedItemRow[];
+  const rows = await query<FeedItemRow>(sql, params);
   return rows.map(rowToFeedItem);
 }
 
@@ -131,16 +138,18 @@ export interface TagCount {
   count: number;
 }
 
-export function getTagCounts(fanId: number): TagCount[] {
-  const db = getDb();
-  const rows = db.prepare(`
+export async function getTagCounts(fanId: number): Promise<TagCount[]> {
+  const rows = await query<{ name: string; count: number }>(
+    `
     SELECT t.value AS name, COUNT(*) AS count
-    FROM feed_items fi, json_each(fi.tags) AS t
-    WHERE fi.fan_id = ?
+    FROM feed_items fi, jsonb_array_elements_text(fi.tags) AS t(value)
+    WHERE fi.fan_id = $1
     GROUP BY t.value
     HAVING COUNT(*) >= 5
-    ORDER BY t.value COLLATE NOCASE
-  `).all(fanId) as { name: string; count: number }[];
+    ORDER BY LOWER(t.value)
+  `,
+    [fanId],
+  );
   return rows;
 }
 
@@ -150,26 +159,32 @@ export interface FriendCount {
   count: number;
 }
 
-export function getFriendCounts(fanId: number): FriendCount[] {
-  const db = getDb();
-  const rows = db.prepare(`
+export async function getFriendCounts(fanId: number): Promise<FriendCount[]> {
+  const rows = await query<{ name: string; username: string; count: number }>(
+    `
     SELECT fan_name AS name, fan_username AS username, COUNT(*) AS count
     FROM feed_items
-    WHERE fan_id = ? AND story_type = 'friend_purchase' AND fan_username IS NOT NULL
-    GROUP BY fan_username
+    WHERE fan_id = $1 AND story_type = 'friend_purchase' AND fan_username IS NOT NULL
+    GROUP BY fan_username, fan_name
     ORDER BY count DESC
-  `).all(fanId) as { name: string; username: string; count: number }[];
+  `,
+    [fanId],
+  );
   return rows;
 }
 
-export function getItemCount(fanId: number): number {
-  const db = getDb();
-  const row = db.prepare('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number };
-  return row.c;
+export async function getItemCount(fanId: number): Promise<number> {
+  const row = await queryOne<{ c: string }>(
+    'SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1',
+    [fanId],
+  );
+  return row ? parseInt(row.c, 10) : 0;
 }
 
-export function getItemCountByType(fanId: number, storyType: string): number {
-  const db = getDb();
-  const row = db.prepare('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = ? AND story_type = ?').get(fanId, storyType) as { c: number };
-  return row.c;
+export async function getItemCountByType(fanId: number, storyType: string): Promise<number> {
+  const row = await queryOne<{ c: string }>(
+    'SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1 AND story_type = $2',
+    [fanId, storyType],
+  );
+  return row ? parseInt(row.c, 10) : 0;
 }

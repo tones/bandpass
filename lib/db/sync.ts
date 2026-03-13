@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { query, queryOne, execute, transaction } from './index';
 import { BandcampAPI } from '@/lib/bandcamp/api';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
 import { fetchAlbumTracks, publicFetcher, extractSlug } from '@/lib/bandcamp/scraper';
@@ -28,7 +28,7 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 const INSERT_ITEM = `
-  INSERT OR REPLACE INTO feed_items (
+  INSERT INTO feed_items (
     id, fan_id, story_type, date,
     album_id, album_title, album_url, album_image_url,
     artist_id, artist_name, artist_url,
@@ -36,21 +36,38 @@ const INSERT_ITEM = `
     tags, price_amount, price_currency,
     fan_name, fan_username, also_collected_count
   ) VALUES (
-    ?, ?, ?, ?,
-    ?, ?, ?, ?,
-    ?, ?, ?,
-    ?, ?, ?,
-    ?, ?, ?,
-    ?, ?, ?
+    $1, $2, $3, $4,
+    $5, $6, $7, $8,
+    $9, $10, $11,
+    $12, $13, $14,
+    $15::jsonb, $16, $17,
+    $18, $19, $20
   )
+  ON CONFLICT(id, fan_id) DO UPDATE SET
+    story_type = excluded.story_type,
+    date = excluded.date,
+    album_id = excluded.album_id,
+    album_title = excluded.album_title,
+    album_url = excluded.album_url,
+    album_image_url = excluded.album_image_url,
+    artist_id = excluded.artist_id,
+    artist_name = excluded.artist_name,
+    artist_url = excluded.artist_url,
+    track_title = excluded.track_title,
+    track_duration = excluded.track_duration,
+    track_stream_url = excluded.track_stream_url,
+    tags = excluded.tags,
+    price_amount = excluded.price_amount,
+    price_currency = excluded.price_currency,
+    fan_name = excluded.fan_name,
+    fan_username = excluded.fan_username,
+    also_collected_count = excluded.also_collected_count
 `;
 
-function insertItems(fanId: number, items: FeedItem[]) {
-  const db = getDb();
-  const stmt = db.prepare(INSERT_ITEM);
-  const tx = db.transaction((batch: FeedItem[]) => {
-    for (const item of batch) {
-      stmt.run(
+async function insertItems(fanId: number, items: FeedItem[]) {
+  await transaction(async (client) => {
+    for (const item of items) {
+      await client.query(INSERT_ITEM, [
         item.id,
         fanId,
         item.storyType,
@@ -71,10 +88,9 @@ function insertItems(fanId: number, items: FeedItem[]) {
         item.socialSignal?.fan?.name ?? null,
         item.socialSignal?.fan?.username ?? null,
         item.socialSignal?.alsoCollectedCount ?? 0,
-      );
+      ]);
     }
   });
-  tx(items);
 }
 
 export interface SyncState {
@@ -89,21 +105,18 @@ export interface SyncState {
   wishlistSynced: boolean;
 }
 
-export function getSyncState(fanId: number): SyncState | null {
-  const db = getDb();
-  const row = db
-    .prepare('SELECT * FROM sync_state WHERE fan_id = ?')
-    .get(fanId) as {
+export async function getSyncState(fanId: number): Promise<SyncState | null> {
+  const row = await queryOne<{
     fan_id: number;
     oldest_story_date: number | null;
     newest_story_date: number | null;
     total_items: number;
-    is_syncing: number;
-    last_sync_at: string | null;
-    deep_sync_complete: number;
-    collection_synced: number;
-    wishlist_synced: number;
-  } | undefined;
+    is_syncing: boolean;
+    last_sync_at: Date | string | null;
+    deep_sync_complete: boolean;
+    collection_synced: boolean;
+    wishlist_synced: boolean;
+  }>('SELECT * FROM sync_state WHERE fan_id = $1', [fanId]);
 
   if (!row) return null;
   return {
@@ -111,27 +124,25 @@ export function getSyncState(fanId: number): SyncState | null {
     oldestStoryDate: row.oldest_story_date,
     newestStoryDate: row.newest_story_date,
     totalItems: row.total_items,
-    isSyncing: row.is_syncing === 1,
-    lastSyncAt: row.last_sync_at,
-    deepSyncComplete: row.deep_sync_complete === 1,
-    collectionSynced: row.collection_synced === 1,
-    wishlistSynced: row.wishlist_synced === 1,
+    isSyncing: row.is_syncing,
+    lastSyncAt: row.last_sync_at instanceof Date ? row.last_sync_at.toISOString() : row.last_sync_at,
+    deepSyncComplete: row.deep_sync_complete,
+    collectionSynced: row.collection_synced,
+    wishlistSynced: row.wishlist_synced,
   };
 }
 
-function setSyncing(fanId: number, syncing: boolean) {
-  const db = getDb();
-  db.prepare(`
-    INSERT INTO sync_state (fan_id, is_syncing) VALUES (?, ?)
+async function setSyncing(fanId: number, syncing: boolean) {
+  await execute(`
+    INSERT INTO sync_state (fan_id, is_syncing) VALUES ($1, $2)
     ON CONFLICT(fan_id) DO UPDATE SET is_syncing = excluded.is_syncing
-  `).run(fanId, syncing ? 1 : 0);
+  `, [fanId, syncing]);
 }
 
-function updateSyncProgress(fanId: number, oldestDate: number, newestDate: number, totalItems: number) {
-  const db = getDb();
-  db.prepare(`
+async function updateSyncProgress(fanId: number, oldestDate: number, newestDate: number, totalItems: number) {
+  await execute(`
     INSERT INTO sync_state (fan_id, oldest_story_date, newest_story_date, total_items, is_syncing, last_sync_at)
-    VALUES (?, ?, ?, ?, 1, datetime('now'))
+    VALUES ($1, $2, $3, $4, true, NOW())
     ON CONFLICT(fan_id) DO UPDATE SET
       oldest_story_date = CASE
         WHEN excluded.oldest_story_date < COALESCE(sync_state.oldest_story_date, 9999999999)
@@ -140,8 +151,8 @@ function updateSyncProgress(fanId: number, oldestDate: number, newestDate: numbe
         WHEN excluded.newest_story_date > COALESCE(sync_state.newest_story_date, 0)
         THEN excluded.newest_story_date ELSE sync_state.newest_story_date END,
       total_items = excluded.total_items,
-      last_sync_at = datetime('now')
-  `).run(fanId, oldestDate, newestDate, totalItems);
+      last_sync_at = NOW()
+  `, [fanId, oldestDate, newestDate, totalItems]);
 }
 
 const SIX_MONTHS_SECONDS = 180 * 24 * 60 * 60;
@@ -151,8 +162,7 @@ const SIX_MONTHS_SECONDS = 180 * 24 * 60 * 60;
  * storing items as each page arrives. Returns the total number of items synced.
  */
 export async function syncFeedInitial(api: BandcampAPI, fanId: number): Promise<number> {
-  const db = getDb();
-  setSyncing(fanId, true);
+  await setSyncing(fanId, true);
 
   const cutoff = Math.floor(Date.now() / 1000) - SIX_MONTHS_SECONDS;
   let olderThan: number | undefined;
@@ -164,11 +174,12 @@ export async function syncFeedInitial(api: BandcampAPI, fanId: number): Promise<
 
       if (page.items.length === 0) break;
 
-      insertItems(fanId, page.items);
+      await insertItems(fanId, page.items);
       totalSynced += page.items.length;
 
-      const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
-      updateSyncProgress(fanId, page.oldestStoryDate, page.newestStoryDate, dbTotal);
+      const countRow = await queryOne<{ c: string }>('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1', [fanId]);
+      const dbTotal = parseInt(countRow!.c, 10);
+      await updateSyncProgress(fanId, page.oldestStoryDate, page.newestStoryDate, dbTotal);
 
       if (!page.hasMore) break;
       if (page.oldestStoryDate >= (olderThan ?? Infinity)) break;
@@ -176,7 +187,7 @@ export async function syncFeedInitial(api: BandcampAPI, fanId: number): Promise<
       olderThan = page.oldestStoryDate;
     }
   } finally {
-    setSyncing(fanId, false);
+    await setSyncing(fanId, false);
   }
 
   return totalSynced;
@@ -191,19 +202,14 @@ const CONSECUTIVE_KNOWN_PAGES_THRESHOLD = 3;
  * pages where every item was already in the DB.
  */
 export async function syncFeedIncremental(api: BandcampAPI, fanId: number): Promise<number> {
-  const state = getSyncState(fanId);
+  const state = await getSyncState(fanId);
   if (!state?.newestStoryDate) {
     return syncFeedInitial(api, fanId);
   }
 
-  const db = getDb();
-  setSyncing(fanId, true);
+  await setSyncing(fanId, true);
   let totalNew = 0;
   let consecutiveKnownPages = 0;
-
-  const existsStmt = db.prepare(
-    'SELECT 1 FROM feed_items WHERE id = ? AND fan_id = ?',
-  );
 
   try {
     let olderThan: number | undefined;
@@ -213,12 +219,14 @@ export async function syncFeedIncremental(api: BandcampAPI, fanId: number): Prom
 
       if (page.items.length === 0) break;
 
-      const newItems = page.items.filter(
-        (item) => !existsStmt.get(item.id, fanId),
-      );
+      const newItems: FeedItem[] = [];
+      for (const item of page.items) {
+        const exists = await queryOne('SELECT 1 FROM feed_items WHERE id = $1 AND fan_id = $2', [item.id, fanId]);
+        if (!exists) newItems.push(item);
+      }
 
       if (newItems.length > 0) {
-        insertItems(fanId, newItems);
+        await insertItems(fanId, newItems);
         totalNew += newItems.length;
         consecutiveKnownPages = 0;
       } else {
@@ -231,23 +239,24 @@ export async function syncFeedIncremental(api: BandcampAPI, fanId: number): Prom
       olderThan = page.oldestStoryDate;
     }
 
-    const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
-    const newest = (db.prepare('SELECT MAX(date) as d FROM feed_items WHERE fan_id = ?').get(fanId) as { d: string }).d;
-    if (newest) {
-      updateSyncProgress(fanId, state.oldestStoryDate!, Math.floor(new Date(newest).getTime() / 1000), dbTotal);
+    const countRow = await queryOne<{ c: string }>('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1', [fanId]);
+    const dbTotal = parseInt(countRow!.c, 10);
+    const newestRow = await queryOne<{ d: Date | string }>('SELECT MAX(date) AS d FROM feed_items WHERE fan_id = $1', [fanId]);
+    if (newestRow?.d) {
+      await updateSyncProgress(fanId, state.oldestStoryDate!, Math.floor(new Date(newestRow.d).getTime() / 1000), dbTotal);
     }
   } finally {
-    setSyncing(fanId, false);
+    await setSyncing(fanId, false);
   }
 
   return totalNew;
 }
 
-function setDeepSyncComplete(fanId: number) {
-  const db = getDb();
-  db.prepare(
-    'UPDATE sync_state SET deep_sync_complete = 1 WHERE fan_id = ?',
-  ).run(fanId);
+async function setDeepSyncComplete(fanId: number) {
+  await execute(
+    'UPDATE sync_state SET deep_sync_complete = true WHERE fan_id = $1',
+    [fanId],
+  );
 }
 
 const DEEP_SYNC_PAGE_DELAY_MS = 500;
@@ -258,11 +267,10 @@ const DEEP_SYNC_PAGE_DELAY_MS = 500;
  * 429 retry. Sets deep_sync_complete when the feed is exhausted.
  */
 export async function syncFeedDeep(api: BandcampAPI, fanId: number): Promise<number> {
-  const db = getDb();
-  const state = getSyncState(fanId);
+  const state = await getSyncState(fanId);
   if (!state?.oldestStoryDate) return 0;
 
-  setSyncing(fanId, true);
+  await setSyncing(fanId, true);
   let olderThan = state.oldestStoryDate;
   let totalSynced = 0;
 
@@ -274,55 +282,51 @@ export async function syncFeedDeep(api: BandcampAPI, fanId: number): Promise<num
 
       if (page.items.length === 0) break;
 
-      insertItems(fanId, page.items);
+      await insertItems(fanId, page.items);
       totalSynced += page.items.length;
 
-      const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
-      updateSyncProgress(fanId, page.oldestStoryDate, page.newestStoryDate, dbTotal);
+      const countRow = await queryOne<{ c: string }>('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1', [fanId]);
+      const dbTotal = parseInt(countRow!.c, 10);
+      await updateSyncProgress(fanId, page.oldestStoryDate, page.newestStoryDate, dbTotal);
 
       if (!page.hasMore) break;
       if (page.oldestStoryDate >= olderThan) break;
       olderThan = page.oldestStoryDate;
     }
 
-    setDeepSyncComplete(fanId);
+    await setDeepSyncComplete(fanId);
   } finally {
-    setSyncing(fanId, false);
+    await setSyncing(fanId, false);
   }
 
   return totalSynced;
 }
 
-function setCollectionSynced(fanId: number) {
-  const db = getDb();
-  db.prepare(
-    'UPDATE sync_state SET collection_synced = 1 WHERE fan_id = ?',
-  ).run(fanId);
+async function setCollectionSynced(fanId: number) {
+  await execute(
+    'UPDATE sync_state SET collection_synced = true WHERE fan_id = $1',
+    [fanId],
+  );
 }
 
-/**
- * Enrich my_purchase items that have no tags by copying tags from feed items
- * with the same album_id (new_release or friend_purchase items often have tags).
- */
-function enrichPurchaseTags(fanId: number) {
-  const db = getDb();
-  db.prepare(`
+async function enrichPurchaseTags(fanId: number) {
+  await execute(`
     UPDATE feed_items SET tags = (
       SELECT f2.tags FROM feed_items f2
       WHERE f2.fan_id = feed_items.fan_id
         AND f2.album_id = feed_items.album_id
         AND f2.story_type != 'my_purchase'
-        AND f2.tags != '[]'
+        AND f2.tags != '[]'::jsonb
       LIMIT 1
     )
-    WHERE fan_id = ?
+    WHERE fan_id = $1
       AND story_type = 'my_purchase'
-      AND tags = '[]'
+      AND tags = '[]'::jsonb
       AND album_id IN (
         SELECT DISTINCT f3.album_id FROM feed_items f3
-        WHERE f3.fan_id = ? AND f3.story_type != 'my_purchase' AND f3.tags != '[]'
+        WHERE f3.fan_id = $2 AND f3.story_type != 'my_purchase' AND f3.tags != '[]'::jsonb
       )
-  `).run(fanId, fanId);
+  `, [fanId, fanId]);
 }
 
 const COLLECTION_PAGE_DELAY_MS = 500;
@@ -332,8 +336,7 @@ const COLLECTION_PAGE_DELAY_MS = 500;
  * storing them as feed items with story_type='my_purchase'.
  */
 export async function syncCollection(api: BandcampAPI, fanId: number): Promise<number> {
-  const db = getDb();
-  setSyncing(fanId, true);
+  await setSyncing(fanId, true);
   let lastToken: string | undefined;
   let totalSynced = 0;
 
@@ -347,14 +350,16 @@ export async function syncCollection(api: BandcampAPI, fanId: number): Promise<n
 
       if (page.items.length === 0) break;
 
-      insertItems(fanId, page.items);
+      await insertItems(fanId, page.items);
       totalSynced += page.items.length;
 
-      const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
-      updateSyncProgress(
+      const countRow = await queryOne<{ c: string }>('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1', [fanId]);
+      const dbTotal = parseInt(countRow!.c, 10);
+      const currentState = await getSyncState(fanId);
+      await updateSyncProgress(
         fanId,
-        getSyncState(fanId)?.oldestStoryDate ?? Math.floor(Date.now() / 1000),
-        getSyncState(fanId)?.newestStoryDate ?? 0,
+        currentState?.oldestStoryDate ?? Math.floor(Date.now() / 1000),
+        currentState?.newestStoryDate ?? 0,
         dbTotal,
       );
 
@@ -362,10 +367,10 @@ export async function syncCollection(api: BandcampAPI, fanId: number): Promise<n
       lastToken = page.lastToken;
     }
 
-    enrichPurchaseTags(fanId);
-    setCollectionSynced(fanId);
+    await enrichPurchaseTags(fanId);
+    await setCollectionSynced(fanId);
   } finally {
-    setSyncing(fanId, false);
+    await setSyncing(fanId, false);
   }
 
   return totalSynced;
@@ -376,18 +381,17 @@ export async function syncCollection(api: BandcampAPI, fanId: number): Promise<n
  * compares against the newest my_purchase in the DB. Pages until it hits known items.
  */
 export async function syncCollectionIncremental(api: BandcampAPI, fanId: number): Promise<number> {
-  const db = getDb();
-
-  const newest = db.prepare(
-    "SELECT date FROM feed_items WHERE fan_id = ? AND story_type = 'my_purchase' ORDER BY date DESC LIMIT 1",
-  ).get(fanId) as { date: string } | undefined;
+  const newest = await queryOne<{ date: Date | string }>(
+    "SELECT date FROM feed_items WHERE fan_id = $1 AND story_type = 'my_purchase' ORDER BY date DESC LIMIT 1",
+    [fanId],
+  );
 
   if (!newest) {
     return syncCollection(api, fanId);
   }
 
   const newestDate = new Date(newest.date).getTime();
-  setSyncing(fanId, true);
+  await setSyncing(fanId, true);
   let lastToken: string | undefined;
   let totalNew = 0;
 
@@ -404,7 +408,7 @@ export async function syncCollectionIncremental(api: BandcampAPI, fanId: number)
       );
 
       if (newItems.length > 0) {
-        insertItems(fanId, newItems);
+        await insertItems(fanId, newItems);
         totalNew += newItems.length;
       }
 
@@ -413,25 +417,26 @@ export async function syncCollectionIncremental(api: BandcampAPI, fanId: number)
       lastToken = page.lastToken;
     }
 
-    if (totalNew > 0) enrichPurchaseTags(fanId);
+    if (totalNew > 0) await enrichPurchaseTags(fanId);
 
-    const dbTotal = (db.prepare('SELECT COUNT(*) as c FROM feed_items WHERE fan_id = ?').get(fanId) as { c: number }).c;
-    const state = getSyncState(fanId);
+    const countRow = await queryOne<{ c: string }>('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1', [fanId]);
+    const dbTotal = parseInt(countRow!.c, 10);
+    const state = await getSyncState(fanId);
     if (state) {
-      updateSyncProgress(fanId, state.oldestStoryDate ?? Math.floor(Date.now() / 1000), state.newestStoryDate ?? 0, dbTotal);
+      await updateSyncProgress(fanId, state.oldestStoryDate ?? Math.floor(Date.now() / 1000), state.newestStoryDate ?? 0, dbTotal);
     }
   } finally {
-    setSyncing(fanId, false);
+    await setSyncing(fanId, false);
   }
 
   return totalNew;
 }
 
-function setWishlistSynced(fanId: number) {
-  const db = getDb();
-  db.prepare(
-    'UPDATE sync_state SET wishlist_synced = 1 WHERE fan_id = ?',
-  ).run(fanId);
+async function setWishlistSynced(fanId: number) {
+  await execute(
+    'UPDATE sync_state SET wishlist_synced = true WHERE fan_id = $1',
+    [fanId],
+  );
 }
 
 const UPSERT_WISHLIST_ITEM = `
@@ -440,7 +445,7 @@ const UPSERT_WISHLIST_ITEM = `
     artist_name, artist_url, image_url, item_url,
     featured_track_title, featured_track_duration, stream_url,
     also_collected_count, is_preorder, tags
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
   ON CONFLICT(id, fan_id) DO UPDATE SET
     tralbum_id = excluded.tralbum_id,
     tralbum_type = excluded.tralbum_type,
@@ -454,16 +459,14 @@ const UPSERT_WISHLIST_ITEM = `
     stream_url = excluded.stream_url,
     also_collected_count = excluded.also_collected_count,
     is_preorder = excluded.is_preorder,
-    synced_at = datetime('now'),
-    tags = CASE WHEN wishlist_items.tags != '[]' THEN wishlist_items.tags ELSE excluded.tags END
+    synced_at = NOW(),
+    tags = CASE WHEN wishlist_items.tags != '[]'::jsonb THEN wishlist_items.tags ELSE excluded.tags END
 `;
 
-function insertWishlistItems(fanId: number, items: WishlistItem[]) {
-  const db = getDb();
-  const stmt = db.prepare(UPSERT_WISHLIST_ITEM);
-  const tx = db.transaction((batch: WishlistItem[]) => {
-    for (const item of batch) {
-      stmt.run(
+async function insertWishlistItems(fanId: number, items: WishlistItem[]) {
+  await transaction(async (client) => {
+    for (const item of items) {
+      await client.query(UPSERT_WISHLIST_ITEM, [
         item.id,
         fanId,
         item.tralbumId,
@@ -477,16 +480,15 @@ function insertWishlistItems(fanId: number, items: WishlistItem[]) {
         item.featuredTrackDuration,
         item.streamUrl,
         item.alsoCollectedCount,
-        item.isPreorder ? 1 : 0,
+        item.isPreorder,
         JSON.stringify(item.tags ?? []),
-      );
+      ]);
     }
   });
-  tx(items);
 }
 
-function ensureWishlistCrate(fanId: number): number {
-  return ensureCrateBySource(fanId, 'bandcamp_wishlist', 'Bandcamp Wishlist');
+async function ensureWishlistCrate(fanId: number): Promise<number> {
+  return await ensureCrateBySource(fanId, 'bandcamp_wishlist', 'Bandcamp Wishlist');
 }
 
 const WISHLIST_PAGE_DELAY_MS = 500;
@@ -496,13 +498,13 @@ const WISHLIST_PAGE_DELAY_MS = 500;
  * into wishlist_items. Creates the bandcamp_wishlist crate if needed.
  */
 export async function syncWishlist(api: BandcampAPI, fanId: number): Promise<number> {
-  setSyncing(fanId, true);
+  await setSyncing(fanId, true);
   let lastToken: string | undefined;
   let totalSynced = 0;
   const syncedIds = new Set<string>();
 
   try {
-    ensureWishlistCrate(fanId);
+    await ensureWishlistCrate(fanId);
 
     while (true) {
       await sleep(WISHLIST_PAGE_DELAY_MS);
@@ -513,7 +515,7 @@ export async function syncWishlist(api: BandcampAPI, fanId: number): Promise<num
 
       if (page.items.length === 0) break;
 
-      insertWishlistItems(fanId, page.items);
+      await insertWishlistItems(fanId, page.items);
       for (const item of page.items) syncedIds.add(item.id);
       totalSynced += page.items.length;
 
@@ -522,39 +524,40 @@ export async function syncWishlist(api: BandcampAPI, fanId: number): Promise<num
     }
 
     if (syncedIds.size > 0) {
-      deleteStaleWishlistItems(fanId, syncedIds);
+      await deleteStaleWishlistItems(fanId, syncedIds);
     }
 
-    setWishlistSynced(fanId);
+    await setWishlistSynced(fanId);
   } finally {
-    setSyncing(fanId, false);
+    await setSyncing(fanId, false);
   }
 
   return totalSynced;
 }
 
-function deleteStaleWishlistItems(fanId: number, keepIds: Set<string>) {
+async function deleteStaleWishlistItems(fanId: number, keepIds: Set<string>) {
   if (keepIds.size === 0) return;
-  const db = getDb();
   const ids = [...keepIds];
   const BATCH_SIZE = 500;
-  const del = db.prepare('DELETE FROM wishlist_items WHERE fan_id = ? AND id = ?');
 
   if (ids.length <= BATCH_SIZE) {
-    const placeholders = ids.map(() => '?').join(',');
-    db.prepare(
-      `DELETE FROM wishlist_items WHERE fan_id = ? AND id NOT IN (${placeholders})`,
-    ).run(fanId, ...ids);
+    const placeholders = ids.map((_, i) => `$${i + 2}`).join(',');
+    await execute(
+      `DELETE FROM wishlist_items WHERE fan_id = $1 AND id NOT IN (${placeholders})`,
+      [fanId, ...ids],
+    );
   } else {
-    const existing = db.prepare(
-      'SELECT id FROM wishlist_items WHERE fan_id = ?',
-    ).all(fanId) as Array<{ id: string }>;
+    const existing = await query<{ id: string }>(
+      'SELECT id FROM wishlist_items WHERE fan_id = $1',
+      [fanId],
+    );
     const toDelete = existing.filter((row) => !keepIds.has(row.id));
     if (toDelete.length === 0) return;
-    const tx = db.transaction(() => {
-      for (const row of toDelete) del.run(fanId, row.id);
+    await transaction(async (client) => {
+      for (const row of toDelete) {
+        await client.query('DELETE FROM wishlist_items WHERE fan_id = $1 AND id = $2', [fanId, row.id]);
+      }
     });
-    tx();
   }
 }
 
@@ -566,38 +569,40 @@ function deleteStaleWishlistItems(fanId: number, keepIds: Set<string>) {
  * Populate the enrichment queue with album URLs from purchases missing tags
  * and all wishlist items. Resets previously failed items so they get retried.
  */
-export function enqueueForEnrichment(fanId: number): number {
-  const db = getDb();
+export async function enqueueForEnrichment(fanId: number): Promise<number> {
+  return await transaction(async (client) => {
+    const { rows: purchases } = await client.query(
+      `SELECT DISTINCT album_url FROM feed_items
+       WHERE fan_id = $1 AND story_type = 'my_purchase' AND tags = '[]'::jsonb AND album_url != ''`,
+      [fanId],
+    );
 
-  const insert = db.prepare(
-    "INSERT OR IGNORE INTO enrichment_queue (album_url) VALUES (?)",
-  );
+    const { rows: wishlist } = await client.query(
+      `SELECT DISTINCT item_url FROM wishlist_items
+       WHERE fan_id = $1 AND tags = '[]'::jsonb AND item_url != ''`,
+      [fanId],
+    );
 
-  let enqueued = 0;
-  const tx = db.transaction(() => {
-    const purchases = db.prepare(`
-      SELECT DISTINCT album_url FROM feed_items
-      WHERE fan_id = ? AND story_type = 'my_purchase' AND tags = '[]' AND album_url != ''
-    `).all(fanId) as Array<{ album_url: string }>;
-
-    const wishlist = db.prepare(`
-      SELECT DISTINCT item_url FROM wishlist_items
-      WHERE fan_id = ? AND tags = '[]' AND item_url != ''
-    `).all(fanId) as Array<{ item_url: string }>;
+    let enqueued = 0;
 
     for (const row of purchases) {
-      const result = insert.run(row.album_url);
-      if (result.changes > 0) enqueued++;
+      const result = await client.query(
+        'INSERT INTO enrichment_queue (album_url) VALUES ($1) ON CONFLICT DO NOTHING',
+        [row.album_url],
+      );
+      if (result.rowCount && result.rowCount > 0) enqueued++;
     }
 
     for (const row of wishlist) {
-      const result = insert.run(row.item_url);
-      if (result.changes > 0) enqueued++;
+      const result = await client.query(
+        'INSERT INTO enrichment_queue (album_url) VALUES ($1) ON CONFLICT DO NOTHING',
+        [row.item_url],
+      );
+      if (result.rowCount && result.rowCount > 0) enqueued++;
     }
-  });
-  tx();
 
-  return enqueued;
+    return enqueued;
+  });
 }
 
 /**
@@ -606,21 +611,20 @@ export function enqueueForEnrichment(fanId: number): number {
  * enrichment queue (any status). This prevents endless retriggers for albums
  * that genuinely have no tags or that repeatedly fail to scrape.
  */
-export function getEnrichmentPendingCount(fanId: number): number {
-  const db = getDb();
-  const purchases = db.prepare(`
+export async function getEnrichmentPendingCount(fanId: number): Promise<number> {
+  const purchases = await queryOne<{ c: string }>(`
     SELECT COUNT(*) AS c FROM feed_items fi
-    WHERE fi.fan_id = ? AND fi.story_type = 'my_purchase' AND fi.tags = '[]'
+    WHERE fi.fan_id = $1 AND fi.story_type = 'my_purchase' AND fi.tags = '[]'::jsonb
       AND fi.album_url != ''
       AND NOT EXISTS (SELECT 1 FROM enrichment_queue eq WHERE eq.album_url = fi.album_url)
-  `).get(fanId) as { c: number };
-  const wishlist = db.prepare(`
+  `, [fanId]);
+  const wishlist = await queryOne<{ c: string }>(`
     SELECT COUNT(*) AS c FROM wishlist_items wi
-    WHERE wi.fan_id = ? AND wi.tags = '[]'
+    WHERE wi.fan_id = $1 AND wi.tags = '[]'::jsonb
       AND wi.item_url != ''
       AND NOT EXISTS (SELECT 1 FROM enrichment_queue eq WHERE eq.album_url = wi.item_url)
-  `).get(fanId) as { c: number };
-  return purchases.c + wishlist.c;
+  `, [fanId]);
+  return parseInt(purchases!.c, 10) + parseInt(wishlist!.c, 10);
 }
 
 const ENRICHMENT_DELAY_MS = 1000;
@@ -633,26 +637,11 @@ const ENRICHMENT_DELAY_MS = 1000;
 export async function processEnrichmentQueue(
   onProgress?: (processed: number, remaining: number) => void,
 ): Promise<number> {
-  const db = getDb();
-
-  const pending = db.prepare(
+  const pending = await query<{ album_url: string }>(
     "SELECT album_url FROM enrichment_queue WHERE status = 'pending' ORDER BY created_at ASC",
-  ).all() as Array<{ album_url: string }>;
+  );
 
   if (pending.length === 0) return 0;
-
-  const markDone = db.prepare(
-    "UPDATE enrichment_queue SET status = 'done', processed_at = datetime('now') WHERE album_url = ?",
-  );
-  const markFailed = db.prepare(
-    "UPDATE enrichment_queue SET status = 'failed', processed_at = datetime('now') WHERE album_url = ?",
-  );
-  const updateFeedTags = db.prepare(
-    "UPDATE feed_items SET tags = ? WHERE album_url = ? AND tags = '[]'",
-  );
-  const updateWishlistTags = db.prepare(
-    "UPDATE wishlist_items SET tags = ? WHERE item_url = ? AND tags = '[]'",
-  );
 
   let processed = 0;
 
@@ -662,14 +651,14 @@ export async function processEnrichmentQueue(
       const tagsJson = JSON.stringify(album.tags ?? []);
 
       const slug = extractSlug(new URL(album_url).origin);
-      const releaseId = ensureCatalogRelease(
+      const releaseId = await ensureCatalogRelease(
         album_url,
         album.artist,
         slug,
         album.title,
         album.imageUrl,
       );
-      cacheAlbumTracks(
+      await cacheAlbumTracks(
         releaseId,
         album.tracks.map((t) => ({
           trackNum: t.trackNum,
@@ -682,12 +671,12 @@ export async function processEnrichmentQueue(
         album.tags,
       );
 
-      updateFeedTags.run(tagsJson, album_url);
-      updateWishlistTags.run(tagsJson, album_url);
-      markDone.run(album_url);
+      await execute("UPDATE feed_items SET tags = $1::jsonb WHERE album_url = $2 AND tags = '[]'::jsonb", [tagsJson, album_url]);
+      await execute("UPDATE wishlist_items SET tags = $1::jsonb WHERE item_url = $2 AND tags = '[]'::jsonb", [tagsJson, album_url]);
+      await execute("UPDATE enrichment_queue SET status = 'done', processed_at = NOW() WHERE album_url = $1", [album_url]);
     } catch (err) {
       console.error(`Enrichment failed for ${album_url}:`, err);
-      markFailed.run(album_url);
+      await execute("UPDATE enrichment_queue SET status = 'failed', processed_at = NOW() WHERE album_url = $1", [album_url]);
     }
 
     processed++;
@@ -705,18 +694,16 @@ export async function processEnrichmentQueue(
 // Audio analysis queue (BPM + key detection)
 // ---------------------------------------------------------------------------
 
-export function getAudioAnalysisPendingCount(): number {
-  const db = getDb();
-  const row = db.prepare(
+export async function getAudioAnalysisPendingCount(): Promise<number> {
+  const row = await queryOne<{ c: string }>(
     "SELECT COUNT(*) AS c FROM catalog_tracks WHERE stream_url IS NOT NULL AND stream_url != '' AND bpm_status IS NULL",
-  ).get() as { c: number };
-  return row.c;
+  );
+  return parseInt(row!.c, 10);
 }
 
-export function getAudioAnalysisDoneCount(): number {
-  const db = getDb();
-  const row = db.prepare(
+export async function getAudioAnalysisDoneCount(): Promise<number> {
+  const row = await queryOne<{ c: string }>(
     "SELECT COUNT(*) AS c FROM catalog_tracks WHERE bpm_status = 'done'",
-  ).get() as { c: number };
-  return row.c;
+  );
+  return parseInt(row!.c, 10);
 }

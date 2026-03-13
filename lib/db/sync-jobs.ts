@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { query, queryOne, execute } from './index';
 
 export type JobType = 'user_sync' | 'enrichment' | 'audio_analysis';
 export type JobStatus = 'pending' | 'running' | 'done' | 'failed';
@@ -27,8 +27,12 @@ interface SyncJobRow {
   progress_errors: number;
   sub_phase: string | null;
   error: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+function toISOString(val: Date | string): string {
+  return val instanceof Date ? val.toISOString() : val;
 }
 
 function rowToJob(row: SyncJobRow): SyncJob {
@@ -42,89 +46,87 @@ function rowToJob(row: SyncJobRow): SyncJob {
     progressErrors: row.progress_errors ?? 0,
     subPhase: row.sub_phase,
     error: row.error,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: toISOString(row.created_at),
+    updatedAt: toISOString(row.updated_at),
   };
 }
 
-export function createJob(jobType: JobType, fanId?: number): number {
-  const db = getDb();
-  const result = db.prepare(
-    "INSERT INTO sync_jobs (job_type, fan_id, status) VALUES (?, ?, 'running')",
-  ).run(jobType, fanId ?? null);
-  return result.lastInsertRowid as number;
+export async function createJob(jobType: JobType, fanId?: number): Promise<number> {
+  const row = await queryOne<{ id: number }>(
+    "INSERT INTO sync_jobs (job_type, fan_id, status) VALUES ($1, $2, 'running') RETURNING id",
+    [jobType, fanId ?? null],
+  );
+  if (!row) throw new Error('Failed to insert sync job');
+  return row.id;
 }
 
-export function updateJobProgress(jobId: number, done: number, total: number, subPhase?: string): void {
-  const db = getDb();
-  db.prepare(
-    "UPDATE sync_jobs SET progress_done = ?, progress_total = ?, sub_phase = ?, updated_at = datetime('now') WHERE id = ?",
-  ).run(done, total, subPhase ?? null, jobId);
+export async function updateJobProgress(jobId: number, done: number, total: number, subPhase?: string): Promise<void> {
+  await execute(
+    'UPDATE sync_jobs SET progress_done = $1, progress_total = $2, sub_phase = $3, updated_at = NOW() WHERE id = $4',
+    [done, total, subPhase ?? null, jobId],
+  );
 }
 
-export function incrementJobErrors(jobId: number): void {
-  const db = getDb();
-  db.prepare(
-    "UPDATE sync_jobs SET progress_errors = progress_errors + 1, updated_at = datetime('now') WHERE id = ?",
-  ).run(jobId);
+export async function incrementJobErrors(jobId: number): Promise<void> {
+  await execute(
+    'UPDATE sync_jobs SET progress_errors = progress_errors + 1, updated_at = NOW() WHERE id = $1',
+    [jobId],
+  );
 }
 
-export function completeJob(jobId: number): void {
-  const db = getDb();
-  db.prepare(
-    "UPDATE sync_jobs SET status = 'done', updated_at = datetime('now') WHERE id = ?",
-  ).run(jobId);
+export async function completeJob(jobId: number): Promise<void> {
+  await execute(
+    "UPDATE sync_jobs SET status = 'done', updated_at = NOW() WHERE id = $1",
+    [jobId],
+  );
 }
 
-export function failJob(jobId: number, error: string): void {
-  const db = getDb();
-  db.prepare(
-    "UPDATE sync_jobs SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?",
-  ).run(error, jobId);
+export async function failJob(jobId: number, error: string): Promise<void> {
+  await execute(
+    "UPDATE sync_jobs SET status = 'failed', error = $1, updated_at = NOW() WHERE id = $2",
+    [error, jobId],
+  );
 }
 
-export function getActiveJob(jobType: JobType, fanId?: number): SyncJob | null {
-  const db = getDb();
+export async function getActiveJob(jobType: JobType, fanId?: number): Promise<SyncJob | null> {
   const row = fanId != null
-    ? db.prepare(
-        "SELECT * FROM sync_jobs WHERE job_type = ? AND fan_id = ? AND status = 'running' ORDER BY id DESC LIMIT 1",
-      ).get(jobType, fanId) as SyncJobRow | undefined
-    : db.prepare(
-        "SELECT * FROM sync_jobs WHERE job_type = ? AND status = 'running' ORDER BY id DESC LIMIT 1",
-      ).get(jobType) as SyncJobRow | undefined;
+    ? await queryOne<SyncJobRow>(
+        "SELECT * FROM sync_jobs WHERE job_type = $1 AND fan_id = $2 AND status = 'running' ORDER BY id DESC LIMIT 1",
+        [jobType, fanId],
+      )
+    : await queryOne<SyncJobRow>(
+        "SELECT * FROM sync_jobs WHERE job_type = $1 AND status = 'running' ORDER BY id DESC LIMIT 1",
+        [jobType],
+      );
   return row ? rowToJob(row) : null;
 }
 
-export function getLatestJob(jobType: JobType, fanId?: number): SyncJob | null {
-  const db = getDb();
+export async function getLatestJob(jobType: JobType, fanId?: number): Promise<SyncJob | null> {
   const row = fanId != null
-    ? db.prepare(
-        "SELECT * FROM sync_jobs WHERE job_type = ? AND fan_id = ? ORDER BY id DESC LIMIT 1",
-      ).get(jobType, fanId) as SyncJobRow | undefined
-    : db.prepare(
-        "SELECT * FROM sync_jobs WHERE job_type = ? ORDER BY id DESC LIMIT 1",
-      ).get(jobType) as SyncJobRow | undefined;
+    ? await queryOne<SyncJobRow>(
+        "SELECT * FROM sync_jobs WHERE job_type = $1 AND fan_id = $2 ORDER BY id DESC LIMIT 1",
+        [jobType, fanId],
+      )
+    : await queryOne<SyncJobRow>(
+        "SELECT * FROM sync_jobs WHERE job_type = $1 ORDER BY id DESC LIMIT 1",
+        [jobType],
+      );
   return row ? rowToJob(row) : null;
 }
 
-export function hasActiveUserSync(fanId: number): boolean {
-  const db = getDb();
-  const row = db.prepare(
-    "SELECT 1 FROM sync_jobs WHERE job_type = 'user_sync' AND fan_id = ? AND status = 'running' LIMIT 1",
-  ).get(fanId);
+export async function hasActiveUserSync(fanId: number): Promise<boolean> {
+  const row = await queryOne<Record<string, unknown>>(
+    "SELECT 1 FROM sync_jobs WHERE job_type = 'user_sync' AND fan_id = $1 AND status = 'running' LIMIT 1",
+    [fanId],
+  );
   return !!row;
 }
 
-/**
- * Mark any stale 'running' jobs as 'failed'. Called on startup to clean up
- * jobs that were interrupted by a server restart.
- */
-export function cleanupStaleJobs(): void {
-  const db = getDb();
-  const result = db.prepare(
-    "UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = datetime('now') WHERE status = 'running'",
-  ).run();
-  if (result.changes > 0) {
-    console.log(`Cleaned up ${result.changes} stale running job(s) from previous server instance`);
+export async function cleanupStaleJobs(): Promise<void> {
+  const result = await execute(
+    "UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = NOW() WHERE status = 'running'",
+  );
+  if (result.rowCount > 0) {
+    console.log(`Cleaned up ${result.rowCount} stale running job(s) from previous server instance`);
   }
 }

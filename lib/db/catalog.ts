@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { query, queryOne, execute, transaction } from './index';
 
 function normalizeDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -35,28 +35,20 @@ export interface CatalogTrack {
 
 const STALE_HOURS = 24;
 
-export function getCachedDiscography(slug: string): CatalogRelease[] | null {
-  const db = getDb();
-
-  const freshCheck = db.prepare(`
+export async function getCachedDiscography(slug: string): Promise<CatalogRelease[] | null> {
+  const freshCheck = await queryOne<{ scraped_at: Date | string }>(`
     SELECT scraped_at FROM catalog_releases
-    WHERE band_slug = ? AND source = 'discography'
+    WHERE band_slug = $1 AND source = 'discography'
     ORDER BY scraped_at DESC LIMIT 1
-  `).get(slug) as { scraped_at: string } | undefined;
+  `, [slug]);
 
   if (!freshCheck) return null;
 
-  const scrapedAt = new Date(freshCheck.scraped_at + 'Z');
+  const scrapedAt = freshCheck.scraped_at instanceof Date ? freshCheck.scraped_at : new Date(freshCheck.scraped_at);
   const ageMs = Date.now() - scrapedAt.getTime();
   if (ageMs > STALE_HOURS * 60 * 60 * 1000) return null;
 
-  const rows = db.prepare(`
-    SELECT * FROM catalog_releases
-    WHERE band_slug = ?
-    ORDER BY 
-      CASE WHEN release_date IS NULL THEN 1 ELSE 0 END,
-      release_date DESC
-  `).all(slug) as Array<{
+  const rows = await query<{
     id: number;
     band_slug: string;
     band_name: string;
@@ -65,10 +57,16 @@ export function getCachedDiscography(slug: string): CatalogRelease[] | null {
     url: string;
     image_url: string;
     release_type: string;
-    scraped_at: string;
+    scraped_at: Date | string;
     release_date: string | null;
-    tags: string;
-  }>;
+    tags: string | string[];
+  }>(`
+    SELECT * FROM catalog_releases
+    WHERE band_slug = $1
+    ORDER BY
+      CASE WHEN release_date IS NULL THEN 1 ELSE 0 END,
+      release_date DESC
+  `, [slug]);
 
   if (rows.length === 0) return null;
 
@@ -84,15 +82,19 @@ function rowToRelease(row: {
   url: string;
   image_url: string;
   release_type: string;
-  scraped_at: string;
+  scraped_at: Date | string;
   release_date: string | null;
-  tags: string;
+  tags: string | string[];
 }): CatalogRelease {
   let tags: string[] = [];
-  try {
-    tags = JSON.parse(row.tags || '[]');
-  } catch {
-    tags = [];
+  if (Array.isArray(row.tags)) {
+    tags = row.tags;
+  } else if (typeof row.tags === 'string') {
+    try {
+      tags = JSON.parse(row.tags || '[]');
+    } catch {
+      tags = [];
+    }
   }
   return {
     id: row.id,
@@ -103,13 +105,13 @@ function rowToRelease(row: {
     url: row.url,
     imageUrl: row.image_url,
     releaseType: row.release_type as 'album' | 'track',
-    scrapedAt: row.scraped_at,
+    scrapedAt: row.scraped_at instanceof Date ? row.scraped_at.toISOString() : row.scraped_at,
     releaseDate: row.release_date,
     tags,
   };
 }
 
-export function cacheDiscography(
+export async function cacheDiscography(
   slug: string,
   bandName: string,
   bandUrl: string,
@@ -119,37 +121,31 @@ export function cacheDiscography(
     imageUrl: string;
     releaseType: 'album' | 'track';
   }>,
-): CatalogRelease[] {
-  const db = getDb();
-
-  const existing = db.prepare(
-    "SELECT url, release_date, tags FROM catalog_releases WHERE band_slug = ?",
-  ).all(slug) as Array<{ url: string; release_date: string | null; tags: string }>;
+): Promise<CatalogRelease[]> {
+  const existing = await query<{ url: string; release_date: string | null; tags: string | string[] }>(
+    "SELECT url, release_date, tags FROM catalog_releases WHERE band_slug = $1",
+    [slug],
+  );
   const preserved = new Map(existing.map((r) => [r.url, { releaseDate: r.release_date, tags: r.tags }]));
 
-  db.prepare("DELETE FROM catalog_releases WHERE band_slug = ? AND source = 'discography'").run(slug);
-
-  const insert = db.prepare(`
-    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, release_date, tags, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'discography')
-  `);
-
-  const insertMany = db.transaction(() => {
+  await transaction(async (client) => {
+    await client.query("DELETE FROM catalog_releases WHERE band_slug = $1 AND source = 'discography'", [slug]);
     for (const r of releases) {
       const prev = preserved.get(r.url);
-      insert.run(slug, bandName, bandUrl, r.title, r.url, r.imageUrl, r.releaseType, prev?.releaseDate ?? null, prev?.tags ?? '[]');
+      const tagsVal = prev?.tags != null ? (typeof prev.tags === 'string' ? prev.tags : JSON.stringify(prev.tags)) : '[]';
+      await client.query(
+        `INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, release_date, tags, source)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'discography')`,
+        [slug, bandName, bandUrl, r.title, r.url, r.imageUrl, r.releaseType, prev?.releaseDate ?? null, tagsVal],
+      );
     }
   });
-  insertMany();
 
-  return getCachedDiscography(slug) ?? [];
+  return (await getCachedDiscography(slug)) ?? [];
 }
 
-export function getCachedAlbumTracks(releaseId: number): CatalogTrack[] | null {
-  const db = getDb();
-  const rows = db.prepare(`
-    SELECT * FROM catalog_tracks WHERE release_id = ? ORDER BY track_num
-  `).all(releaseId) as Array<{
+export async function getCachedAlbumTracks(releaseId: number): Promise<CatalogTrack[] | null> {
+  const rows = await query<{
     id: number;
     release_id: number;
     track_num: number;
@@ -160,7 +156,9 @@ export function getCachedAlbumTracks(releaseId: number): CatalogTrack[] | null {
     bpm: number | null;
     musical_key: string | null;
     key_camelot: string | null;
-  }>;
+  }>(`
+    SELECT * FROM catalog_tracks WHERE release_id = $1 ORDER BY track_num
+  `, [releaseId]);
 
   if (rows.length === 0) return null;
   return rows.map(rowToTrack);
@@ -192,7 +190,7 @@ function rowToTrack(row: {
   };
 }
 
-export function cacheAlbumTracks(
+export async function cacheAlbumTracks(
   releaseId: number,
   tracks: Array<{
     trackNum: number;
@@ -203,77 +201,65 @@ export function cacheAlbumTracks(
   }>,
   releaseDate?: string | null,
   tags?: string[],
-): CatalogTrack[] {
-  const db = getDb();
-
-  const insertTrack = db.prepare(`
-    INSERT INTO catalog_tracks (release_id, track_num, title, duration, stream_url, track_url)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-
-  const updateRelease = db.prepare(`
-    UPDATE catalog_releases
-    SET release_date = COALESCE(?, release_date),
-        tags = COALESCE(?, tags)
-    WHERE id = ?
-  `);
-
-  const doAll = db.transaction(() => {
-    db.prepare('DELETE FROM catalog_tracks WHERE release_id = ?').run(releaseId);
+): Promise<CatalogTrack[]> {
+  await transaction(async (client) => {
+    await client.query('DELETE FROM catalog_tracks WHERE release_id = $1', [releaseId]);
     for (const t of tracks) {
-      insertTrack.run(releaseId, t.trackNum, t.title, t.duration, t.streamUrl, t.trackUrl);
+      await client.query(
+        `INSERT INTO catalog_tracks (release_id, track_num, title, duration, stream_url, track_url)
+        VALUES ($1, $2, $3, $4, $5, $6)`,
+        [releaseId, t.trackNum, t.title, t.duration, t.streamUrl, t.trackUrl],
+      );
     }
     if (releaseDate !== undefined || tags !== undefined) {
       const normalizedDate = releaseDate ? normalizeDate(releaseDate) : null;
-      updateRelease.run(
-        normalizedDate,
-        tags ? JSON.stringify(tags) : null,
-        releaseId,
+      await client.query(
+        `UPDATE catalog_releases
+        SET release_date = COALESCE($1, release_date),
+            tags = COALESCE($2::jsonb, tags)
+        WHERE id = $3`,
+        [normalizedDate, tags ? JSON.stringify(tags) : null, releaseId],
       );
     }
   });
-  doAll();
 
-  return getCachedAlbumTracks(releaseId) ?? [];
+  return (await getCachedAlbumTracks(releaseId)) ?? [];
 }
 
-export function ensureCatalogRelease(
+export async function ensureCatalogRelease(
   url: string,
   bandName: string,
   bandSlug: string,
   title: string,
   imageUrl: string,
-): number {
-  const db = getDb();
-  const existing = db.prepare(
-    'SELECT id FROM catalog_releases WHERE url = ?',
-  ).get(url) as { id: number } | undefined;
+): Promise<number> {
+  const existing = await queryOne<{ id: number }>('SELECT id FROM catalog_releases WHERE url = $1', [url]);
   if (existing) return existing.id;
 
-  const result = db.prepare(`
+  const result = await query<{ id: number }>(`
     INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source)
-    VALUES (?, ?, ?, ?, ?, ?, 'album', 'enrichment')
-  `).run(bandSlug, bandName, `https://${bandSlug}.bandcamp.com`, title, url, imageUrl);
-  return Number(result.lastInsertRowid);
+    VALUES ($1, $2, $3, $4, $5, $6, 'album', 'enrichment')
+    RETURNING id
+  `, [bandSlug, bandName, `https://${bandSlug}.bandcamp.com`, title, url, imageUrl]);
+  return result[0].id;
 }
 
-export function getArtistsFromFeed(fanId: number): Array<{
+export async function getArtistsFromFeed(fanId: number): Promise<Array<{
   artistName: string;
   artistUrl: string;
   trackCount: number;
-}> {
-  const db = getDb();
-  const rows = db.prepare(`
-    SELECT artist_name, artist_url, COUNT(*) as track_count
-    FROM feed_items
-    WHERE fan_id = ? AND artist_url != ''
-    GROUP BY artist_url
-    ORDER BY track_count DESC
-  `).all(fanId) as Array<{
+}>> {
+  const rows = await query<{
     artist_name: string;
     artist_url: string;
     track_count: number;
-  }>;
+  }>(`
+    SELECT artist_name, artist_url, COUNT(*)::int as track_count
+    FROM feed_items
+    WHERE fan_id = $1 AND artist_url != ''
+    GROUP BY artist_url
+    ORDER BY track_count DESC
+  `, [fanId]);
 
   return rows.map((r) => ({
     artistName: r.artist_name,
@@ -287,52 +273,48 @@ export interface ReleaseNeedingRefresh {
   releaseUrl: string;
 }
 
-export function getReleasesNeedingStreamRefresh(): ReleaseNeedingRefresh[] {
-  const db = getDb();
-  const rows = db.prepare(`
+export async function getReleasesNeedingStreamRefresh(): Promise<ReleaseNeedingRefresh[]> {
+  const rows = await query<{ release_id: number; release_url: string }>(`
     SELECT DISTINCT cr.id AS release_id, cr.url AS release_url
     FROM catalog_tracks ct
     JOIN catalog_releases cr ON cr.id = ct.release_id
     WHERE ct.bpm_status IS NULL
     ORDER BY cr.id
-  `).all() as Array<{ release_id: number; release_url: string }>;
+  `);
   return rows.map((r) => ({ releaseId: r.release_id, releaseUrl: r.release_url }));
 }
 
-export function refreshStreamUrls(
+export async function refreshStreamUrls(
   releaseId: number,
   freshTracks: Array<{ trackNum: number; streamUrl: string | null; trackUrl: string | null }>,
-): void {
-  const db = getDb();
-  const update = db.prepare(
-    'UPDATE catalog_tracks SET stream_url = ?, track_url = COALESCE(?, track_url) WHERE release_id = ? AND track_num = ?',
-  );
-
-  const doAll = db.transaction(() => {
+): Promise<void> {
+  await transaction(async (client) => {
     for (const t of freshTracks) {
-      update.run(t.streamUrl, t.trackUrl, releaseId, t.trackNum);
+      await client.query(
+        'UPDATE catalog_tracks SET stream_url = $1, track_url = COALESCE($2, track_url) WHERE release_id = $3 AND track_num = $4',
+        [t.streamUrl, t.trackUrl, releaseId, t.trackNum],
+      );
     }
   });
-  doAll();
 }
 
-export function markNoStreamTracks(releaseId?: number): number {
-  const db = getDb();
+export async function markNoStreamTracks(releaseId?: number): Promise<number> {
   if (releaseId != null) {
-    const result = db.prepare(
-      "UPDATE catalog_tracks SET bpm_status = 'no_stream' WHERE release_id = ? AND bpm_status IS NULL AND (stream_url IS NULL OR stream_url = '')",
-    ).run(releaseId);
-    return result.changes;
+    const result = await execute(
+      "UPDATE catalog_tracks SET bpm_status = 'no_stream' WHERE release_id = $1 AND bpm_status IS NULL AND (stream_url IS NULL OR stream_url = '')",
+      [releaseId],
+    );
+    return result.rowCount;
   }
-  const result = db.prepare(
+  const result = await execute(
     "UPDATE catalog_tracks SET bpm_status = 'no_stream' WHERE bpm_status IS NULL AND (stream_url IS NULL OR stream_url = '')",
-  ).run();
-  return result.changes;
+  );
+  return result.rowCount;
 }
 
-export function getPendingTracksForRelease(releaseId: number): Array<{ id: number; stream_url: string }> {
-  const db = getDb();
-  return db.prepare(
-    "SELECT id, stream_url FROM catalog_tracks WHERE release_id = ? AND stream_url IS NOT NULL AND stream_url != '' AND bpm_status IS NULL ORDER BY track_num",
-  ).all(releaseId) as Array<{ id: number; stream_url: string }>;
+export async function getPendingTracksForRelease(releaseId: number): Promise<Array<{ id: number; stream_url: string }>> {
+  return query<{ id: number; stream_url: string }>(
+    "SELECT id, stream_url FROM catalog_tracks WHERE release_id = $1 AND stream_url IS NOT NULL AND stream_url != '' AND bpm_status IS NULL ORDER BY track_num",
+    [releaseId],
+  );
 }

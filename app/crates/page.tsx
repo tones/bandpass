@@ -29,8 +29,8 @@ export default async function CratesPage() {
     );
   }
 
-  ensureDefaultCrate(fanId);
-  const crates = getCrates(fanId);
+  await ensureDefaultCrate(fanId);
+  const crates = await getCrates(fanId);
   const firstCrate = crates[0];
 
   if (firstCrate) {

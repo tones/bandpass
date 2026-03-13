@@ -4,7 +4,7 @@ import type { Worker as WorkerType } from 'worker_threads';
 // Use eval'd require to hide worker_threads from Turbopack's static file tracing
 // eslint-disable-next-line no-eval
 const { Worker } = eval("require('worker_threads')") as { Worker: new (path: string) => WorkerType };
-import { getDb } from '@/lib/db/index';
+import { execute, queryOne } from '@/lib/db/index';
 import { processEnrichmentQueue, getAudioAnalysisPendingCount } from '@/lib/db/sync';
 import { createJob, updateJobProgress, completeJob, failJob, getActiveJob, cleanupStaleJobs, incrementJobErrors } from '@/lib/db/sync-jobs';
 import { getReleasesNeedingStreamRefresh, refreshStreamUrls, markNoStreamTracks, getPendingTracksForRelease } from '@/lib/db/catalog';
@@ -31,7 +31,7 @@ export function ensureWorkersStarted(cookie?: string) {
   if (started) return;
   started = true;
 
-  cleanupStaleJobs();
+  cleanupStaleJobs().catch((err) => console.error('Failed to clean up stale jobs:', err));
 
   enrichmentWorkerLoop().catch((err) =>
     console.error('Enrichment worker crashed:', err),
@@ -71,22 +71,20 @@ function sleepOrNudge(ms: number): Promise<void> {
 async function enrichmentWorkerLoop() {
   while (true) {
     try {
-      const db = getDb();
-      const { c: pendingCount } = db.prepare(
-        "SELECT COUNT(*) as c FROM enrichment_queue WHERE status = 'pending'",
-      ).get() as { c: number };
+      const row = await queryOne<{ c: string }>("SELECT COUNT(*) as c FROM enrichment_queue WHERE status = 'pending'");
+      const pendingCount = parseInt(row?.c ?? '0', 10);
 
-      if (pendingCount > 0 && !getActiveJob('enrichment')) {
-        const jobId = createJob('enrichment');
+      if (pendingCount > 0 && !(await getActiveJob('enrichment'))) {
+        const jobId = await createJob('enrichment');
         try {
-          updateJobProgress(jobId, 0, pendingCount);
+          await updateJobProgress(jobId, 0, pendingCount);
           await processEnrichmentQueue((processed, remaining) => {
             updateJobProgress(jobId, processed, processed + remaining);
           });
-          completeJob(jobId);
+          await completeJob(jobId);
         } catch (err) {
           console.error('Enrichment worker error:', err);
-          failJob(jobId, err instanceof Error ? err.message : String(err));
+          await failJob(jobId, err instanceof Error ? err.message : String(err));
         }
       }
     } catch (err) {
@@ -113,24 +111,26 @@ interface AudioWorkerError {
 
 type AudioWorkerMessage = AudioWorkerResult | AudioWorkerError;
 
-function saveAudioResult(result: AudioWorkerResult) {
-  const db = getDb();
-  db.prepare(
-    "UPDATE catalog_tracks SET bpm = ?, musical_key = ?, key_camelot = ?, bpm_status = 'done' WHERE id = ?",
-  ).run(result.bpm, result.musicalKey, result.keyCamelot, result.trackId);
-  db.prepare(
-    "UPDATE feed_items SET bpm = ?, musical_key = ? WHERE track_stream_url = ? AND bpm IS NULL",
-  ).run(result.bpm, result.musicalKey, result.streamUrl);
-  db.prepare(
-    "UPDATE wishlist_items SET bpm = ?, musical_key = ? WHERE stream_url = ? AND bpm IS NULL",
-  ).run(result.bpm, result.musicalKey, result.streamUrl);
+async function saveAudioResult(result: AudioWorkerResult) {
+  await execute(
+    "UPDATE catalog_tracks SET bpm = $1, musical_key = $2, key_camelot = $3, bpm_status = 'done' WHERE id = $4",
+    [result.bpm, result.musicalKey, result.keyCamelot, result.trackId],
+  );
+  await execute(
+    "UPDATE feed_items SET bpm = $1, musical_key = $2 WHERE track_stream_url = $3 AND bpm IS NULL",
+    [result.bpm, result.musicalKey, result.streamUrl],
+  );
+  await execute(
+    "UPDATE wishlist_items SET bpm = $1, musical_key = $2 WHERE stream_url = $3 AND bpm IS NULL",
+    [result.bpm, result.musicalKey, result.streamUrl],
+  );
 }
 
-function markAudioFailed(trackId: number) {
-  const db = getDb();
-  db.prepare(
-    "UPDATE catalog_tracks SET bpm_status = 'failed' WHERE id = ?",
-  ).run(trackId);
+async function markAudioFailed(trackId: number) {
+  await execute(
+    "UPDATE catalog_tracks SET bpm_status = 'failed' WHERE id = $1",
+    [trackId],
+  );
 }
 
 const WORKER_TIMEOUT_MS = 120_000;
@@ -200,32 +200,32 @@ async function audioWorkerLoop() {
 
   while (true) {
     try {
-      const totalPending = getAudioAnalysisPendingCount();
+      const totalPending = await getAudioAnalysisPendingCount();
       if (totalPending === 0) {
         await sleep(WORKER_POLL_INTERVAL_MS);
         continue;
       }
 
-      if (getActiveJob('audio_analysis')) {
+      if (await getActiveJob('audio_analysis')) {
         await sleep(WORKER_POLL_INTERVAL_MS);
         continue;
       }
 
       audioCancelRequested = false;
-      const jobId = createJob('audio_analysis');
+      const jobId = await createJob('audio_analysis');
       let done = 0;
       let consecutiveFailures = 0;
       let aborted = false;
 
       try {
-        const releases = getReleasesNeedingStreamRefresh();
-        updateJobProgress(jobId, 0, totalPending, 'analyzing');
+        const releases = await getReleasesNeedingStreamRefresh();
+        await updateJobProgress(jobId, 0, totalPending, 'analyzing');
         console.log(`Audio analysis: ${releases.length} releases to process, ${totalPending} tracks pending`);
 
         for (let ri = 0; ri < releases.length && !aborted; ri++) {
           if (audioCancelRequested) {
             console.log('Audio analysis cancelled by user');
-            failJob(jobId, 'Cancelled by user');
+            await failJob(jobId, 'Cancelled by user');
             aborted = true;
             break;
           }
@@ -233,10 +233,9 @@ async function audioWorkerLoop() {
           const release = releases[ri];
           console.log(`Processing release ${ri + 1}/${releases.length}: ${release.releaseUrl}`);
 
-          // Refresh stream URLs for this release
           try {
             const album = await fetchAlbumTracks(publicFetcher, release.releaseUrl);
-            refreshStreamUrls(
+            await refreshStreamUrls(
               release.releaseId,
               album.tracks.map((t) => ({
                 trackNum: t.trackNum,
@@ -248,15 +247,14 @@ async function audioWorkerLoop() {
             console.error(`Failed to refresh URLs for release ${release.releaseId} (${release.releaseUrl}):`, err);
           }
 
-          markNoStreamTracks(release.releaseId);
+          await markNoStreamTracks(release.releaseId);
 
-          // Analyze this release's tracks immediately
-          const tracks = getPendingTracksForRelease(release.releaseId);
+          const tracks = await getPendingTracksForRelease(release.releaseId);
 
           for (const track of tracks) {
             if (audioCancelRequested) {
               console.log('Audio analysis cancelled by user');
-              failJob(jobId, 'Cancelled by user');
+              await failJob(jobId, 'Cancelled by user');
               aborted = true;
               break;
             }
@@ -266,7 +264,7 @@ async function audioWorkerLoop() {
                 worker = spawnWorker();
               } catch (spawnErr) {
                 console.error('Failed to spawn audio worker:', spawnErr);
-                failJob(jobId, `Cannot spawn worker: ${spawnErr}`);
+                await failJob(jobId, `Cannot spawn worker: ${spawnErr}`);
                 aborted = true;
                 break;
               }
@@ -276,18 +274,18 @@ async function audioWorkerLoop() {
               const result = await postToWorker(worker, track, storedCookie);
               if ('error' in result && result.error) {
                 console.error(`Track ${result.trackId} error: ${result.error} (url: ${track.stream_url.slice(0, 80)}...)`);
-                markAudioFailed(result.trackId);
-                incrementJobErrors(jobId);
+                await markAudioFailed(result.trackId);
+                await incrementJobErrors(jobId);
                 consecutiveFailures++;
               } else {
-                saveAudioResult(result as AudioWorkerResult);
+                await saveAudioResult(result as AudioWorkerResult);
                 consecutiveFailures = 0;
               }
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               console.error(`Worker crash for track ${track.id}: ${msg} (url: ${track.stream_url.slice(0, 80)}...)`);
-              markAudioFailed(track.id);
-              incrementJobErrors(jobId);
+              await markAudioFailed(track.id);
+              await incrementJobErrors(jobId);
 
               if (worker) {
                 try { worker.terminate(); } catch { /* ignore */ }
@@ -297,7 +295,7 @@ async function audioWorkerLoop() {
               consecutiveFailures++;
               if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
                 console.error(`Aborting: ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
-                failJob(jobId, `${MAX_CONSECUTIVE_FAILURES} consecutive track failures`);
+                await failJob(jobId, `${MAX_CONSECUTIVE_FAILURES} consecutive track failures`);
                 aborted = true;
                 break;
               }
@@ -306,8 +304,8 @@ async function audioWorkerLoop() {
             }
 
             done++;
-            const currentPending = getAudioAnalysisPendingCount();
-            updateJobProgress(jobId, done, done + currentPending, 'analyzing');
+            const currentPending = await getAudioAnalysisPendingCount();
+            await updateJobProgress(jobId, done, done + currentPending, 'analyzing');
 
             await sleep(AUDIO_ANALYSIS_DELAY_MS);
           }
@@ -318,12 +316,12 @@ async function audioWorkerLoop() {
         }
 
         if (!aborted) {
-          completeJob(jobId);
+          await completeJob(jobId);
           console.log(`Audio analysis job completed: ${done} tracks processed`);
         }
       } catch (err) {
         console.error('Audio worker loop error:', err);
-        failJob(jobId, err instanceof Error ? err.message : String(err));
+        await failJob(jobId, err instanceof Error ? err.message : String(err));
         if (worker) {
           try { worker.terminate(); } catch { /* ignore */ }
           worker = null;

@@ -9,6 +9,7 @@ import {
   getCachedAlbumTracks,
   cacheAlbumTracks,
 } from '@/lib/db/catalog';
+import { queryOne } from '@/lib/db/index';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await params;
-  const cached = getCachedDiscography(slug);
+  const cached = await getCachedDiscography(slug);
   if (cached) {
     return NextResponse.json({ releases: cached, fromCache: true });
   }
@@ -43,7 +44,7 @@ export async function GET(
     const bandUrl = slugToBandUrl(slug);
     const result = await fetchDiscography(fetcher, bandUrl);
 
-    const releases = cacheDiscography(
+    const releases = await cacheDiscography(
       slug,
       result.band.name,
       result.band.url,
@@ -86,20 +87,18 @@ export async function POST(
     );
   }
 
-  const cached = getCachedAlbumTracks(releaseId);
+  const cached = await getCachedAlbumTracks(releaseId);
   if (cached) {
-    // Get release metadata from catalog_releases
-    const db = (await import('@/lib/db/index')).getDb();
-    const release = db.prepare('SELECT release_date, tags FROM catalog_releases WHERE id = ?').get(releaseId) as {
+    const release = await queryOne<{
       release_date: string | null;
-      tags: string;
-    } | undefined;
+      tags: string | string[];
+    }>('SELECT release_date, tags FROM catalog_releases WHERE id = $1', [releaseId]);
     let tags: string[] = [];
     if (release?.tags) {
-      try {
-        tags = JSON.parse(release.tags);
-      } catch {
-        tags = [];
+      if (Array.isArray(release.tags)) {
+        tags = release.tags;
+      } else {
+        try { tags = JSON.parse(release.tags); } catch { tags = []; }
       }
     }
     return NextResponse.json({
@@ -114,7 +113,7 @@ export async function POST(
     const fetcher = await getFetcher();
     const album = await fetchAlbumTracks(fetcher, albumUrl);
 
-    const tracks = cacheAlbumTracks(
+    const tracks = await cacheAlbumTracks(
       releaseId,
       album.tracks.map((t) => ({
         trackNum: t.trackNum,

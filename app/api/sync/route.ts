@@ -9,21 +9,21 @@ import { ensureWorkersStarted, nudgeWorkers, cancelAudioAnalysis } from '@/lib/s
 export const dynamic = 'force-dynamic';
 
 async function startSync(fanId: number, identityCookie: string, isInitial: boolean) {
-  if (hasActiveUserSync(fanId)) return;
+  if (await hasActiveUserSync(fanId)) return;
 
-  const jobId = createJob('user_sync', fanId);
+  const jobId = await createJob('user_sync', fanId);
 
   try {
     const api = new BandcampAPI(identityCookie);
 
-    updateJobProgress(jobId, 0, 4);
+    await updateJobProgress(jobId, 0, 4);
 
     const count = isInitial
       ? await syncFeedInitial(api, fanId)
       : await syncFeedIncremental(api, fanId);
-    updateJobProgress(jobId, 1, 4);
+    await updateJobProgress(jobId, 1, 4);
 
-    const freshState = getSyncState(fanId);
+    const freshState = await getSyncState(fanId);
     if (freshState && !freshState.deepSyncComplete) {
       try {
         await syncFeedDeep(api, fanId);
@@ -31,9 +31,9 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
         console.error('Deep sync error:', err);
       }
     }
-    updateJobProgress(jobId, 2, 4);
+    await updateJobProgress(jobId, 2, 4);
 
-    const collectionState = getSyncState(fanId);
+    const collectionState = await getSyncState(fanId);
     try {
       if (collectionState?.collectionSynced) {
         await syncCollectionIncremental(api, fanId);
@@ -43,22 +43,22 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
     } catch (err) {
       console.error('Collection sync error:', err);
     }
-    updateJobProgress(jobId, 3, 4);
+    await updateJobProgress(jobId, 3, 4);
 
     try {
       await syncWishlist(api, fanId);
     } catch (err) {
       console.error('Wishlist sync error:', err);
     }
-    updateJobProgress(jobId, 4, 4);
+    await updateJobProgress(jobId, 4, 4);
 
-    enqueueForEnrichment(fanId);
+    await enqueueForEnrichment(fanId);
     nudgeWorkers();
 
-    completeJob(jobId);
+    await completeJob(jobId);
   } catch (err) {
     console.error('Sync error:', err);
-    failJob(jobId, err instanceof Error ? err.message : String(err));
+    await failJob(jobId, err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -69,18 +69,18 @@ export async function GET() {
   }
 
   const fanId = session.fanId;
-  const state = getSyncState(fanId);
-  const totalItems = getItemCount(fanId);
+  const state = await getSyncState(fanId);
+  const totalItems = await getItemCount(fanId);
 
   const enrichmentPendingCount = state?.collectionSynced && state?.wishlistSynced
-    ? getEnrichmentPendingCount(fanId)
+    ? await getEnrichmentPendingCount(fanId)
     : 0;
-  const audioAnalysisPending = getAudioAnalysisPendingCount();
-  const audioAnalysisDone = getAudioAnalysisDoneCount();
+  const audioAnalysisPending = await getAudioAnalysisPendingCount();
+  const audioAnalysisDone = await getAudioAnalysisDoneCount();
 
-  const userSyncJob = getActiveJob('user_sync', fanId);
-  const enrichmentJob = getActiveJob('enrichment') ?? getLatestJob('enrichment');
-  const audioJob = getActiveJob('audio_analysis') ?? getLatestJob('audio_analysis');
+  const userSyncJob = await getActiveJob('user_sync', fanId);
+  const enrichmentJob = await getActiveJob('enrichment') ?? await getLatestJob('enrichment');
+  const audioJob = await getActiveJob('audio_analysis') ?? await getLatestJob('audio_analysis');
 
   const isUserSyncing = !!userSyncJob;
 
@@ -149,11 +149,11 @@ export async function POST() {
 
   const fanId = session.fanId;
 
-  if (hasActiveUserSync(fanId)) {
+  if (await hasActiveUserSync(fanId)) {
     return NextResponse.json({ status: 'already_syncing' });
   }
 
-  const state = getSyncState(fanId);
+  const state = await getSyncState(fanId);
   const isInitial = !state?.lastSyncAt;
 
   startSync(fanId, session.identityCookie, isInitial).catch((err) =>

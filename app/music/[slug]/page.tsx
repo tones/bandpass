@@ -15,7 +15,7 @@ interface MusicDetailPageProps {
 
 export async function generateMetadata({ params }: MusicDetailPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const releases = getCachedDiscography(slug);
+  const releases = await getCachedDiscography(slug);
   const bandName = releases?.[0]?.bandName ?? slug;
   return { title: bandName };
 }
@@ -36,7 +36,7 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
   const { slug } = await params;
   const bandUrl = slugToBandUrl(slug);
 
-  let releases = getCachedDiscography(slug);
+  let releases = await getCachedDiscography(slug);
   let bandName = releases?.[0]?.bandName ?? slug;
 
   if (!releases) {
@@ -47,7 +47,7 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
       const result = await fetchDiscography(fetcher, bandUrl);
       bandName = result.band.name;
 
-      releases = cacheDiscography(
+      releases = await cacheDiscography(
         slug,
         result.band.name,
         result.band.url,
@@ -66,9 +66,9 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
     }
   }
 
-  const crateItemIds = fanId ? getAllCrateItemIds(fanId) : new Set<string>();
-  const crates = fanId ? getCrates(fanId).filter((c) => c.source === 'user') : [];
-  const itemCrateMap = fanId ? getItemCrateMultiMap(fanId) : {};
+  const crateItemIds = fanId ? await getAllCrateItemIds(fanId) : new Set<string>();
+  const crates = fanId ? (await getCrates(fanId)).filter((c) => c.source === 'user') : [];
+  const itemCrateMap = fanId ? await getItemCrateMultiMap(fanId) : {};
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">

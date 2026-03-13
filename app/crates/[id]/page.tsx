@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: CrateDetailPageProps): Promis
   const { id } = await params;
   const session = await getSession();
   if (!session.fanId) return { title: 'Crates' };
-  const crates = getCrates(session.fanId);
+  const crates = await getCrates(session.fanId);
   const crate = crates.find((c) => c.id === parseInt(id, 10));
   return { title: crate?.name ?? 'Crates' };
 }
@@ -29,8 +29,8 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
     redirect('/crates');
   }
 
-  ensureDefaultCrate(fanId);
-  const crates = getCrates(fanId);
+  await ensureDefaultCrate(fanId);
+  const crates = await getCrates(fanId);
 
   const { id } = await params;
   const requestedId = parseInt(id, 10);
@@ -41,21 +41,21 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
   }
 
   const isWishlist = targetCrate?.source === 'bandcamp_wishlist';
-  const initialItems = targetCrate && !isWishlist ? getCrateItems(targetCrate.id, fanId) : [];
-  const initialCatalogItems = targetCrate && !isWishlist ? getCrateCatalogItems(targetCrate.id, fanId) : [];
-  const initialReleaseItems = targetCrate && !isWishlist ? getCrateReleaseItems(targetCrate.id, fanId) : [];
+  const initialItems = targetCrate && !isWishlist ? await getCrateItems(targetCrate.id, fanId) : [];
+  const initialCatalogItems = targetCrate && !isWishlist ? await getCrateCatalogItems(targetCrate.id, fanId) : [];
+  const initialReleaseItems = targetCrate && !isWishlist ? await getCrateReleaseItems(targetCrate.id, fanId) : [];
   const initialWishlistItems = targetCrate
     ? isWishlist
-      ? getWishlistItems(fanId)
-      : getCrateWishlistItems(targetCrate.id, fanId)
+      ? await getWishlistItems(fanId)
+      : await getCrateWishlistItems(targetCrate.id, fanId)
     : [];
   const exchangeRates = await getExchangeRates();
-  const initialItemCrateMap = getItemCrateMultiMap(fanId);
+  const initialItemCrateMap = await getItemCrateMultiMap(fanId);
 
   const albumItemUrls = initialWishlistItems
     .filter((item) => item.tralbumType === 'a')
     .map((item) => item.itemUrl);
-  const initialAlbumTracks = getWishlistAlbumTracks(albumItemUrls);
+  const initialAlbumTracks = await getWishlistAlbumTracks(albumItemUrls);
 
   return (
     <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
