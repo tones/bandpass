@@ -94,8 +94,8 @@ export function TrackActions({
           className={`flex items-center justify-center rounded transition-colors ${s.button} ${
             hasStream
               ? isPlaying
-                ? 'text-amber-400 hover:text-amber-300'
-                : 'text-zinc-500 hover:text-zinc-300'
+                ? 'cursor-pointer text-amber-400 hover:text-amber-300'
+                : 'cursor-pointer text-zinc-500 hover:text-zinc-300'
               : 'cursor-default text-zinc-800'
           }`}
           title={isPlaying ? 'Pause' : 'Play'}
