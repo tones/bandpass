@@ -273,5 +273,23 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 14) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_type TEXT NOT NULL,
+        fan_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'pending',
+        progress_done INTEGER DEFAULT 0,
+        progress_total INTEGER DEFAULT 0,
+        error TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      PRAGMA user_version = 14;
+    `);
+  }
+
   return db;
 }

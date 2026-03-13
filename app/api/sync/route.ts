@@ -1,126 +1,64 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, processEnrichmentQueue, getEnrichmentPendingCount, getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from '@/lib/db/sync';
-import { processAudioAnalysisQueue } from '@/lib/audio/queue';
+import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, getEnrichmentPendingCount, getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from '@/lib/db/sync';
+import { createJob, updateJobProgress, completeJob, failJob, hasActiveUserSync, getActiveJob, getLatestJob } from '@/lib/db/sync-jobs';
 import { getItemCount } from '@/lib/db/queries';
+import { ensureWorkersStarted, nudgeWorkers } from '@/lib/sync/workers';
 
 export const dynamic = 'force-dynamic';
 
-interface SyncProgress {
-  newItemsFound: number;
-  isDeepSyncing: boolean;
-  deepSyncItemsFound: number;
-  isCollectionSyncing: boolean;
-  collectionItemsFound: number;
-  isWishlistSyncing: boolean;
-  wishlistItemsFound: number;
-  isEnrichingTags: boolean;
-  tagsEnriched: number;
-  tagsRemaining: number;
-  isAnalyzingAudio: boolean;
-  audioAnalyzed: number;
-  audioRemaining: number;
-}
-
-const activeSyncs = new Map<number, SyncProgress>();
-
 async function startSync(fanId: number, identityCookie: string, isInitial: boolean) {
-  if (activeSyncs.has(fanId)) return;
+  if (hasActiveUserSync(fanId)) return;
 
-  const progress: SyncProgress = {
-    newItemsFound: 0,
-    isDeepSyncing: false,
-    deepSyncItemsFound: 0,
-    isCollectionSyncing: false,
-    collectionItemsFound: 0,
-    isWishlistSyncing: false,
-    wishlistItemsFound: 0,
-    isEnrichingTags: false,
-    tagsEnriched: 0,
-    tagsRemaining: 0,
-    isAnalyzingAudio: false,
-    audioAnalyzed: 0,
-    audioRemaining: 0,
-  };
-  activeSyncs.set(fanId, progress);
+  const jobId = createJob('user_sync', fanId);
 
   try {
     const api = new BandcampAPI(identityCookie);
 
+    updateJobProgress(jobId, 0, 4);
+
     const count = isInitial
       ? await syncFeedInitial(api, fanId)
       : await syncFeedIncremental(api, fanId);
-    progress.newItemsFound = count;
+    updateJobProgress(jobId, 1, 4);
 
     const freshState = getSyncState(fanId);
     if (freshState && !freshState.deepSyncComplete) {
-      progress.isDeepSyncing = true;
       try {
-        const deepCount = await syncFeedDeep(api, fanId);
-        progress.deepSyncItemsFound = deepCount;
+        await syncFeedDeep(api, fanId);
       } catch (err) {
         console.error('Deep sync error:', err);
-      } finally {
-        progress.isDeepSyncing = false;
       }
     }
+    updateJobProgress(jobId, 2, 4);
 
     const collectionState = getSyncState(fanId);
-    progress.isCollectionSyncing = true;
     try {
-      const collectionCount = collectionState?.collectionSynced
-        ? await syncCollectionIncremental(api, fanId)
-        : await syncCollection(api, fanId);
-      progress.collectionItemsFound = collectionCount;
+      if (collectionState?.collectionSynced) {
+        await syncCollectionIncremental(api, fanId);
+      } else {
+        await syncCollection(api, fanId);
+      }
     } catch (err) {
       console.error('Collection sync error:', err);
-    } finally {
-      progress.isCollectionSyncing = false;
     }
+    updateJobProgress(jobId, 3, 4);
 
-    progress.isWishlistSyncing = true;
     try {
-      const wishlistCount = await syncWishlist(api, fanId);
-      progress.wishlistItemsFound = wishlistCount;
+      await syncWishlist(api, fanId);
     } catch (err) {
       console.error('Wishlist sync error:', err);
-    } finally {
-      progress.isWishlistSyncing = false;
     }
+    updateJobProgress(jobId, 4, 4);
 
-    progress.isEnrichingTags = true;
-    try {
-      enqueueForEnrichment(fanId);
-      const enriched = await processEnrichmentQueue((processed, remaining) => {
-        progress.tagsEnriched = processed;
-        progress.tagsRemaining = remaining;
-      });
-      progress.tagsEnriched = enriched;
-    } catch (err) {
-      console.error('Tag enrichment error:', err);
-    } finally {
-      progress.isEnrichingTags = false;
-    }
+    enqueueForEnrichment(fanId);
+    nudgeWorkers();
 
-    if (process.env.ENABLE_AUDIO_ANALYSIS === 'true') {
-      progress.isAnalyzingAudio = true;
-      try {
-        const analyzed = await processAudioAnalysisQueue(identityCookie, (processed, remaining) => {
-          progress.audioAnalyzed = processed;
-          progress.audioRemaining = remaining;
-        });
-        progress.audioAnalyzed = analyzed;
-      } catch (err) {
-        console.error('Audio analysis error:', err);
-      } finally {
-        progress.isAnalyzingAudio = false;
-      }
-    }
+    completeJob(jobId);
   } catch (err) {
     console.error('Sync error:', err);
-  } finally {
-    setTimeout(() => activeSyncs.delete(fanId), 30_000);
+    failJob(jobId, err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -133,7 +71,6 @@ export async function GET() {
   const fanId = session.fanId;
   const state = getSyncState(fanId);
   const totalItems = getItemCount(fanId);
-  const progress = activeSyncs.get(fanId);
 
   const enrichmentPendingCount = state?.collectionSynced && state?.wishlistSynced
     ? getEnrichmentPendingCount(fanId)
@@ -141,36 +78,53 @@ export async function GET() {
   const audioAnalysisPending = getAudioAnalysisPendingCount();
   const audioAnalysisDone = getAudioAnalysisDoneCount();
 
+  const userSyncJob = getActiveJob('user_sync', fanId);
+  const enrichmentJob = getActiveJob('enrichment') ?? getLatestJob('enrichment');
+  const audioJob = getActiveJob('audio_analysis') ?? getLatestJob('audio_analysis');
+
+  const isUserSyncing = !!userSyncJob;
+
+  const isDeepSyncing = isUserSyncing && (userSyncJob?.progressDone ?? 0) < 2;
+  const isCollectionSyncing = isUserSyncing && (userSyncJob?.progressDone ?? 0) >= 2 && (userSyncJob?.progressDone ?? 0) < 3;
+  const isWishlistSyncing = isUserSyncing && (userSyncJob?.progressDone ?? 0) >= 3 && (userSyncJob?.progressDone ?? 0) < 4;
+
+  const isEnrichingTags = enrichmentJob?.status === 'running';
+  const isAnalyzingAudio = audioJob?.status === 'running';
+
   const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
-  if (needsSync && !activeSyncs.has(fanId) && session.identityCookie) {
+  if (needsSync && !isUserSyncing && session.identityCookie) {
     startSync(fanId, session.identityCookie, !state?.lastSyncAt).catch((err) =>
       console.error('Auto-triggered sync error:', err),
     );
   }
 
+  ensureWorkersStarted(session.identityCookie);
+
   return NextResponse.json({
     fanId,
     totalItems,
-    isSyncing: (state?.isSyncing ?? false) || activeSyncs.has(fanId),
+    isSyncing: (state?.isSyncing ?? false) || isUserSyncing,
     lastSyncAt: state?.lastSyncAt ?? null,
     oldestStoryDate: state?.oldestStoryDate ?? null,
     newestStoryDate: state?.newestStoryDate ?? null,
-    newItemsFound: progress?.newItemsFound ?? null,
-    isDeepSyncing: progress?.isDeepSyncing ?? false,
+    isDeepSyncing,
     deepSyncComplete: state?.deepSyncComplete ?? false,
-    isCollectionSyncing: progress?.isCollectionSyncing ?? false,
+    isCollectionSyncing,
     collectionSynced: state?.collectionSynced ?? false,
-    collectionItemsFound: progress?.collectionItemsFound ?? 0,
-    isWishlistSyncing: progress?.isWishlistSyncing ?? false,
+    isWishlistSyncing,
     wishlistSynced: state?.wishlistSynced ?? false,
-    wishlistItemsFound: progress?.wishlistItemsFound ?? 0,
-    isEnrichingTags: progress?.isEnrichingTags ?? false,
-    tagsEnriched: progress?.tagsEnriched ?? 0,
-    enrichmentPendingCount: progress?.isEnrichingTags ? progress.tagsRemaining : enrichmentPendingCount,
-    isAnalyzingAudio: progress?.isAnalyzingAudio ?? false,
-    audioAnalyzed: progress?.audioAnalyzed ?? 0,
-    audioAnalysisPending: progress?.isAnalyzingAudio ? progress.audioRemaining : audioAnalysisPending,
+    isEnrichingTags,
+    tagsEnriched: enrichmentJob?.progressDone ?? 0,
+    enrichmentPendingCount: isEnrichingTags
+      ? (enrichmentJob?.progressTotal ?? 0) - (enrichmentJob?.progressDone ?? 0)
+      : enrichmentPendingCount,
+    isAnalyzingAudio,
+    audioAnalyzed: audioJob?.progressDone ?? 0,
+    audioAnalysisPending: isAnalyzingAudio
+      ? (audioJob?.progressTotal ?? 0) - (audioJob?.progressDone ?? 0)
+      : audioAnalysisPending,
     audioAnalysisDone,
+    audioAnalysisEnabled: process.env.ENABLE_AUDIO_ANALYSIS === 'true',
   });
 }
 
@@ -182,7 +136,7 @@ export async function POST() {
 
   const fanId = session.fanId;
 
-  if (activeSyncs.has(fanId)) {
+  if (hasActiveUserSync(fanId)) {
     return NextResponse.json({ status: 'already_syncing' });
   }
 
@@ -192,6 +146,8 @@ export async function POST() {
   startSync(fanId, session.identityCookie, isInitial).catch((err) =>
     console.error('POST-triggered sync error:', err),
   );
+
+  ensureWorkersStarted(session.identityCookie);
 
   return NextResponse.json({
     status: isInitial ? 'initial_sync_started' : 'incremental_sync_started',

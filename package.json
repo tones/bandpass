@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "build:worker": "esbuild lib/audio/worker.ts --bundle --platform=node --format=cjs --outfile=lib/audio/worker.js --external:essentia.js --external:audio-decode",
+    "dev": "npm run build:worker && next dev",
+    "build": "npm run build:worker && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

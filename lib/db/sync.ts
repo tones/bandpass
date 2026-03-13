@@ -585,19 +585,6 @@ export function enqueueForEnrichment(fanId: number): number {
       WHERE fan_id = ? AND tags = '[]' AND item_url != ''
     `).all(fanId) as Array<{ item_url: string }>;
 
-    const fanUrls = new Set([
-      ...purchases.map((r) => r.album_url),
-      ...wishlist.map((r) => r.item_url),
-    ]);
-
-    if (fanUrls.size > 0) {
-      const placeholders = [...fanUrls].map(() => '?').join(',');
-      db.prepare(
-        `UPDATE enrichment_queue SET status = 'pending', processed_at = NULL
-         WHERE status = 'failed' AND album_url IN (${placeholders})`,
-      ).run(...fanUrls);
-    }
-
     for (const row of purchases) {
       const result = insert.run(row.album_url);
       if (result.changes > 0) enqueued++;

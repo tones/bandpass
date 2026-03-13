@@ -21,6 +21,7 @@ export interface SyncState {
   audioAnalyzed?: number;
   audioAnalysisPending?: number;
   audioAnalysisDone?: number;
+  audioAnalysisEnabled?: boolean;
 }
 
 interface UseSyncPollingOptions {
@@ -47,7 +48,9 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
   }, []);
 
   const isActive = useCallback((s: SyncState) => {
-    return s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing || s.isWishlistSyncing || s.isEnrichingTags || s.isAnalyzingAudio;
+    const jobRunning = s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing || s.isWishlistSyncing || s.isEnrichingTags || s.isAnalyzingAudio;
+    const enrichmentQueued = (s.enrichmentPendingCount ?? 0) > 0 && !s.isEnrichingTags;
+    return jobRunning || enrichmentQueued;
   }, []);
 
   useEffect(() => {
