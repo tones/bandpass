@@ -138,6 +138,8 @@ export class BandcampAPI {
       alsoCollectedCount: item.also_collected_count,
       isPreorder: false,
       tags: [],
+      bpm: null,
+      musicalKey: null,
     };
   }
 
@@ -178,6 +180,8 @@ export class BandcampAPI {
           }
         : null,
       tags: [],
+      bpm: null,
+      musicalKey: null,
       price: item.price ? { amount: item.price, currency: item.currency } : null,
       socialSignal: {
         fan: null,
@@ -221,6 +225,8 @@ export class BandcampAPI {
           }
         : null,
       tags: story.tags?.filter((t) => !t.isloc).map((t) => t.norm_name) ?? [],
+      bpm: null,
+      musicalKey: null,
       price: story.is_purchasable
         ? { amount: story.price, currency: story.currency }
         : null,
