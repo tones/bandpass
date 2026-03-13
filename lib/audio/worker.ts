@@ -18,13 +18,28 @@ interface AnalyzeRequest {
   cookie?: string;
 }
 
+const FETCH_TIMEOUT_MS = 30_000;
+
 async function analyzeTrack(req: AnalyzeRequest) {
   const headers: Record<string, string> = {};
   if (req.cookie) {
     headers['Cookie'] = `identity=${req.cookie}`;
   }
 
-  const resp = await fetch(req.streamUrl, { headers, redirect: 'follow' });
+  const controller = new AbortController();
+  const fetchTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  let resp: Response;
+  try {
+    resp = await fetch(req.streamUrl, {
+      headers,
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(fetchTimer);
+  }
+
   if (!resp.ok) {
     throw new Error(`Failed to fetch audio: HTTP ${resp.status}`);
   }

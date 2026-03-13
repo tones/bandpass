@@ -2,6 +2,7 @@ import { getDb } from './index';
 import { rowToFeedItem } from './queries';
 import type { FeedItemRow } from './queries';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
+import type { CatalogTrack, CatalogRelease } from './catalog';
 
 export interface Crate {
   id: number;
@@ -293,6 +294,88 @@ export function getWishlistItemCount(fanId: number): number {
   const db = getDb();
   const row = db.prepare('SELECT COUNT(*) AS c FROM wishlist_items WHERE fan_id = ?').get(fanId) as { c: number };
   return row.c;
+}
+
+export interface WishlistAlbumData {
+  release: CatalogRelease;
+  tracks: CatalogTrack[];
+}
+
+export function getWishlistAlbumTracks(itemUrls: string[]): Record<string, WishlistAlbumData> {
+  if (itemUrls.length === 0) return {};
+  const db = getDb();
+
+  const placeholders = itemUrls.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT cr.id as release_id, cr.band_slug, cr.band_name, cr.band_url,
+           cr.title as release_title, cr.url as release_url, cr.image_url,
+           cr.release_type, cr.scraped_at, cr.release_date, cr.tags as release_tags,
+           ct.id as track_id, ct.track_num, ct.title as track_title,
+           ct.duration, ct.stream_url, ct.track_url,
+           ct.bpm, ct.musical_key, ct.key_camelot
+    FROM catalog_releases cr
+    JOIN catalog_tracks ct ON ct.release_id = cr.id
+    WHERE cr.url IN (${placeholders})
+    ORDER BY cr.url, ct.track_num
+  `).all(...itemUrls) as Array<{
+    release_id: number;
+    band_slug: string;
+    band_name: string;
+    band_url: string;
+    release_title: string;
+    release_url: string;
+    image_url: string;
+    release_type: string;
+    scraped_at: string;
+    release_date: string | null;
+    release_tags: string;
+    track_id: number;
+    track_num: number;
+    track_title: string;
+    duration: number;
+    stream_url: string | null;
+    track_url: string | null;
+    bpm: number | null;
+    musical_key: string | null;
+    key_camelot: string | null;
+  }>;
+
+  const result: Record<string, WishlistAlbumData> = {};
+  for (const r of rows) {
+    if (!result[r.release_url]) {
+      let tags: string[] = [];
+      try { tags = JSON.parse(r.release_tags || '[]'); } catch { tags = []; }
+      result[r.release_url] = {
+        release: {
+          id: r.release_id,
+          bandSlug: r.band_slug,
+          bandName: r.band_name,
+          bandUrl: r.band_url,
+          title: r.release_title,
+          url: r.release_url,
+          imageUrl: r.image_url,
+          releaseType: r.release_type as 'album' | 'track',
+          scrapedAt: r.scraped_at,
+          releaseDate: r.release_date,
+          tags,
+        },
+        tracks: [],
+      };
+    }
+    result[r.release_url].tracks.push({
+      id: r.track_id,
+      releaseId: r.release_id,
+      trackNum: r.track_num,
+      title: r.track_title,
+      duration: r.duration,
+      streamUrl: r.stream_url,
+      trackUrl: r.track_url,
+      bpm: r.bpm ?? null,
+      musicalKey: r.musical_key ?? null,
+      keyCamelot: r.key_camelot ?? null,
+    });
+  }
+  return result;
 }
 
 /** Returns all item IDs across all crates for a fan. */

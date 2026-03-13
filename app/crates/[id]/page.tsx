@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { getExchangeRates } from '@/lib/currency';
-import { getCrates, getCrateItems, getCrateCatalogItems, getCrateWishlistItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap } from '@/lib/db/crates';
+import { getCrates, getCrateItems, getCrateCatalogItems, getCrateWishlistItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap, getWishlistAlbumTracks } from '@/lib/db/crates';
 import { CratesView } from '@/components/CratesView';
 import { AppHeader } from '@/components/AppHeader';
 
@@ -41,6 +41,11 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
   const exchangeRates = await getExchangeRates();
   const initialItemCrateMap = getItemCrateMultiMap(fanId);
 
+  const albumItemUrls = initialWishlistItems
+    .filter((item) => item.tralbumType === 'a')
+    .map((item) => item.itemUrl);
+  const initialAlbumTracks = getWishlistAlbumTracks(albumItemUrls);
+
   return (
     <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
       <AppHeader username={username} />
@@ -50,6 +55,7 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
         initialItems={initialItems}
         initialCatalogItems={initialCatalogItems}
         initialWishlistItems={initialWishlistItems}
+        initialAlbumTracks={initialAlbumTracks}
         exchangeRates={exchangeRates}
         initialItemCrateMap={initialItemCrateMap}
       />

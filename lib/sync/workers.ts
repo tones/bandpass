@@ -133,7 +133,14 @@ function markAudioFailed(trackId: number) {
   ).run(trackId);
 }
 
-const WORKER_TIMEOUT_MS = 120_000;
+const WORKER_TIMEOUT_MS = 60_000;
+
+class WorkerDiedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WorkerDiedError';
+  }
+}
 
 function postToWorker(worker: WorkerType, track: { id: number; stream_url: string }, cookie?: string): Promise<AudioWorkerMessage> {
   return new Promise((resolve, reject) => {
@@ -158,12 +165,12 @@ function postToWorker(worker: WorkerType, track: { id: number; stream_url: strin
 
     const onError = (err: Error) => {
       cleanup();
-      reject(new Error(`Worker thread error: ${err.message}`));
+      reject(new WorkerDiedError(`Worker thread error: ${err.message}`));
     };
 
     const onExit = (code: number) => {
       cleanup();
-      reject(new Error(`Worker thread exited with code ${code}`));
+      reject(new WorkerDiedError(`Worker thread exited with code ${code}`));
     };
 
     worker.on('message', onMessage);
@@ -175,6 +182,14 @@ function postToWorker(worker: WorkerType, track: { id: number; stream_url: strin
 
 function resolveWorkerPath(): string {
   return path.join(process.cwd(), 'lib', 'audio', 'worker.js');
+}
+
+const MAX_CONSECUTIVE_FAILURES = 5;
+
+function spawnWorker(): WorkerType {
+  const workerPath = resolveWorkerPath();
+  console.log('Spawning audio analysis worker thread...');
+  return new Worker(workerPath);
 }
 
 async function audioWorkerLoop() {
@@ -195,55 +210,59 @@ async function audioWorkerLoop() {
         continue;
       }
 
-      if (!worker) {
-        const workerPath = resolveWorkerPath();
-        worker = new Worker(workerPath);
-
-        worker.on('error', (err) => {
-          console.error('Audio worker thread error:', err);
-          worker = null;
-        });
-        worker.on('exit', (code) => {
-          if (code !== 0) console.error(`Audio worker exited with code ${code}`);
-          worker = null;
-        });
-      }
-
       const jobId = createJob('audio_analysis');
       let done = 0;
+      let consecutiveFailures = 0;
+      let aborted = false;
 
       try {
         updateJobProgress(jobId, 0, totalPending);
 
-        let workerDied = false;
-
-        while (!workerDied) {
+        while (!aborted) {
           const batch = getNextAudioBatch(50);
           if (batch.length === 0) break;
 
           for (const track of batch) {
+            if (aborted) break;
+
             if (!worker) {
-              workerDied = true;
-              break;
+              try {
+                worker = spawnWorker();
+              } catch (spawnErr) {
+                console.error('Failed to spawn audio worker:', spawnErr);
+                failJob(jobId, `Cannot spawn worker: ${spawnErr}`);
+                aborted = true;
+                break;
+              }
             }
 
             try {
               const result = await postToWorker(worker, track, storedCookie);
               if ('error' in result && result.error) {
-                console.error(`Audio analysis failed for track ${result.trackId}:`, result.error);
+                console.error(`Audio analysis failed for track ${result.trackId}: ${result.error}`);
                 markAudioFailed(result.trackId);
               } else {
                 saveAudioResult(result as AudioWorkerResult);
+                consecutiveFailures = 0;
               }
             } catch (err) {
-              console.error(`Worker communication error for track ${track.id}:`, err);
+              console.error(`Worker error for track ${track.id}:`, err);
               markAudioFailed(track.id);
+
               if (worker) {
                 try { worker.terminate(); } catch { /* ignore */ }
               }
               worker = null;
-              workerDied = true;
-              break;
+
+              consecutiveFailures++;
+              if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                console.error(`${MAX_CONSECUTIVE_FAILURES} consecutive failures, aborting job`);
+                failJob(jobId, `${MAX_CONSECUTIVE_FAILURES} consecutive track failures`);
+                aborted = true;
+                break;
+              }
+
+              continue;
             }
 
             done++;
@@ -254,11 +273,9 @@ async function audioWorkerLoop() {
           }
         }
 
-        if (workerDied) {
-          console.error(`Audio worker died after processing ${done} tracks, will retry on next cycle`);
-          failJob(jobId, `Worker died after ${done} tracks`);
-        } else {
+        if (!aborted) {
           completeJob(jobId);
+          console.log(`Audio analysis job completed: ${done} tracks processed`);
         }
       } catch (err) {
         console.error('Audio worker loop error:', err);

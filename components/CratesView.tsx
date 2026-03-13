@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useTransition, useRef, useEffect } from 'react';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
-import type { Crate, CrateCatalogItem } from '@/lib/db/crates';
+import type { Crate, CrateCatalogItem, WishlistAlbumData } from '@/lib/db/crates';
+import type { CatalogTrack } from '@/lib/db/catalog';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FeedItemCard } from './feed/FeedItem';
@@ -11,6 +12,7 @@ import { TrackActions } from './TrackActions';
 import type { CrateInfo } from './TrackActions';
 import { TagPill } from '@/components/TagPill';
 import { BpmKeyBadge } from '@/components/BpmKeyBadge';
+import { formatDuration, catalogTrackToFeedItem } from '@/lib/formatters';
 import { extractSlug, getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import {
   removeFromCrateAction,
@@ -32,6 +34,7 @@ interface CratesViewProps {
   initialItems: FeedItem[];
   initialCatalogItems: CrateCatalogItem[];
   initialWishlistItems: WishlistItem[];
+  initialAlbumTracks?: Record<string, WishlistAlbumData>;
   exchangeRates?: Record<string, number>;
   initialItemCrateMap?: Record<string, number[]>;
 }
@@ -42,6 +45,7 @@ export function CratesView({
   initialItems,
   initialCatalogItems,
   initialWishlistItems,
+  initialAlbumTracks = {},
   exchangeRates = {},
   initialItemCrateMap = {},
 }: CratesViewProps) {
@@ -50,6 +54,7 @@ export function CratesView({
   const [items, setItems] = useState(initialItems);
   const [catalogItems, setCatalogItems] = useState(initialCatalogItems);
   const [wishlistItems, setWishlistItems] = useState(initialWishlistItems);
+  const [albumTracks, setAlbumTracks] = useState<Record<string, WishlistAlbumData>>(initialAlbumTracks);
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
   const { playingTrackUrl, playingItem, isPlaying: playerIsPlaying, play: playFeedItem } = usePlayer();
   const router = useRouter();
@@ -94,8 +99,9 @@ export function CratesView({
     startTransition(async () => {
       const mapPromise = getItemCrateMultiMapAction();
       if (crate?.source === 'bandcamp_wishlist') {
-        const wl = await getWishlistItemsAction();
-        setWishlistItems(wl);
+        const result = await getWishlistItemsAction();
+        setWishlistItems(result.wishlistItems);
+        setAlbumTracks(result.albumTracks);
         setItems([]);
         setCatalogItems([]);
       } else {
@@ -103,6 +109,7 @@ export function CratesView({
         setItems(result.items);
         setCatalogItems(result.catalogItems);
         setWishlistItems(result.wishlistItems);
+        setAlbumTracks(result.albumTracks);
       }
       setItemCrateMap(await mapPromise);
     });
@@ -166,9 +173,11 @@ export function CratesView({
     const prevItems = items;
     const prevCatalog = catalogItems;
     const prevWishlist = wishlistItems;
+    const prevAlbumTracks = albumTracks;
     setItems([]);
     setCatalogItems([]);
     setWishlistItems([]);
+    setAlbumTracks({});
     setConfirmClear(false);
     try {
       await clearCrateAction(activeCrateId);
@@ -176,6 +185,7 @@ export function CratesView({
       setItems(prevItems);
       setCatalogItems(prevCatalog);
       setWishlistItems(prevWishlist);
+      setAlbumTracks(prevAlbumTracks);
     }
   }, [activeCrateId, items, catalogItems, wishlistItems]);
 
@@ -194,8 +204,9 @@ export function CratesView({
   const handleRefreshWishlist = useCallback(async () => {
     setIsRefreshingWishlist(true);
     try {
-      const updated = await refreshWishlistAction();
-      setWishlistItems(updated);
+      const result = await refreshWishlistAction();
+      setWishlistItems(result.wishlistItems);
+      setAlbumTracks(result.albumTracks);
     } catch (err) {
       console.error('Failed to refresh wishlist:', err);
     } finally {
@@ -241,6 +252,12 @@ export function CratesView({
     });
   }, [playFeedItem]);
 
+  const handlePlayAlbumTrack = useCallback((track: CatalogTrack, item: WishlistItem) => {
+    const data = albumTracks[item.itemUrl];
+    if (!data) return;
+    playFeedItem(catalogTrackToFeedItem(track, data.release));
+  }, [playFeedItem, albumTracks]);
+
   const handleCreateCrate = useCallback(() => {
     const name = newCrateName.trim();
     if (!name) return;
@@ -276,6 +293,7 @@ export function CratesView({
       setItems([]);
       setCatalogItems([]);
       setWishlistItems([]);
+      setAlbumTracks({});
     }
     startTransition(async () => {
       await deleteCrateAction(crateId);
@@ -576,26 +594,50 @@ export function CratesView({
               />
             ))}
 
-            {wishlistItems.map((item) => (
-              <CrateItemRow
-                key={item.id}
-                title={item.featuredTrackTitle ?? item.title}
-                subtitle={<><Link href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.artistName}</Link>{getDomainIfDifferent(item.artistName, item.artistUrl) && <span className="text-zinc-600">{' · '}<Link href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artistName, item.artistUrl)}</Link></span>}<span className="text-zinc-600">{' · '}{item.title}</span></>}
-                imageUrl={item.imageUrl}
-                streamUrl={item.streamUrl}
-                bandcampUrl={item.itemUrl}
-                tags={item.tags}
-                bpm={item.bpm}
-                musicalKey={item.musicalKey}
-                isPlaying={playerIsPlaying && playingTrackUrl === item.streamUrl && item.streamUrl != null}
-                crateIds={itemCrateMap[item.id]}
-                userCrates={userCrates}
-                onPlay={() => handlePlayWishlist(item)}
-                onToggleCrate={() => handleToggleCrate(item.id)}
-                onAddToCrate={(crateId) => handleAddToCrate(item.id, crateId)}
-                onRemoveFromCrate={(crateId) => handleRemoveFromCrate(item.id, crateId)}
-              />
-            ))}
+            {wishlistItems.map((item) => {
+              const data = item.tralbumType === 'a' ? albumTracks[item.itemUrl] : undefined;
+              if (data && data.tracks.length > 0) {
+                return (
+                  <WishlistAlbumCard
+                    key={item.id}
+                    item={item}
+                    tracks={data.tracks}
+                    playingTrackUrl={playingTrackUrl}
+                    isPlayerPlaying={playerIsPlaying}
+                    crateIds={itemCrateMap[item.id]}
+                    itemCrateMap={itemCrateMap}
+                    userCrates={userCrates}
+                    onPlayTrack={(track) => handlePlayAlbumTrack(track, item)}
+                    onToggleCrate={() => handleToggleCrate(item.id)}
+                    onAddToCrate={(crateId) => handleAddToCrate(item.id, crateId)}
+                    onRemoveFromCrate={(crateId) => handleRemoveFromCrate(item.id, crateId)}
+                    onToggleTrackCrate={(itemId) => handleToggleCrate(itemId)}
+                    onAddTrackToCrate={(itemId, crateId) => handleAddToCrate(itemId, crateId)}
+                    onRemoveTrackFromCrate={(itemId, crateId) => handleRemoveFromCrate(itemId, crateId)}
+                  />
+                );
+              }
+              return (
+                <CrateItemRow
+                  key={item.id}
+                  title={item.featuredTrackTitle ?? item.title}
+                  subtitle={<><Link href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.artistName}</Link>{getDomainIfDifferent(item.artistName, item.artistUrl) && <span className="text-zinc-600">{' · '}<Link href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artistName, item.artistUrl)}</Link></span>}<span className="text-zinc-600">{' · '}{item.title}</span></>}
+                  imageUrl={item.imageUrl}
+                  streamUrl={item.streamUrl}
+                  bandcampUrl={item.itemUrl}
+                  tags={item.tags}
+                  bpm={item.bpm}
+                  musicalKey={item.musicalKey}
+                  isPlaying={playerIsPlaying && playingTrackUrl === item.streamUrl && item.streamUrl != null}
+                  crateIds={itemCrateMap[item.id]}
+                  userCrates={userCrates}
+                  onPlay={() => handlePlayWishlist(item)}
+                  onToggleCrate={() => handleToggleCrate(item.id)}
+                  onAddToCrate={(crateId) => handleAddToCrate(item.id, crateId)}
+                  onRemoveFromCrate={(crateId) => handleRemoveFromCrate(item.id, crateId)}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -687,6 +729,140 @@ function CrateItemRow({
         onAddToCrate={onAddToCrate}
         onRemoveFromCrate={onRemoveFromCrate}
       />
+    </div>
+  );
+}
+
+function catalogTrackCrateId(trackId: number): string {
+  return `catalog-track-${trackId}`;
+}
+
+interface WishlistAlbumCardProps {
+  item: WishlistItem;
+  tracks: CatalogTrack[];
+  playingTrackUrl: string | null;
+  isPlayerPlaying: boolean;
+  crateIds?: number[];
+  itemCrateMap: Record<string, number[]>;
+  userCrates: CrateInfo[];
+  onPlayTrack: (track: CatalogTrack) => void;
+  onToggleCrate: () => void;
+  onAddToCrate: (crateId: number) => void;
+  onRemoveFromCrate: (crateId: number) => void;
+  onToggleTrackCrate: (itemId: string) => void;
+  onAddTrackToCrate: (itemId: string, crateId: number) => void;
+  onRemoveTrackFromCrate: (itemId: string, crateId: number) => void;
+}
+
+function WishlistAlbumCard({
+  item,
+  tracks,
+  playingTrackUrl,
+  isPlayerPlaying,
+  crateIds,
+  itemCrateMap,
+  userCrates,
+  onPlayTrack,
+  onToggleCrate,
+  onAddToCrate,
+  onRemoveFromCrate,
+  onToggleTrackCrate,
+  onAddTrackToCrate,
+  onRemoveTrackFromCrate,
+}: WishlistAlbumCardProps) {
+  const slug = extractSlug(item.artistUrl);
+
+  return (
+    <div className="mx-4 my-2 rounded-lg border border-zinc-800">
+      <div className="flex items-center gap-4 px-4 py-3">
+        {item.imageUrl ? (
+          <img src={item.imageUrl} alt={item.title} className="h-14 w-14 shrink-0 rounded" />
+        ) : (
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-zinc-800 text-zinc-600">♫</div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-zinc-100">{item.title}</div>
+          <div className="truncate text-sm text-zinc-400">
+            <Link href={`/music/${slug}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>
+              {item.artistName}
+            </Link>
+            {getDomainIfDifferent(item.artistName, item.artistUrl) && (
+              <span className="text-zinc-600">
+                {' · '}
+                <Link href={`/music/${slug}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>
+                  {getDomainIfDifferent(item.artistName, item.artistUrl)}
+                </Link>
+              </span>
+            )}
+          </div>
+          {item.tags.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {[...new Set(item.tags)].sort().slice(0, 4).map((tag) => (
+                <TagPill key={tag} tag={tag} />
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <TrackActions
+            isPlaying={false}
+            hasStream={false}
+            isInCrate={(crateIds?.length ?? 0) > 0}
+            bandcampUrl={item.itemUrl}
+            onPlay={() => {}}
+            onToggleCrate={onToggleCrate}
+            showPlayButton={false}
+            crates={userCrates}
+            itemCrateIds={crateIds}
+            onAddToCrate={onAddToCrate}
+            onRemoveFromCrate={onRemoveFromCrate}
+          />
+        </div>
+      </div>
+
+      <div className="border-t border-zinc-800/50">
+        {tracks.map((track) => {
+          const isActive = playingTrackUrl === track.streamUrl && track.streamUrl != null && isPlayerPlaying;
+          const cid = catalogTrackCrateId(track.id);
+          const trackCrateIds = itemCrateMap[cid];
+          return (
+            <div
+              key={track.id}
+              className={`flex w-full items-center gap-3 px-4 py-2 transition-colors ${
+                isActive ? 'bg-zinc-900' : 'hover:bg-zinc-900/30'
+              } ${!track.streamUrl ? 'opacity-40' : ''}`}
+            >
+              <span className="w-6 shrink-0 text-right text-xs tabular-nums text-zinc-600">
+                {track.trackNum}
+              </span>
+              <button
+                type="button"
+                className="min-w-0 flex-1 cursor-pointer truncate text-left text-sm text-zinc-200"
+                onClick={() => onPlayTrack(track)}
+                disabled={!track.streamUrl}
+              >
+                {track.title}
+              </button>
+              <span className="shrink-0 text-xs tabular-nums text-zinc-600">
+                {track.duration > 0 ? formatDuration(track.duration) : ''}
+              </span>
+              <BpmKeyBadge bpm={track.bpm} musicalKey={track.musicalKey} />
+              <TrackActions
+                isPlaying={isActive}
+                hasStream={!!track.streamUrl}
+                isInCrate={(trackCrateIds?.length ?? 0) > 0}
+                bandcampUrl={track.trackUrl ?? item.itemUrl}
+                onPlay={() => onPlayTrack(track)}
+                onToggleCrate={() => onToggleTrackCrate(cid)}
+                crates={userCrates}
+                itemCrateIds={trackCrateIds}
+                onAddToCrate={(crateId) => onAddTrackToCrate(cid, crateId)}
+                onRemoveFromCrate={(crateId) => onRemoveTrackFromCrate(cid, crateId)}
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

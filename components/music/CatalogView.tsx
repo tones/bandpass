@@ -2,8 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { CatalogRelease, CatalogTrack } from '@/lib/db/catalog';
-import type { FeedItem } from '@/lib/bandcamp/types/domain';
-import { formatDuration } from '@/lib/formatters';
+import { formatDuration, catalogTrackToFeedItem } from '@/lib/formatters';
 import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
@@ -38,22 +37,6 @@ interface ReleaseDateCache {
 
 interface TagsCache {
   [releaseId: number]: string[];
-}
-
-function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRelease): FeedItem {
-  return {
-    id: `catalog-track-${track.id}`,
-    storyType: 'new_release',
-    date: new Date(),
-    album: { id: release.id, title: release.title, url: release.url, imageUrl: release.imageUrl },
-    artist: { id: 0, name: release.bandName, url: release.bandUrl },
-    track: { title: track.title, duration: track.duration, streamUrl: track.streamUrl },
-    tags: [],
-    bpm: track.bpm,
-    musicalKey: track.musicalKey,
-    price: null,
-    socialSignal: { fan: null, alsoCollectedCount: 0 },
-  };
 }
 
 export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateItemIds = [], initialCrates = [], initialItemCrateMap = {}, loggedIn = false }: CatalogViewProps) {
@@ -284,7 +267,7 @@ function ReleaseCard({
   onRemoveFromCrate,
 }: ReleaseCardProps) {
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-800">
+    <div className="rounded-lg border border-zinc-800">
       <div className="flex items-center gap-4 px-4 py-3">
         {release.imageUrl ? (
           <img

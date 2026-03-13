@@ -16,7 +16,9 @@ import {
   getWishlistItems,
   getCrates,
   getItemCrateMultiMap,
+  getWishlistAlbumTracks,
 } from '@/lib/db/crates';
+import type { WishlistAlbumData } from '@/lib/db/crates';
 import { BandcampAPI } from '@/lib/bandcamp/api';
 import { syncWishlist } from '@/lib/db/sync';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
@@ -74,6 +76,7 @@ export interface CrateItemsResult {
   items: FeedItem[];
   catalogItems: CrateCatalogItem[];
   wishlistItems: WishlistItem[];
+  albumTracks: Record<string, WishlistAlbumData>;
 }
 
 export async function getCrateItemsAction(crateId: number): Promise<CrateItemsResult> {
@@ -81,12 +84,22 @@ export async function getCrateItemsAction(crateId: number): Promise<CrateItemsRe
   const items = getCrateItems(crateId, fanId);
   const catalogItems = getCrateCatalogItems(crateId, fanId);
   const wishlistItems = getCrateWishlistItems(crateId, fanId);
-  return { items, catalogItems, wishlistItems };
+  const albumUrls = wishlistItems.filter((i) => i.tralbumType === 'a').map((i) => i.itemUrl);
+  const albumTracks = getWishlistAlbumTracks(albumUrls);
+  return { items, catalogItems, wishlistItems, albumTracks };
 }
 
-export async function getWishlistItemsAction(): Promise<WishlistItem[]> {
+export interface WishlistItemsResult {
+  wishlistItems: WishlistItem[];
+  albumTracks: Record<string, WishlistAlbumData>;
+}
+
+export async function getWishlistItemsAction(): Promise<WishlistItemsResult> {
   const fanId = await requireFanId();
-  return getWishlistItems(fanId);
+  const wishlistItems = getWishlistItems(fanId);
+  const albumUrls = wishlistItems.filter((i) => i.tralbumType === 'a').map((i) => i.itemUrl);
+  const albumTracks = getWishlistAlbumTracks(albumUrls);
+  return { wishlistItems, albumTracks };
 }
 
 export async function getCratesAction(): Promise<Crate[]> {
@@ -104,10 +117,13 @@ export async function getItemCrateMultiMapAction(): Promise<Record<string, numbe
   return getItemCrateMultiMap(fanId);
 }
 
-export async function refreshWishlistAction(): Promise<WishlistItem[]> {
+export async function refreshWishlistAction(): Promise<WishlistItemsResult> {
   const session = await getSession();
   if (!session.fanId || !session.identityCookie) throw new Error('Not authenticated');
   const api = new BandcampAPI(session.identityCookie);
   await syncWishlist(api, session.fanId);
-  return getWishlistItems(session.fanId);
+  const wishlistItems = getWishlistItems(session.fanId);
+  const albumUrls = wishlistItems.filter((i) => i.tralbumType === 'a').map((i) => i.itemUrl);
+  const albumTracks = getWishlistAlbumTracks(albumUrls);
+  return { wishlistItems, albumTracks };
 }

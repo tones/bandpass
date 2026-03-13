@@ -30,3 +30,22 @@ export function formatPrice(amount: number, currency: string): string {
 export function proxyUrl(url: string): string {
   return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
 }
+
+import type { CatalogTrack, CatalogRelease } from '@/lib/db/catalog';
+import type { FeedItem } from '@/lib/bandcamp/types/domain';
+
+export function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRelease): FeedItem {
+  return {
+    id: `catalog-track-${track.id}`,
+    storyType: 'new_release',
+    date: new Date(),
+    album: { id: release.id, title: release.title, url: release.url, imageUrl: release.imageUrl },
+    artist: { id: 0, name: release.bandName, url: release.bandUrl },
+    track: { title: track.title, duration: track.duration, streamUrl: track.streamUrl },
+    tags: [],
+    bpm: track.bpm,
+    musicalKey: track.musicalKey,
+    price: null,
+    socialSignal: { fan: null, alsoCollectedCount: 0 },
+  };
+}

@@ -16,6 +16,7 @@ interface TrackActionsProps {
   onToggleCrate: () => void;
   size?: 'sm' | 'md';
   showCrate?: boolean;
+  showPlayButton?: boolean;
   crates?: CrateInfo[];
   itemCrateIds?: number[];
   onAddToCrate?: (crateId: number) => void;
@@ -44,6 +45,7 @@ export function TrackActions({
   onToggleCrate,
   size = 'sm',
   showCrate = true,
+  showPlayButton = true,
   crates,
   itemCrateIds,
   onAddToCrate,
@@ -85,20 +87,22 @@ export function TrackActions({
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <button
-        onClick={(e) => { e.stopPropagation(); onPlay(); }}
-        disabled={!hasStream}
-        className={`flex items-center justify-center rounded transition-colors ${s.button} ${
-          hasStream
-            ? isPlaying
-              ? 'text-amber-400 hover:text-amber-300'
-              : 'text-zinc-500 hover:text-zinc-300'
-            : 'cursor-default text-zinc-800'
-        }`}
-        title={isPlaying ? 'Pause' : 'Play'}
-      >
-        <span className="leading-none">{isPlaying ? '⏸' : '▶'}</span>
-      </button>
+      {showPlayButton && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onPlay(); }}
+          disabled={!hasStream}
+          className={`flex items-center justify-center rounded transition-colors ${s.button} ${
+            hasStream
+              ? isPlaying
+                ? 'text-amber-400 hover:text-amber-300'
+                : 'text-zinc-500 hover:text-zinc-300'
+              : 'cursor-default text-zinc-800'
+          }`}
+          title={isPlaying ? 'Pause' : 'Play'}
+        >
+          <span className="leading-none">{isPlaying ? '⏸' : '▶'}</span>
+        </button>
+      )}
 
       {showCrate && (
         <div className="relative" ref={pickerRef}>
