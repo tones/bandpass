@@ -201,7 +201,7 @@ export function AccountView({
             <button
               onClick={stopAudioAnalysis}
               disabled={stopping}
-              className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="cursor-pointer rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {stopping ? 'Stopping...' : 'Stop analysis'}
             </button>

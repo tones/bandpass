@@ -20,13 +20,19 @@ interface AnalyzeRequest {
 
 const FETCH_TIMEOUT_MS = 10_000;
 
+function truncUrl(url: string): string {
+  return url.length > 60 ? url.slice(0, 60) + '...' : url;
+}
+
 async function analyzeTrack(req: AnalyzeRequest) {
+  const tag = `Track ${req.trackId}`;
   const headers: Record<string, string> = {};
   if (req.cookie) {
     headers['Cookie'] = `identity=${req.cookie}`;
   }
 
   // Phase 1: Fetch audio
+  console.log(`${tag}: fetching (${truncUrl(req.streamUrl)})`);
   let mp3Buffer: Buffer;
   try {
     const controller = new AbortController();
@@ -54,6 +60,8 @@ async function analyzeTrack(req: AnalyzeRequest) {
   }
 
   // Phase 2: Decode MP3 to PCM
+  const sizeMB = (mp3Buffer.length / 1024 / 1024).toFixed(1);
+  console.log(`${tag}: fetched ${sizeMB}MB, decoding...`);
   let pcm: Float32Array;
   try {
     const decode = (await import('audio-decode')).default;
@@ -65,6 +73,8 @@ async function analyzeTrack(req: AnalyzeRequest) {
   }
 
   // Phase 3: BPM + Key analysis
+  const durationSec = Math.round(pcm.length / 44100);
+  console.log(`${tag}: decoded ${durationSec}s of audio, analyzing...`);
   const essentia = await getEssentia();
   const signal = essentia.arrayToVector(pcm);
 
@@ -76,6 +86,7 @@ async function analyzeTrack(req: AnalyzeRequest) {
     const musicalKey = formatKey(keyResult.key, keyResult.scale);
     const keyCamelot = toCamelot(keyResult.key, keyResult.scale);
 
+    console.log(`${tag}: done (bpm=${bpm}, key=${musicalKey})`);
     return { bpm, musicalKey, keyCamelot };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
