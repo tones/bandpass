@@ -18,7 +18,7 @@ interface AnalyzeRequest {
   cookie?: string;
 }
 
-const FETCH_TIMEOUT_MS = 30_000;
+const FETCH_TIMEOUT_MS = 10_000;
 
 async function analyzeTrack(req: AnalyzeRequest) {
   const headers: Record<string, string> = {};

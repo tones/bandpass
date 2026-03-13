@@ -281,3 +281,47 @@ export function getArtistsFromFeed(fanId: number): Array<{
     trackCount: r.track_count,
   }));
 }
+
+export interface ReleaseNeedingRefresh {
+  releaseId: number;
+  releaseUrl: string;
+}
+
+export function getReleasesNeedingStreamRefresh(): ReleaseNeedingRefresh[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT DISTINCT cr.id AS release_id, cr.url AS release_url
+    FROM catalog_tracks ct
+    JOIN catalog_releases cr ON cr.id = ct.release_id
+    WHERE ct.bpm_status IS NULL
+    ORDER BY cr.id
+  `).all() as Array<{ release_id: number; release_url: string }>;
+  return rows.map((r) => ({ releaseId: r.release_id, releaseUrl: r.release_url }));
+}
+
+export function refreshStreamUrls(
+  releaseId: number,
+  freshTracks: Array<{ trackNum: number; streamUrl: string | null; trackUrl: string | null }>,
+): void {
+  const db = getDb();
+  const update = db.prepare(
+    'UPDATE catalog_tracks SET stream_url = ?, track_url = COALESCE(?, track_url) WHERE release_id = ? AND track_num = ?',
+  );
+
+  const doAll = db.transaction(() => {
+    for (const t of freshTracks) {
+      update.run(t.streamUrl, t.trackUrl, releaseId, t.trackNum);
+    }
+  });
+  doAll();
+}
+
+export function markNoStreamTracks(): number {
+  const db = getDb();
+  const result = db.prepare(`
+    UPDATE catalog_tracks
+    SET bpm_status = 'no_stream'
+    WHERE bpm_status IS NULL AND (stream_url IS NULL OR stream_url = '')
+  `).run();
+  return result.changes;
+}

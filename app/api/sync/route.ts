@@ -124,6 +124,7 @@ export async function GET() {
       ? (audioJob?.progressTotal ?? 0) - (audioJob?.progressDone ?? 0)
       : audioAnalysisPending,
     audioAnalysisDone,
+    audioSubPhase: audioJob?.subPhase ?? null,
     audioAnalysisEnabled: process.env.ENABLE_AUDIO_ANALYSIS === 'true',
   });
 }

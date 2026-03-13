@@ -291,5 +291,13 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 15) {
+    db.exec(`
+      ALTER TABLE sync_jobs ADD COLUMN sub_phase TEXT;
+
+      PRAGMA user_version = 15;
+    `);
+  }
+
   return db;
 }

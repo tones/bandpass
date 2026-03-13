@@ -10,6 +10,7 @@ export interface SyncJob {
   status: JobStatus;
   progressDone: number;
   progressTotal: number;
+  subPhase: string | null;
   error: string | null;
   createdAt: string;
   updatedAt: string;
@@ -22,6 +23,7 @@ interface SyncJobRow {
   status: string;
   progress_done: number;
   progress_total: number;
+  sub_phase: string | null;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -35,6 +37,7 @@ function rowToJob(row: SyncJobRow): SyncJob {
     status: row.status as JobStatus,
     progressDone: row.progress_done,
     progressTotal: row.progress_total,
+    subPhase: row.sub_phase,
     error: row.error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -49,11 +52,11 @@ export function createJob(jobType: JobType, fanId?: number): number {
   return result.lastInsertRowid as number;
 }
 
-export function updateJobProgress(jobId: number, done: number, total: number): void {
+export function updateJobProgress(jobId: number, done: number, total: number, subPhase?: string): void {
   const db = getDb();
   db.prepare(
-    "UPDATE sync_jobs SET progress_done = ?, progress_total = ?, updated_at = datetime('now') WHERE id = ?",
-  ).run(done, total, jobId);
+    "UPDATE sync_jobs SET progress_done = ?, progress_total = ?, sub_phase = ?, updated_at = datetime('now') WHERE id = ?",
+  ).run(done, total, subPhase ?? null, jobId);
 }
 
 export function completeJob(jobId: number): void {

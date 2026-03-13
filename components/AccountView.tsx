@@ -73,6 +73,7 @@ export function AccountView({
   const audioAnalyzed = state?.audioAnalyzed ?? 0;
   const audioAnalysisPending = state?.audioAnalysisPending ?? null;
   const audioAnalysisDone = state?.audioAnalysisDone ?? 0;
+  const audioSubPhase = state?.audioSubPhase ?? null;
   const audioAnalysisEnabled = state?.audioAnalysisEnabled ?? true;
 
   return (
@@ -146,7 +147,15 @@ export function AccountView({
                 done={!isAnalyzingAudio && audioAnalysisPending === 0 && enrichmentPendingCount === 0 && collectionSynced}
                 active={isAnalyzingAudio}
                 doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks analyzed` : 'Complete'}
-                activeLabel={audioAnalyzed > 0 ? `Analyzing... (${audioAnalyzed} done${audioAnalysisPending ? `, ${audioAnalysisPending.toLocaleString()} remaining` : ''})` : audioAnalysisPending ? `Analyzing... (${audioAnalysisPending.toLocaleString()} remaining)` : 'Analyzing...'}
+                activeLabel={
+                  audioSubPhase === 'refreshing'
+                    ? `Refreshing stream URLs... (${audioAnalyzed} of ${(audioAnalyzed + (audioAnalysisPending ?? 0)).toLocaleString()} releases)`
+                    : audioAnalyzed > 0
+                      ? `Analyzing... (${audioAnalyzed} done${audioAnalysisPending ? `, ${audioAnalysisPending.toLocaleString()} remaining` : ''})`
+                      : audioAnalysisPending
+                        ? `Analyzing... (${audioAnalysisPending.toLocaleString()} remaining)`
+                        : 'Analyzing...'
+                }
                 pendingLabel={audioAnalysisPending !== null && audioAnalysisPending > 0 ? `${audioAnalysisPending.toLocaleString()} tracks remaining` : 'Pending'}
               />
             )}

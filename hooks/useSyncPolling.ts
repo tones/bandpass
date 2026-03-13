@@ -21,6 +21,7 @@ export interface SyncState {
   audioAnalyzed?: number;
   audioAnalysisPending?: number;
   audioAnalysisDone?: number;
+  audioSubPhase?: string | null;
   audioAnalysisEnabled?: boolean;
 }
 
