@@ -29,6 +29,22 @@ export interface CrateCatalogItem {
 }
 
 const CATALOG_PREFIX = 'catalog-track-';
+const RELEASE_PREFIX = 'catalog-release-';
+
+export interface CrateReleaseItem {
+  crateItemId: string;
+  releaseId: number;
+  releaseTitle: string;
+  releaseUrl: string;
+  releaseType: 'album' | 'track';
+  imageUrl: string;
+  bandName: string;
+  bandUrl: string;
+  bandSlug: string;
+  tags: string[];
+  releaseDate: string | null;
+  tracks: CatalogTrack[];
+}
 
 export function getCrates(fanId: number): Crate[] {
   const db = getDb();
@@ -153,6 +169,89 @@ export function getCrateCatalogItems(crateId: number, fanId: number): CrateCatal
 
 export function catalogTrackCrateItemId(trackId: number): string {
   return `${CATALOG_PREFIX}${trackId}`;
+}
+
+export function catalogReleaseCrateItemId(releaseId: number): string {
+  return `${RELEASE_PREFIX}${releaseId}`;
+}
+
+export function getCrateReleaseItems(crateId: number, fanId: number): CrateReleaseItem[] {
+  const db = getDb();
+  const owns = db.prepare('SELECT 1 FROM crates WHERE id = ? AND fan_id = ?').get(crateId, fanId);
+  if (!owns) return [];
+
+  const rows = db.prepare(`
+    SELECT ci.feed_item_id, cr.id as release_id, cr.title, cr.url, cr.release_type,
+           cr.image_url, cr.band_name, cr.band_url, cr.band_slug, cr.tags, cr.release_date
+    FROM crate_items ci
+    JOIN catalog_releases cr ON cr.id = CAST(SUBSTR(ci.feed_item_id, ${RELEASE_PREFIX.length + 1}) AS INTEGER)
+    WHERE ci.crate_id = ? AND ci.feed_item_id LIKE '${RELEASE_PREFIX}%'
+    ORDER BY ci.added_at DESC
+  `).all(crateId) as Array<{
+    feed_item_id: string;
+    release_id: number;
+    title: string;
+    url: string;
+    release_type: string;
+    image_url: string;
+    band_name: string;
+    band_url: string;
+    band_slug: string;
+    tags: string;
+    release_date: string | null;
+  }>;
+
+  const releaseIds = rows.map((r) => r.release_id);
+  const trackMap: Record<number, CatalogTrack[]> = {};
+
+  if (releaseIds.length > 0) {
+    const placeholders = releaseIds.map(() => '?').join(',');
+    const trackRows = db.prepare(`
+      SELECT id, release_id, track_num, title, duration, stream_url, track_url,
+             bpm, musical_key, key_camelot
+      FROM catalog_tracks
+      WHERE release_id IN (${placeholders})
+      ORDER BY release_id, track_num
+    `).all(...releaseIds) as Array<{
+      id: number; release_id: number; track_num: number; title: string;
+      duration: number; stream_url: string | null; track_url: string | null;
+      bpm: number | null; musical_key: string | null; key_camelot: string | null;
+    }>;
+
+    for (const t of trackRows) {
+      (trackMap[t.release_id] ??= []).push({
+        id: t.id,
+        releaseId: t.release_id,
+        trackNum: t.track_num,
+        title: t.title,
+        duration: t.duration,
+        streamUrl: t.stream_url,
+        trackUrl: t.track_url,
+        bpm: t.bpm,
+        musicalKey: t.musical_key,
+        keyCamelot: t.key_camelot,
+      });
+    }
+  }
+
+  return rows.map((r) => {
+    let tags: string[] = [];
+    try { tags = JSON.parse(r.tags || '[]'); } catch { /* ignore */ }
+    return {
+      crateItemId: r.feed_item_id,
+      releaseId: r.release_id,
+      releaseTitle: r.title,
+      releaseUrl: r.url,
+      releaseType: r.release_type as 'album' | 'track',
+      imageUrl: r.image_url,
+      bandName: r.band_name,
+      bandUrl: r.band_url,
+      bandSlug: r.band_slug,
+      tags,
+      releaseDate: r.release_date,
+      tracks: trackMap[r.release_id] ?? [],
+    };
+  });
 }
 
 export function addToCrate(crateId: number, fanId: number, feedItemId: string): void {

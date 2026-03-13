@@ -2,18 +2,22 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { CatalogRelease, CatalogTrack } from '@/lib/db/catalog';
-import { formatDuration, catalogTrackToFeedItem } from '@/lib/formatters';
+import { catalogTrackToFeedItem } from '@/lib/formatters';
 import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
+import { AlbumTrackRow } from '@/components/AlbumTrackRow';
 import Link from 'next/link';
 import { TagPill } from '@/components/TagPill';
-import { BpmKeyBadge } from '@/components/BpmKeyBadge';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 
 function catalogTrackCrateId(trackId: number): string {
   return `catalog-track-${trackId}`;
+}
+
+function catalogReleaseCrateId(releaseId: number): string {
+  return `catalog-release-${releaseId}`;
 }
 
 interface CatalogViewProps {
@@ -104,8 +108,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
     play(catalogTrackToFeedItem(track, release));
   }, [play]);
 
-  const handleToggleCrate = useCallback(async (trackId: number) => {
-    const id = catalogTrackCrateId(trackId);
+  const handleToggleItem = useCallback(async (id: string) => {
     setCrateItemIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -124,8 +127,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
     }
   }, []);
 
-  const handleAddToCrate = useCallback(async (trackId: number, crateId: number) => {
-    const id = catalogTrackCrateId(trackId);
+  const handleAddItemToCrate = useCallback(async (id: string, crateId: number) => {
     setCrateItemIds((prev) => new Set(prev).add(id));
     setItemCrateMap((prev) => ({
       ...prev,
@@ -144,8 +146,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
     }
   }, []);
 
-  const handleRemoveFromCrate = useCallback(async (trackId: number, crateId: number) => {
-    const id = catalogTrackCrateId(trackId);
+  const handleRemoveItemFromCrate = useCallback(async (id: string, crateId: number) => {
     const prevCrateIds = itemCrateMap[id] ?? [];
     const updated = prevCrateIds.filter((c) => c !== crateId);
     if (updated.length === 0) {
@@ -214,9 +215,9 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
             crates={crates}
             loggedIn={loggedIn}
             onPlayTrack={(track) => playTrack(track, release)}
-            onToggleCrate={handleToggleCrate}
-            onAddToCrate={handleAddToCrate}
-            onRemoveFromCrate={handleRemoveFromCrate}
+            onToggleItem={handleToggleItem}
+            onAddItemToCrate={handleAddItemToCrate}
+            onRemoveItemFromCrate={handleRemoveItemFromCrate}
           />
         ))}
       </div>
@@ -244,9 +245,9 @@ interface ReleaseCardProps {
   crates: CrateInfo[];
   loggedIn: boolean;
   onPlayTrack: (track: CatalogTrack) => void;
-  onToggleCrate: (trackId: number) => void;
-  onAddToCrate: (trackId: number, crateId: number) => void;
-  onRemoveFromCrate: (trackId: number, crateId: number) => void;
+  onToggleItem: (itemId: string) => void;
+  onAddItemToCrate: (itemId: string, crateId: number) => void;
+  onRemoveItemFromCrate: (itemId: string, crateId: number) => void;
 }
 
 function ReleaseCard({
@@ -262,10 +263,12 @@ function ReleaseCard({
   crates,
   loggedIn,
   onPlayTrack,
-  onToggleCrate,
-  onAddToCrate,
-  onRemoveFromCrate,
+  onToggleItem,
+  onAddItemToCrate,
+  onRemoveItemFromCrate,
 }: ReleaseCardProps) {
+  const releaseCrateId = catalogReleaseCrateId(release.id);
+  const releaseInCrate = crateItemIds.has(releaseCrateId);
   return (
     <div className="rounded-lg border border-zinc-800">
       <div className="flex items-center gap-4 px-4 py-3">
@@ -294,15 +297,33 @@ function ReleaseCard({
             </div>
           )}
         </div>
-        <a
-          href={release.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-sm text-zinc-600 transition-colors hover:text-zinc-400"
-          title="Open on Bandcamp"
-        >
-          ↗
-        </a>
+        {loggedIn && (
+          <TrackActions
+            isPlaying={false}
+            hasStream={false}
+            isInCrate={releaseInCrate}
+            bandcampUrl={release.url}
+            onPlay={() => {}}
+            onToggleCrate={() => onToggleItem(releaseCrateId)}
+            showPlayButton={false}
+            showCrate={true}
+            crates={crates}
+            itemCrateIds={itemCrateMap[releaseCrateId]}
+            onAddToCrate={(crateId) => onAddItemToCrate(releaseCrateId, crateId)}
+            onRemoveFromCrate={(crateId) => onRemoveItemFromCrate(releaseCrateId, crateId)}
+          />
+        )}
+        {!loggedIn && (
+          <a
+            href={release.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-sm text-zinc-600 transition-colors hover:text-zinc-400"
+            title="Open on Bandcamp"
+          >
+            ↗
+          </a>
+        )}
       </div>
 
       <div className="border-t border-zinc-800/50">
@@ -313,47 +334,21 @@ function ReleaseCard({
         ) : tracks && tracks.length > 0 ? (
           <div>
             {tracks.map((track) => {
-              const isActive =
-                playingTrackUrl === track.streamUrl &&
-                track.streamUrl != null &&
-                isPlayerPlaying;
               const cid = catalogTrackCrateId(track.id);
-              const inCrate = crateItemIds.has(cid);
               return (
-                <div
+                <AlbumTrackRow
                   key={track.id}
-                  className={`flex w-full items-center gap-3 px-4 py-2 transition-colors ${
-                    isActive ? 'bg-zinc-900' : 'hover:bg-zinc-900/30'
-                  } ${!track.streamUrl ? 'opacity-40' : ''}`}
-                >
-                  <span className="w-6 shrink-0 text-right text-xs tabular-nums text-zinc-600">
-                    {track.trackNum}
-                  </span>
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 cursor-pointer truncate text-left text-sm text-zinc-200"
-                    onClick={() => onPlayTrack(track)}
-                  >
-                    {track.title}
-                  </button>
-                  <span className="shrink-0 text-xs tabular-nums text-zinc-600">
-                    {track.duration > 0 ? formatDuration(track.duration) : ''}
-                  </span>
-                  <BpmKeyBadge bpm={track.bpm} musicalKey={track.musicalKey} />
-                  <TrackActions
-                    isPlaying={isActive}
-                    hasStream={!!track.streamUrl}
-                    isInCrate={inCrate}
-                    bandcampUrl={track.trackUrl ?? release.url}
-                    onPlay={() => onPlayTrack(track)}
-                    onToggleCrate={() => onToggleCrate(track.id)}
-                    showCrate={loggedIn}
-                    crates={crates}
-                    itemCrateIds={itemCrateMap[cid]}
-                    onAddToCrate={(crateId) => onAddToCrate(track.id, crateId)}
-                    onRemoveFromCrate={(crateId) => onRemoveFromCrate(track.id, crateId)}
-                  />
-                </div>
+                  track={track}
+                  isActive={playingTrackUrl === track.streamUrl && track.streamUrl != null && isPlayerPlaying}
+                  fallbackUrl={release.url}
+                  crates={crates}
+                  crateIds={itemCrateMap[cid]}
+                  showCrate={loggedIn}
+                  onPlay={() => onPlayTrack(track)}
+                  onToggleCrate={() => onToggleItem(cid)}
+                  onAddToCrate={(crateId) => onAddItemToCrate(cid, crateId)}
+                  onRemoveFromCrate={(crateId) => onRemoveItemFromCrate(cid, crateId)}
+                />
               );
             })}
           </div>

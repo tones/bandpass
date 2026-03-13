@@ -12,13 +12,14 @@ import {
   getItemCrates,
   getCrateItems,
   getCrateCatalogItems,
+  getCrateReleaseItems,
   getCrateWishlistItems,
   getWishlistItems,
   getCrates,
   getItemCrateMultiMap,
   getWishlistAlbumTracks,
 } from '@/lib/db/crates';
-import type { WishlistAlbumData } from '@/lib/db/crates';
+import type { WishlistAlbumData, CrateReleaseItem } from '@/lib/db/crates';
 import { BandcampAPI } from '@/lib/bandcamp/api';
 import { syncWishlist } from '@/lib/db/sync';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
@@ -75,6 +76,7 @@ export async function clearCrateAction(crateId: number): Promise<void> {
 export interface CrateItemsResult {
   items: FeedItem[];
   catalogItems: CrateCatalogItem[];
+  releaseItems: CrateReleaseItem[];
   wishlistItems: WishlistItem[];
   albumTracks: Record<string, WishlistAlbumData>;
 }
@@ -83,10 +85,11 @@ export async function getCrateItemsAction(crateId: number): Promise<CrateItemsRe
   const fanId = await requireFanId();
   const items = getCrateItems(crateId, fanId);
   const catalogItems = getCrateCatalogItems(crateId, fanId);
+  const releaseItems = getCrateReleaseItems(crateId, fanId);
   const wishlistItems = getCrateWishlistItems(crateId, fanId);
   const albumUrls = wishlistItems.filter((i) => i.tralbumType === 'a').map((i) => i.itemUrl);
   const albumTracks = getWishlistAlbumTracks(albumUrls);
-  return { items, catalogItems, wishlistItems, albumTracks };
+  return { items, catalogItems, releaseItems, wishlistItems, albumTracks };
 }
 
 export interface WishlistItemsResult {

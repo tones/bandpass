@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { getExchangeRates } from '@/lib/currency';
-import { getCrates, getCrateItems, getCrateCatalogItems, getCrateWishlistItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap, getWishlistAlbumTracks } from '@/lib/db/crates';
+import { getCrates, getCrateItems, getCrateCatalogItems, getCrateReleaseItems, getCrateWishlistItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap, getWishlistAlbumTracks } from '@/lib/db/crates';
 import { CratesView } from '@/components/CratesView';
 import { AppHeader } from '@/components/AppHeader';
 
@@ -43,6 +43,7 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
   const isWishlist = targetCrate?.source === 'bandcamp_wishlist';
   const initialItems = targetCrate && !isWishlist ? getCrateItems(targetCrate.id, fanId) : [];
   const initialCatalogItems = targetCrate && !isWishlist ? getCrateCatalogItems(targetCrate.id, fanId) : [];
+  const initialReleaseItems = targetCrate && !isWishlist ? getCrateReleaseItems(targetCrate.id, fanId) : [];
   const initialWishlistItems = targetCrate
     ? isWishlist
       ? getWishlistItems(fanId)
@@ -64,6 +65,7 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
         initialCrateId={targetCrate?.id ?? null}
         initialItems={initialItems}
         initialCatalogItems={initialCatalogItems}
+        initialReleaseItems={initialReleaseItems}
         initialWishlistItems={initialWishlistItems}
         initialAlbumTracks={initialAlbumTracks}
         exchangeRates={exchangeRates}
