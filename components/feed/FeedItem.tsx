@@ -5,6 +5,7 @@ import { formatDuration, formatPrice } from '@/lib/formatters';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
 import { TagPill } from '@/components/TagPill';
+import { BpmKeyBadge } from '@/components/BpmKeyBadge';
 
 interface FeedItemCardProps {
   item: FeedItem;
@@ -130,10 +131,11 @@ export function FeedItemCard({
             })()}
           </span>
         </div>
-        <div className="mt-0.5 flex flex-wrap gap-1.5">
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
           {[...new Set(item.tags)].sort().slice(0, 4).map((tag) => (
             <TagPill key={tag} tag={tag} />
           ))}
+          <BpmKeyBadge bpm={item.bpm} musicalKey={item.musicalKey} />
           {!isCrate && signalText && (
             <span className="text-xs text-amber-500/80">{signalText}</span>
           )}

@@ -28,6 +28,9 @@ export interface CatalogTrack {
   duration: number;
   streamUrl: string | null;
   trackUrl: string | null;
+  bpm: number | null;
+  musicalKey: string | null;
+  keyCamelot: string | null;
 }
 
 const STALE_HOURS = 24;
@@ -148,6 +151,9 @@ export function getCachedAlbumTracks(releaseId: number): CatalogTrack[] | null {
     duration: number;
     stream_url: string | null;
     track_url: string | null;
+    bpm: number | null;
+    musical_key: string | null;
+    key_camelot: string | null;
   }>;
 
   if (rows.length === 0) return null;
@@ -162,6 +168,9 @@ function rowToTrack(row: {
   duration: number;
   stream_url: string | null;
   track_url: string | null;
+  bpm: number | null;
+  musical_key: string | null;
+  key_camelot: string | null;
 }): CatalogTrack {
   return {
     id: row.id,
@@ -171,6 +180,9 @@ function rowToTrack(row: {
     duration: row.duration,
     streamUrl: row.stream_url,
     trackUrl: row.track_url,
+    bpm: row.bpm ?? null,
+    musicalKey: row.musical_key ?? null,
+    keyCamelot: row.key_camelot ?? null,
   };
 }
 

@@ -30,6 +30,8 @@ export interface FeedItemRow {
   fan_name: string | null;
   fan_username: string | null;
   also_collected_count: number;
+  bpm: number | null;
+  musical_key: string | null;
 }
 
 function safeParseTags(json: string): string[] {
@@ -65,6 +67,8 @@ export function rowToFeedItem(row: FeedItemRow): FeedItem {
         }
       : null,
     tags: safeParseTags(row.tags),
+    bpm: row.bpm ?? null,
+    musicalKey: row.musical_key ?? null,
     price:
       row.price_amount != null && row.price_currency
         ? { amount: row.price_amount, currency: row.price_currency }

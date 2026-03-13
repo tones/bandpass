@@ -9,6 +9,7 @@ import { useTrackPlayer } from '@/hooks/useTrackPlayer';
 import { TrackActions } from './TrackActions';
 import type { CrateInfo } from './TrackActions';
 import { TagPill } from '@/components/TagPill';
+import { BpmKeyBadge } from '@/components/BpmKeyBadge';
 import { extractSlug } from '@/lib/bandcamp/scraper';
 import {
   removeFromCrateAction,
@@ -560,6 +561,8 @@ export function CratesView({
                 isPlaying={playerIsPlaying && playingTrackUrl === item.streamUrl && item.streamUrl != null}
                 crateIds={itemCrateMap[item.crateItemId]}
                 userCrates={userCrates}
+                bpm={item.bpm}
+                musicalKey={item.musicalKey}
                 onPlay={() => handlePlayCatalog(item)}
                 onToggleCrate={() => handleToggleCrate(item.crateItemId)}
                 onAddToCrate={(crateId) => handleAddToCrate(item.crateItemId, crateId)}
@@ -576,6 +579,8 @@ export function CratesView({
                 streamUrl={item.streamUrl}
                 bandcampUrl={item.itemUrl}
                 tags={item.tags}
+                bpm={item.bpm}
+                musicalKey={item.musicalKey}
                 isPlaying={playerIsPlaying && playingTrackUrl === item.streamUrl && item.streamUrl != null}
                 crateIds={itemCrateMap[item.id]}
                 userCrates={userCrates}
@@ -611,6 +616,8 @@ interface CrateItemRowProps {
   crateIds?: number[];
   userCrates: CrateInfo[];
   tags?: string[];
+  bpm?: number | null;
+  musicalKey?: string | null;
   onPlay: () => void;
   onToggleCrate: () => void;
   onAddToCrate: (crateId: number) => void;
@@ -627,6 +634,8 @@ function CrateItemRow({
   crateIds,
   userCrates,
   tags,
+  bpm,
+  musicalKey,
   onPlay,
   onToggleCrate,
   onAddToCrate,
@@ -658,11 +667,12 @@ function CrateItemRow({
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium">{title}</div>
         <div className="truncate text-sm text-zinc-400">{subtitle}</div>
-        {tags && tags.length > 0 && (
-          <div className="mt-0.5 flex flex-wrap gap-1.5">
-            {[...new Set(tags)].sort().slice(0, 4).map((tag) => (
+        {(tags?.length || bpm || musicalKey) && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+            {tags && [...new Set(tags)].sort().slice(0, 4).map((tag) => (
               <TagPill key={tag} tag={tag} />
             ))}
+            <BpmKeyBadge bpm={bpm} musicalKey={musicalKey} />
           </div>
         )}
       </div>

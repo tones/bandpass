@@ -10,6 +10,7 @@ import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
 import { CrateIcon } from '@/components/icons/CrateIcon';
 import { TagPill } from '@/components/TagPill';
+import { BpmKeyBadge } from '@/components/BpmKeyBadge';
 
 function catalogTrackCrateId(trackId: number): string {
   return `catalog-track-${trackId}`;
@@ -439,6 +440,7 @@ function ReleaseCard({
                   <span className="shrink-0 text-xs tabular-nums text-zinc-600">
                     {track.duration > 0 ? formatDuration(track.duration) : ''}
                   </span>
+                  <BpmKeyBadge bpm={track.bpm} musicalKey={track.musicalKey} />
                   <TrackActions
                     isPlaying={isActive}
                     hasStream={!!track.streamUrl}

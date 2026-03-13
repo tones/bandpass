@@ -69,6 +69,10 @@ export function AccountView({
   const isEnrichingTags = state?.isEnrichingTags ?? false;
   const tagsEnriched = state?.tagsEnriched ?? 0;
   const enrichmentPendingCount = state?.enrichmentPendingCount ?? null;
+  const isAnalyzingAudio = state?.isAnalyzingAudio ?? false;
+  const audioAnalyzed = state?.audioAnalyzed ?? 0;
+  const audioAnalysisPending = state?.audioAnalysisPending ?? null;
+  const audioAnalysisDone = state?.audioAnalysisDone ?? 0;
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
@@ -127,6 +131,15 @@ export function AccountView({
               doneLabel="Complete"
               activeLabel={tagsEnriched > 0 ? `Enriching... (${tagsEnriched} done${enrichmentPendingCount ? `, ${enrichmentPendingCount.toLocaleString()} remaining` : ''})` : enrichmentPendingCount ? `Enriching... (${enrichmentPendingCount.toLocaleString()} remaining)` : 'Enriching...'}
               pendingLabel={enrichmentPendingCount !== null && enrichmentPendingCount > 0 ? `${enrichmentPendingCount.toLocaleString()} items remaining` : 'Pending'}
+            />
+          </Row>
+          <Row label="BPM / Key detection">
+            <StatusBadge
+              done={!isAnalyzingAudio && audioAnalysisPending === 0 && enrichmentPendingCount === 0 && collectionSynced}
+              active={isAnalyzingAudio}
+              doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks analyzed` : 'Complete'}
+              activeLabel={audioAnalyzed > 0 ? `Analyzing... (${audioAnalyzed} done${audioAnalysisPending ? `, ${audioAnalysisPending.toLocaleString()} remaining` : ''})` : audioAnalysisPending ? `Analyzing... (${audioAnalysisPending.toLocaleString()} remaining)` : 'Analyzing...'}
+              pendingLabel={audioAnalysisPending !== null && audioAnalysisPending > 0 ? `${audioAnalysisPending.toLocaleString()} tracks remaining` : 'Pending'}
             />
           </Row>
         </Section>

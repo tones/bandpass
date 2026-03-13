@@ -262,6 +262,8 @@ describe('getCrateCatalogItems', () => {
       imageUrl: 'https://img/cover.jpg',
       bandName: 'Ghost Funk Orchestra',
       bandUrl: 'https://ghostfunk.bandcamp.com',
+      bpm: null,
+      musicalKey: null,
     });
   });
 

@@ -713,3 +713,23 @@ export async function processEnrichmentQueue(
 
   return processed;
 }
+
+// ---------------------------------------------------------------------------
+// Audio analysis queue (BPM + key detection)
+// ---------------------------------------------------------------------------
+
+export function getAudioAnalysisPendingCount(): number {
+  const db = getDb();
+  const row = db.prepare(
+    "SELECT COUNT(*) AS c FROM catalog_tracks WHERE stream_url IS NOT NULL AND stream_url != '' AND bpm_status IS NULL",
+  ).get() as { c: number };
+  return row.c;
+}
+
+export function getAudioAnalysisDoneCount(): number {
+  const db = getDb();
+  const row = db.prepare(
+    "SELECT COUNT(*) AS c FROM catalog_tracks WHERE bpm_status = 'done'",
+  ).get() as { c: number };
+  return row.c;
+}

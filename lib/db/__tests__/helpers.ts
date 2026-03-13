@@ -27,6 +27,8 @@ export function createTestDb(): Database.Database {
       fan_name TEXT,
       fan_username TEXT,
       also_collected_count INTEGER NOT NULL DEFAULT 0,
+      bpm REAL,
+      musical_key TEXT,
       PRIMARY KEY (id, fan_id)
     );
 
@@ -78,6 +80,8 @@ export function createTestDb(): Database.Database {
       also_collected_count INTEGER DEFAULT 0,
       is_preorder INTEGER DEFAULT 0,
       tags TEXT NOT NULL DEFAULT '[]',
+      bpm REAL,
+      musical_key TEXT,
       synced_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (id, fan_id)
     );
@@ -114,6 +118,10 @@ export function createTestDb(): Database.Database {
       duration REAL,
       stream_url TEXT,
       track_url TEXT,
+      bpm REAL,
+      musical_key TEXT,
+      key_camelot TEXT,
+      bpm_status TEXT,
       FOREIGN KEY (release_id) REFERENCES catalog_releases(id) ON DELETE CASCADE
     );
   `);

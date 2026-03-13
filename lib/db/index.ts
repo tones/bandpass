@@ -256,5 +256,22 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 13) {
+    db.exec(`
+      ALTER TABLE catalog_tracks ADD COLUMN bpm REAL;
+      ALTER TABLE catalog_tracks ADD COLUMN musical_key TEXT;
+      ALTER TABLE catalog_tracks ADD COLUMN key_camelot TEXT;
+      ALTER TABLE catalog_tracks ADD COLUMN bpm_status TEXT;
+
+      ALTER TABLE feed_items ADD COLUMN bpm REAL;
+      ALTER TABLE feed_items ADD COLUMN musical_key TEXT;
+
+      ALTER TABLE wishlist_items ADD COLUMN bpm REAL;
+      ALTER TABLE wishlist_items ADD COLUMN musical_key TEXT;
+
+      PRAGMA user_version = 13;
+    `);
+  }
+
   return db;
 }

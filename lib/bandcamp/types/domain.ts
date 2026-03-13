@@ -23,6 +23,8 @@ export interface FeedItem {
     streamUrl: string | null;
   } | null;
   tags: string[];
+  bpm: number | null;
+  musicalKey: string | null;
   price: { amount: number; currency: string } | null;
   socialSignal: {
     fan: { name: string; username: string } | null;
@@ -58,6 +60,8 @@ export interface WishlistItem {
   alsoCollectedCount: number;
   isPreorder: boolean;
   tags: string[];
+  bpm: number | null;
+  musicalKey: string | null;
 }
 
 export interface WishlistPage {

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, processEnrichmentQueue, getEnrichmentPendingCount } from '@/lib/db/sync';
+import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, processEnrichmentQueue, getEnrichmentPendingCount, getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from '@/lib/db/sync';
+import { processAudioAnalysisQueue } from '@/lib/audio/queue';
 import { getItemCount } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,10 @@ interface SyncProgress {
   wishlistItemsFound: number;
   isEnrichingTags: boolean;
   tagsEnriched: number;
+  tagsRemaining: number;
+  isAnalyzingAudio: boolean;
+  audioAnalyzed: number;
+  audioRemaining: number;
 }
 
 const activeSyncs = new Map<number, SyncProgress>();
@@ -33,6 +38,10 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
     wishlistItemsFound: 0,
     isEnrichingTags: false,
     tagsEnriched: 0,
+    tagsRemaining: 0,
+    isAnalyzingAudio: false,
+    audioAnalyzed: 0,
+    audioRemaining: 0,
   };
   activeSyncs.set(fanId, progress);
 
@@ -83,14 +92,28 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
     progress.isEnrichingTags = true;
     try {
       enqueueForEnrichment(fanId);
-      const enriched = await processEnrichmentQueue((processed) => {
+      const enriched = await processEnrichmentQueue((processed, remaining) => {
         progress.tagsEnriched = processed;
+        progress.tagsRemaining = remaining;
       });
       progress.tagsEnriched = enriched;
     } catch (err) {
       console.error('Tag enrichment error:', err);
     } finally {
       progress.isEnrichingTags = false;
+    }
+
+    progress.isAnalyzingAudio = true;
+    try {
+      const analyzed = await processAudioAnalysisQueue(identityCookie, 50, (processed, remaining) => {
+        progress.audioAnalyzed = processed;
+        progress.audioRemaining = remaining;
+      });
+      progress.audioAnalyzed = analyzed;
+    } catch (err) {
+      console.error('Audio analysis error:', err);
+    } finally {
+      progress.isAnalyzingAudio = false;
     }
   } catch (err) {
     console.error('Sync error:', err);
@@ -113,8 +136,11 @@ export async function GET() {
   const enrichmentPendingCount = state?.collectionSynced && state?.wishlistSynced
     ? getEnrichmentPendingCount(fanId)
     : 0;
+  const audioAnalysisPending = getAudioAnalysisPendingCount();
+  const audioAnalysisDone = getAudioAnalysisDoneCount();
 
-  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0 || (isProduction && audioAnalysisPending > 0);
   if (needsSync && !activeSyncs.has(fanId) && session.identityCookie) {
     startSync(fanId, session.identityCookie, !state?.lastSyncAt).catch((err) =>
       console.error('Auto-triggered sync error:', err),
@@ -139,7 +165,11 @@ export async function GET() {
     wishlistItemsFound: progress?.wishlistItemsFound ?? 0,
     isEnrichingTags: progress?.isEnrichingTags ?? false,
     tagsEnriched: progress?.tagsEnriched ?? 0,
-    enrichmentPendingCount,
+    enrichmentPendingCount: progress?.isEnrichingTags ? progress.tagsRemaining : enrichmentPendingCount,
+    isAnalyzingAudio: progress?.isAnalyzingAudio ?? false,
+    audioAnalyzed: progress?.audioAnalyzed ?? 0,
+    audioAnalysisPending: progress?.isAnalyzingAudio ? progress.audioRemaining : audioAnalysisPending,
+    audioAnalysisDone,
   });
 }
 

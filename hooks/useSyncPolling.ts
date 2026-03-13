@@ -17,6 +17,10 @@ export interface SyncState {
   isEnrichingTags: boolean;
   tagsEnriched?: number;
   enrichmentPendingCount?: number;
+  isAnalyzingAudio: boolean;
+  audioAnalyzed?: number;
+  audioAnalysisPending?: number;
+  audioAnalysisDone?: number;
 }
 
 interface UseSyncPollingOptions {
@@ -43,7 +47,7 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
   }, []);
 
   const isActive = useCallback((s: SyncState) => {
-    return s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing || s.isWishlistSyncing || s.isEnrichingTags;
+    return s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing || s.isWishlistSyncing || s.isEnrichingTags || s.isAnalyzingAudio;
   }, []);
 
   useEffect(() => {
@@ -52,7 +56,8 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
       setState(data);
       optionsRef.current.onStateChange?.(data);
 
-      const needsSync = !data.deepSyncComplete || !data.collectionSynced || !data.wishlistSynced || (data.enrichmentPendingCount ?? 0) > 0;
+      const isProduction = process.env.NODE_ENV === 'production';
+      const needsSync = !data.deepSyncComplete || !data.collectionSynced || !data.wishlistSynced || (data.enrichmentPendingCount ?? 0) > 0 || (isProduction && (data.audioAnalysisPending ?? 0) > 0);
       if (isActive(data) || needsSync) {
         setPolling(true);
       }

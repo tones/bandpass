@@ -23,6 +23,8 @@ export interface CrateCatalogItem {
   imageUrl: string;
   bandName: string;
   bandUrl: string;
+  bpm: number | null;
+  musicalKey: string | null;
 }
 
 const CATALOG_PREFIX = 'catalog-track-';
@@ -108,7 +110,8 @@ export function getCrateCatalogItems(crateId: number, fanId: number): CrateCatal
   const rows = db.prepare(`
     SELECT ci.feed_item_id, ct.id as track_id, ct.title as track_title,
            ct.duration, ct.stream_url, ct.track_url, cr.title as release_title,
-           cr.url as release_url, cr.image_url, cr.band_name, cr.band_url
+           cr.url as release_url, cr.image_url, cr.band_name, cr.band_url,
+           ct.bpm, ct.musical_key
     FROM crate_items ci
     JOIN catalog_tracks ct ON ct.id = CAST(SUBSTR(ci.feed_item_id, ${CATALOG_PREFIX.length + 1}) AS INTEGER)
     JOIN catalog_releases cr ON cr.id = ct.release_id
@@ -126,6 +129,8 @@ export function getCrateCatalogItems(crateId: number, fanId: number): CrateCatal
     image_url: string;
     band_name: string;
     band_url: string;
+    bpm: number | null;
+    musical_key: string | null;
   }>;
 
   return rows.map((r) => ({
@@ -140,6 +145,8 @@ export function getCrateCatalogItems(crateId: number, fanId: number): CrateCatal
     imageUrl: r.image_url,
     bandName: r.band_name,
     bandUrl: r.band_url,
+    bpm: r.bpm ?? null,
+    musicalKey: r.musical_key ?? null,
   }));
 }
 
@@ -203,7 +210,8 @@ export function getCrateWishlistItems(crateId: number, fanId: number): WishlistI
   const rows = db.prepare(`
     SELECT wi.id, wi.tralbum_id, wi.tralbum_type, wi.title, wi.artist_name, wi.artist_url,
            wi.image_url, wi.item_url, wi.featured_track_title, wi.featured_track_duration,
-           wi.stream_url, wi.also_collected_count, wi.is_preorder, wi.tags
+           wi.stream_url, wi.also_collected_count, wi.is_preorder, wi.tags,
+           wi.bpm, wi.musical_key
     FROM crate_items ci
     JOIN wishlist_items wi ON wi.id = ci.feed_item_id AND wi.fan_id = ?
     WHERE ci.crate_id = ?
@@ -223,6 +231,8 @@ export function getCrateWishlistItems(crateId: number, fanId: number): WishlistI
     also_collected_count: number;
     is_preorder: number;
     tags: string;
+    bpm: number | null;
+    musical_key: string | null;
   }>;
   return rows.map(rowToWishlistItem);
 }
@@ -242,6 +252,8 @@ function rowToWishlistItem(r: {
   also_collected_count: number;
   is_preorder: number;
   tags: string;
+  bpm?: number | null;
+  musical_key?: string | null;
 }): WishlistItem {
   let tags: string[] = [];
   try { tags = JSON.parse(r.tags || '[]'); } catch { tags = []; }
@@ -260,6 +272,8 @@ function rowToWishlistItem(r: {
     alsoCollectedCount: r.also_collected_count,
     isPreorder: r.is_preorder === 1,
     tags,
+    bpm: r.bpm ?? null,
+    musicalKey: r.musical_key ?? null,
   };
 }
 
@@ -268,7 +282,7 @@ export function getWishlistItems(fanId: number): WishlistItem[] {
   const rows = db.prepare(`
     SELECT id, tralbum_id, tralbum_type, title, artist_name, artist_url,
            image_url, item_url, featured_track_title, featured_track_duration,
-           stream_url, also_collected_count, is_preorder, tags
+           stream_url, also_collected_count, is_preorder, tags, bpm, musical_key
     FROM wishlist_items WHERE fan_id = ?
     ORDER BY synced_at DESC
   `).all(fanId) as Parameters<typeof rowToWishlistItem>[0][];
