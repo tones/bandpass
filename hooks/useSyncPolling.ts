@@ -56,8 +56,7 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
       setState(data);
       optionsRef.current.onStateChange?.(data);
 
-      const isProduction = process.env.NODE_ENV === 'production';
-      const needsSync = !data.deepSyncComplete || !data.collectionSynced || !data.wishlistSynced || (data.enrichmentPendingCount ?? 0) > 0 || (isProduction && (data.audioAnalysisPending ?? 0) > 0);
+      const needsSync = !data.deepSyncComplete || !data.collectionSynced || !data.wishlistSynced || (data.enrichmentPendingCount ?? 0) > 0;
       if (isActive(data) || needsSync) {
         setPolling(true);
       }

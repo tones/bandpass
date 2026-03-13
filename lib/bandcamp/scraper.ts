@@ -308,4 +308,22 @@ export function extractSlug(artistUrl: string): string {
   }
 }
 
+/**
+ * Returns the domain hostname (e.g. "chippychasers.bandcamp.com") when
+ * it doesn't match the display name, or null when they're equivalent.
+ */
+export function getDomainIfDifferent(displayName: string, url: string): string | null {
+  try {
+    const host = new URL(url).hostname;
+    const slug = host.endsWith('.bandcamp.com')
+      ? host.replace('.bandcamp.com', '')
+      : host;
+    const normalize = (s: string) => s.toLowerCase().replace(/[\s\-_''.]/g, '');
+    if (normalize(displayName) === normalize(slug)) return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
 export { artIdToUrl };

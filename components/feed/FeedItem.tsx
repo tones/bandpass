@@ -1,5 +1,5 @@
 import type { FeedItem } from '@/lib/bandcamp';
-import { extractSlug } from '@/lib/bandcamp/scraper';
+import { extractSlug, getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import { convertToUsd } from '@/lib/currency';
 import { formatDuration, formatPrice } from '@/lib/formatters';
 import { TrackActions } from '@/components/TrackActions';
@@ -119,6 +119,11 @@ export function FeedItemCard({
           >
             {item.artist.name}
           </a>
+          {getDomainIfDifferent(item.artist.name, item.artist.url) && (
+            <span className="text-zinc-600">
+              {' · '}<a href={`/music/${extractSlug(item.artist.url)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artist.name, item.artist.url)}</a>
+            </span>
+          )}
           <span className="text-zinc-600">
             {' · '}{item.album.title}
             {item.track && ` (${formatDuration(item.track.duration)})`}

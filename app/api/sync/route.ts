@@ -103,17 +103,19 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
       progress.isEnrichingTags = false;
     }
 
-    progress.isAnalyzingAudio = true;
-    try {
-      const analyzed = await processAudioAnalysisQueue(identityCookie, 50, (processed, remaining) => {
-        progress.audioAnalyzed = processed;
-        progress.audioRemaining = remaining;
-      });
-      progress.audioAnalyzed = analyzed;
-    } catch (err) {
-      console.error('Audio analysis error:', err);
-    } finally {
-      progress.isAnalyzingAudio = false;
+    if (process.env.ENABLE_AUDIO_ANALYSIS === 'true') {
+      progress.isAnalyzingAudio = true;
+      try {
+        const analyzed = await processAudioAnalysisQueue(identityCookie, 50, (processed, remaining) => {
+          progress.audioAnalyzed = processed;
+          progress.audioRemaining = remaining;
+        });
+        progress.audioAnalyzed = analyzed;
+      } catch (err) {
+        console.error('Audio analysis error:', err);
+      } finally {
+        progress.isAnalyzingAudio = false;
+      }
     }
   } catch (err) {
     console.error('Sync error:', err);
@@ -139,8 +141,7 @@ export async function GET() {
   const audioAnalysisPending = getAudioAnalysisPendingCount();
   const audioAnalysisDone = getAudioAnalysisDoneCount();
 
-  const isProduction = process.env.NODE_ENV === 'production';
-  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0 || (isProduction && audioAnalysisPending > 0);
+  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
   if (needsSync && !activeSyncs.has(fanId) && session.identityCookie) {
     startSync(fanId, session.identityCookie, !state?.lastSyncAt).catch((err) =>
       console.error('Auto-triggered sync error:', err),

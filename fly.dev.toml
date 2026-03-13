@@ -1,0 +1,23 @@
+app = 'bandpass-dev'
+primary_region = 'sjc'
+
+[build]
+
+[env]
+  ENABLE_AUDIO_ANALYSIS = "true"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[mounts]
+  source = 'bandpass_dev_data'
+  destination = '/app/data'
+
+[[vm]]
+  memory = '2gb'
+  cpu_kind = 'shared'
+  cpus = 1

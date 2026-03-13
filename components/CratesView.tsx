@@ -10,7 +10,7 @@ import { TrackActions } from './TrackActions';
 import type { CrateInfo } from './TrackActions';
 import { TagPill } from '@/components/TagPill';
 import { BpmKeyBadge } from '@/components/BpmKeyBadge';
-import { extractSlug } from '@/lib/bandcamp/scraper';
+import { extractSlug, getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import {
   removeFromCrateAction,
   addToCrateAction,
@@ -558,7 +558,7 @@ export function CratesView({
               <CrateItemRow
                 key={item.crateItemId}
                 title={item.trackTitle}
-                subtitle={<><a href={`/music/${extractSlug(item.bandUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.bandName}</a><span className="text-zinc-600">{' · '}{item.releaseTitle}</span></>}
+                subtitle={<><a href={`/music/${extractSlug(item.bandUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.bandName}</a>{getDomainIfDifferent(item.bandName, item.bandUrl) && <span className="text-zinc-600">{' · '}<a href={`/music/${extractSlug(item.bandUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.bandName, item.bandUrl)}</a></span>}<span className="text-zinc-600">{' · '}{item.releaseTitle}</span></>}
                 imageUrl={item.imageUrl}
                 streamUrl={item.streamUrl}
                 bandcampUrl={item.trackUrl ?? item.releaseUrl}
@@ -578,7 +578,7 @@ export function CratesView({
               <CrateItemRow
                 key={item.id}
                 title={item.featuredTrackTitle ?? item.title}
-                subtitle={<><a href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.artistName}</a><span className="text-zinc-600">{' · '}{item.title}</span></>}
+                subtitle={<><a href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.artistName}</a>{getDomainIfDifferent(item.artistName, item.artistUrl) && <span className="text-zinc-600">{' · '}<a href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artistName, item.artistUrl)}</a></span>}<span className="text-zinc-600">{' · '}{item.title}</span></>}
                 imageUrl={item.imageUrl}
                 streamUrl={item.streamUrl}
                 bandcampUrl={item.itemUrl}
