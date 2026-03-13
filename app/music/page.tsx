@@ -8,7 +8,7 @@ export default async function MusicPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader activeTab="music" username={username} />
+      <AppHeader username={username} />
       <MusicBrowse />
     </main>
   );

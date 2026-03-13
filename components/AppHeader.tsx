@@ -1,3 +1,8 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+
 type NavTab = 'timeline' | 'music' | 'crates';
 
 const NAV_ITEMS: { id: NavTab; label: string; href: string }[] = [
@@ -7,38 +12,44 @@ const NAV_ITEMS: { id: NavTab; label: string; href: string }[] = [
 ];
 
 interface AppHeaderProps {
-  activeTab?: NavTab;
   username?: string | null;
 }
 
-export function AppHeader({ activeTab, username }: AppHeaderProps) {
+export function AppHeader({ username }: AppHeaderProps) {
+  const pathname = usePathname();
+  const activeTab: NavTab | undefined =
+    pathname.startsWith('/crates') ? 'crates'
+    : pathname.startsWith('/timeline') ? 'timeline'
+    : pathname.startsWith('/music') ? 'music'
+    : undefined;
+
   return (
     <header className="border-b border-zinc-800">
       <div className="flex items-center justify-between px-6 py-3">
-        <a href="/music" className="text-lg font-semibold tracking-tight text-zinc-100">
+        <Link href="/music" className="text-lg font-semibold tracking-tight text-zinc-100">
           Bandpass
-        </a>
+        </Link>
         <div className="flex items-center gap-3">
           {username ? (
-            <a
+            <Link
               href="/account"
               className="text-sm text-zinc-400 transition-colors hover:text-zinc-200"
             >
               {username}
-            </a>
+            </Link>
           ) : (
-            <a
+            <Link
               href="/login"
               className="rounded px-3 py-1 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
             >
               Log in
-            </a>
+            </Link>
           )}
         </div>
       </div>
       <nav className="flex gap-1 px-6 pb-2">
         {NAV_ITEMS.map((item) => (
-          <a
+          <Link
             key={item.id}
             href={item.href}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -48,7 +59,7 @@ export function AppHeader({ activeTab, username }: AppHeaderProps) {
             }`}
           >
             {item.label}
-          </a>
+          </Link>
         ))}
       </nav>
     </header>

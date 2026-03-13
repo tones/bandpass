@@ -6,14 +6,11 @@ import type WaveSurfer from 'wavesurfer.js';
 import type { FeedItem } from '@/lib/bandcamp';
 import { formatDuration, proxyUrl } from '@/lib/formatters';
 
-import { CrateIcon } from '@/components/icons/CrateIcon';
-
 interface WaveformPlayerProps {
   item: FeedItem;
   trackUrl: string;
-  isInCrate?: boolean;
-  onToggleCrate?: () => void;
   onPlayStateChange?: (playing: boolean) => void;
+  onClose?: () => void;
 }
 
 export interface WaveformPlayerHandle {
@@ -21,7 +18,7 @@ export interface WaveformPlayerHandle {
 }
 
 export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerProps>(
-  function WaveformPlayer({ item, trackUrl, isInCrate, onToggleCrate, onPlayStateChange }, ref) {
+  function WaveformPlayer({ item, trackUrl, onPlayStateChange, onClose }, ref) {
   const [wavesurfer, setWavesurfer] = useState<WaveSurfer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -98,20 +95,6 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
           {isPlaying ? '⏸' : '▶'}
         </button>
 
-        {onToggleCrate && (
-          <button
-            onClick={onToggleCrate}
-            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded transition-colors ${
-              isInCrate
-                ? 'text-amber-400 hover:text-amber-300'
-                : 'text-zinc-600 hover:text-zinc-400'
-            }`}
-            title={isInCrate ? 'Remove from crate' : 'Add to crate'}
-          >
-            <CrateIcon filled={!!isInCrate} />
-          </button>
-        )}
-
         <a
           href={item.album.url}
           target="_blank"
@@ -121,6 +104,16 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
         >
           ↗
         </a>
+
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-zinc-600 transition-colors hover:text-zinc-300"
+            title="Close player"
+          >
+            ✕
+          </button>
+        )}
       </div>
     </div>
   );

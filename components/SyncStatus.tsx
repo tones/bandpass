@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useSyncPolling } from '@/hooks/useSyncPolling';
 
 interface SyncStatusProps {
@@ -60,12 +61,12 @@ export function SyncStatus({ onSyncComplete, onOldestDateChange }: SyncStatusPro
   if (!isActive || !message) return null;
 
   return (
-    <a
+    <Link
       href="/account"
       className="inline-flex items-center gap-2 text-sm text-amber-400 transition-colors hover:text-amber-300"
     >
       <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400" />
       <span>{message}</span>
-    </a>
+    </Link>
   );
 }

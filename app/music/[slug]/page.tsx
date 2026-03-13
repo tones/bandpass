@@ -64,7 +64,7 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader activeTab="music" username={username} />
+      <AppHeader username={username} />
       <CatalogView
         slug={slug}
         bandName={bandName}

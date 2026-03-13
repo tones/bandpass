@@ -13,7 +13,7 @@ export default async function CratesPage() {
   if (!cookie || !fanId) {
     return (
       <main className="min-h-screen bg-zinc-950 text-zinc-100">
-        <AppHeader activeTab="crates" username={username} />
+        <AppHeader username={username} />
         <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
           <p className="text-lg text-zinc-400">Log in to see your crates</p>
           <a
@@ -44,7 +44,7 @@ export default async function CratesPage() {
 
   return (
     <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
-      <AppHeader activeTab="crates" username={username} />
+      <AppHeader username={username} />
       <CratesView
         crates={crates}
         initialCrateId={firstCrate?.id ?? null}

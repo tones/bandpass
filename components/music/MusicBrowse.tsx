@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export function MusicBrowse() {
   const [url, setUrl] = useState('');
+  const router = useRouter();
 
   function handleGo() {
     const trimmed = url.trim();
@@ -21,7 +23,7 @@ export function MusicBrowse() {
       slug = trimmed.replace(/\.bandcamp\.com$/, '');
     }
 
-    window.location.href = `/music/${slug}`;
+    router.push(`/music/${slug}`);
   }
 
   return (

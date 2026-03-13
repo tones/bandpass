@@ -3,9 +3,9 @@
 import { useState, useCallback, useTransition, useRef, useEffect } from 'react';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
 import type { Crate, CrateCatalogItem } from '@/lib/db/crates';
-import { WaveformPlayer } from './feed/WaveformPlayer';
+import Link from 'next/link';
 import { FeedItemCard } from './feed/FeedItem';
-import { useTrackPlayer } from '@/hooks/useTrackPlayer';
+import { usePlayer } from '@/contexts/PlayerContext';
 import { TrackActions } from './TrackActions';
 import type { CrateInfo } from './TrackActions';
 import { TagPill } from '@/components/TagPill';
@@ -50,7 +50,7 @@ export function CratesView({
   const [catalogItems, setCatalogItems] = useState(initialCatalogItems);
   const [wishlistItems, setWishlistItems] = useState(initialWishlistItems);
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
-  const { playingTrackUrl, playingItem, isPlaying: playerIsPlaying, playerRef, play: playFeedItem, stop: stopPlayer, setIsPlaying: setPlayerIsPlaying } = useTrackPlayer();
+  const { playingTrackUrl, playingItem, isPlaying: playerIsPlaying, play: playFeedItem } = usePlayer();
   const [confirmClear, setConfirmClear] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [isRefreshingWishlist, setIsRefreshingWishlist] = useState(false);
@@ -86,7 +86,6 @@ export function CratesView({
   const selectCrate = useCallback((crateId: number) => {
     setActiveCrateId(crateId);
     setConfirmClear(false);
-    stopPlayer();
     const crate = crates.find((c) => c.id === crateId);
 
     startTransition(async () => {
@@ -522,12 +521,12 @@ export function CratesView({
               </p>
             )}
             {isUserCrate && (
-              <a
+              <Link
                 href="/timeline"
                 className="mt-4 inline-block rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-700"
               >
                 Back to feed
-              </a>
+              </Link>
             )}
           </div>
         ) : (
@@ -558,7 +557,7 @@ export function CratesView({
               <CrateItemRow
                 key={item.crateItemId}
                 title={item.trackTitle}
-                subtitle={<><a href={`/music/${extractSlug(item.bandUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.bandName}</a>{getDomainIfDifferent(item.bandName, item.bandUrl) && <span className="text-zinc-600">{' · '}<a href={`/music/${extractSlug(item.bandUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.bandName, item.bandUrl)}</a></span>}<span className="text-zinc-600">{' · '}{item.releaseTitle}</span></>}
+                subtitle={<><Link href={`/music/${extractSlug(item.bandUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.bandName}</Link>{getDomainIfDifferent(item.bandName, item.bandUrl) && <span className="text-zinc-600">{' · '}<Link href={`/music/${extractSlug(item.bandUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.bandName, item.bandUrl)}</Link></span>}<span className="text-zinc-600">{' · '}{item.releaseTitle}</span></>}
                 imageUrl={item.imageUrl}
                 streamUrl={item.streamUrl}
                 bandcampUrl={item.trackUrl ?? item.releaseUrl}
@@ -578,7 +577,7 @@ export function CratesView({
               <CrateItemRow
                 key={item.id}
                 title={item.featuredTrackTitle ?? item.title}
-                subtitle={<><a href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.artistName}</a>{getDomainIfDifferent(item.artistName, item.artistUrl) && <span className="text-zinc-600">{' · '}<a href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artistName, item.artistUrl)}</a></span>}<span className="text-zinc-600">{' · '}{item.title}</span></>}
+                subtitle={<><Link href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{item.artistName}</Link>{getDomainIfDifferent(item.artistName, item.artistUrl) && <span className="text-zinc-600">{' · '}<Link href={`/music/${extractSlug(item.artistUrl)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artistName, item.artistUrl)}</Link></span>}<span className="text-zinc-600">{' · '}{item.title}</span></>}
                 imageUrl={item.imageUrl}
                 streamUrl={item.streamUrl}
                 bandcampUrl={item.itemUrl}
@@ -598,14 +597,6 @@ export function CratesView({
         )}
       </div>
 
-      {playingItem && playingTrackUrl && (
-        <WaveformPlayer
-          ref={playerRef}
-          item={playingItem}
-          trackUrl={playingTrackUrl}
-          onPlayStateChange={setPlayerIsPlaying}
-        />
-      )}
     </div>
   );
 }

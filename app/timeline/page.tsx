@@ -21,7 +21,7 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   if (!cookie) {
     return (
       <main className="min-h-screen bg-zinc-950 text-zinc-100">
-        <AppHeader activeTab="timeline" username={username} />
+        <AppHeader username={username} />
         <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
           <p className="text-lg text-zinc-400">Log in to see your Bandcamp feed</p>
           <a
@@ -61,7 +61,7 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader activeTab="timeline" username={username} />
+      <AppHeader username={username} />
       <FeedView
         initialItems={items}
         initialTotalItems={totalItems}

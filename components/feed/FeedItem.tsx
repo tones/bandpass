@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { FeedItem } from '@/lib/bandcamp';
 import { extractSlug, getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import { convertToUsd } from '@/lib/currency';
@@ -112,16 +113,16 @@ export function FeedItemCard({
           )}
         </div>
         <div className="truncate text-sm text-zinc-400">
-          <a
+          <Link
             href={`/music/${extractSlug(item.artist.url)}`}
             className="hover:text-zinc-200 hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {item.artist.name}
-          </a>
+          </Link>
           {getDomainIfDifferent(item.artist.name, item.artist.url) && (
             <span className="text-zinc-600">
-              {' · '}<a href={`/music/${extractSlug(item.artist.url)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artist.name, item.artist.url)}</a>
+              {' · '}<Link href={`/music/${extractSlug(item.artist.url)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artist.name, item.artist.url)}</Link>
             </span>
           )}
           <span className="text-zinc-600">

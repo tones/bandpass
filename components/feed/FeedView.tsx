@@ -7,12 +7,11 @@ import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
 import { FilterBar } from './FilterBar';
 import type { FeedFilter } from './FilterBar';
-import { WaveformPlayer } from './WaveformPlayer';
 import { SyncStatus } from '@/components/SyncStatus';
 import { queryFeed } from '@/app/timeline/actions';
 import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
 import type { CrateInfo } from '@/components/TrackActions';
-import { useTrackPlayer } from '@/hooks/useTrackPlayer';
+import { usePlayer } from '@/contexts/PlayerContext';
 
 type FeedListEntry =
   | { type: 'header'; label: string }
@@ -84,7 +83,7 @@ export function FeedView({
   const [crates] = useState<CrateInfo[]>(initialCrates);
   const [crateItemIds, setCrateItemIds] = useState<Set<string>>(new Set(initialCrateItemIds));
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
-  const { playingTrackUrl, playingItem, isPlaying: isPlayerPlaying, playerRef, play: handlePlay, setIsPlaying } = useTrackPlayer();
+  const { playingTrackUrl, playingItem, isPlaying: isPlayerPlaying, play: handlePlay } = usePlayer();
   const [isPending, startTransition] = useTransition();
   const [dynamicOldestDate, setDynamicOldestDate] = useState(oldestStoryDate ?? null);
 
@@ -281,16 +280,6 @@ export function FeedView({
             <p className="text-sm text-zinc-500">No items match your filters.</p>
           )}
         </div>
-      )}
-      {playingItem && playingTrackUrl && (
-        <WaveformPlayer
-          ref={playerRef}
-          item={playingItem}
-          trackUrl={playingTrackUrl}
-          isInCrate={crateItemIds.has(playingItem.id)}
-          onToggleCrate={() => toggleCrate(playingItem.id)}
-          onPlayStateChange={setIsPlaying}
-        />
       )}
     </div>
   );

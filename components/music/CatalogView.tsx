@@ -1,16 +1,15 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import WavesurferPlayer from '@wavesurfer/react';
-import type WaveSurfer from 'wavesurfer.js';
 import type { CatalogRelease, CatalogTrack } from '@/lib/db/catalog';
-import { formatDuration, proxyUrl } from '@/lib/formatters';
+import type { FeedItem } from '@/lib/bandcamp/types/domain';
+import { formatDuration } from '@/lib/formatters';
 import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
-import { CrateIcon } from '@/components/icons/CrateIcon';
 import { TagPill } from '@/components/TagPill';
 import { BpmKeyBadge } from '@/components/BpmKeyBadge';
+import { usePlayer } from '@/contexts/PlayerContext';
 
 function catalogTrackCrateId(trackId: number): string {
   return `catalog-track-${trackId}`;
@@ -39,12 +38,24 @@ interface TagsCache {
   [releaseId: number]: string[];
 }
 
-interface NowPlaying {
-  track: CatalogTrack;
-  release: CatalogRelease;
+function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRelease): FeedItem {
+  return {
+    id: `catalog-track-${track.id}`,
+    storyType: 'new_release',
+    date: new Date(),
+    album: { id: release.id, title: release.title, url: release.url, imageUrl: release.imageUrl },
+    artist: { id: 0, name: release.bandName, url: release.bandUrl },
+    track: { title: track.title, duration: track.duration, streamUrl: track.streamUrl },
+    tags: [],
+    bpm: track.bpm,
+    musicalKey: track.musicalKey,
+    price: null,
+    socialSignal: { fan: null, alsoCollectedCount: 0 },
+  };
 }
 
 export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateItemIds = [], initialCrates = [], initialItemCrateMap = {}, loggedIn = false }: CatalogViewProps) {
+  const { playingTrackUrl, isPlaying, play } = usePlayer();
   const [crates] = useState<CrateInfo[]>(initialCrates);
   const [crateItemIds, setCrateItemIds] = useState<Set<string>>(() => new Set(initialCrateItemIds));
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
@@ -52,12 +63,6 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
   const [releaseDates, setReleaseDates] = useState<ReleaseDateCache>({});
   const [tagsCache, setTagsCache] = useState<TagsCache>({});
   const [loading, setLoading] = useState<Set<number>>(new Set());
-  const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
-  const [wavesurfer, setWavesurfer] = useState<WaveSurfer | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const prevUrlRef = useRef<string | null>(null);
   const fetchedRef = useRef(false);
 
   const fetchTracks = useCallback(
@@ -110,31 +115,8 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
 
   const playTrack = useCallback((track: CatalogTrack, release: CatalogRelease) => {
     if (!track.streamUrl) return;
-    setNowPlaying((prev) => {
-      if (prev?.track.streamUrl === track.streamUrl) return null;
-      return { track, release };
-    });
-  }, []);
-
-  const onReady = useCallback((ws: WaveSurfer) => {
-    setWavesurfer(ws);
-    setDuration(ws.getDuration());
-    ws.play();
-  }, []);
-
-  useEffect(() => {
-    if (wavesurfer && nowPlaying?.track.streamUrl) {
-      const url = nowPlaying.track.streamUrl;
-      if (url !== prevUrlRef.current) {
-        prevUrlRef.current = url;
-        wavesurfer.load(proxyUrl(url));
-      }
-    }
-  }, [wavesurfer, nowPlaying]);
-
-  const togglePlayPause = useCallback(() => {
-    wavesurfer?.playPause();
-  }, [wavesurfer]);
+    play(catalogTrackToFeedItem(track, release));
+  }, [play]);
 
   const handleToggleCrate = useCallback(async (trackId: number) => {
     const id = catalogTrackCrateId(trackId);
@@ -230,7 +212,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
             tags={tagsCache[release.id] ?? release.tags ?? []}
             isLoading={loading.has(release.id)}
             tracks={trackCache[release.id]}
-            nowPlaying={nowPlaying}
+            playingTrackUrl={playingTrackUrl}
             isPlayerPlaying={isPlaying}
             crateItemIds={crateItemIds}
             itemCrateMap={itemCrateMap}
@@ -244,84 +226,6 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
         ))}
       </div>
 
-      {nowPlaying?.track.streamUrl && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-800 bg-zinc-950 px-6 py-3">
-          <div className="mx-auto flex max-w-5xl items-center gap-4">
-            <img
-              src={nowPlaying.release.imageUrl}
-              alt={nowPlaying.release.title}
-              className="h-14 w-14 shrink-0 rounded"
-            />
-            <div className="w-40 shrink-0">
-              <div className="truncate text-sm font-medium text-zinc-100">
-                {nowPlaying.track.title}
-              </div>
-              <div className="truncate text-xs text-zinc-400">
-                {nowPlaying.release.bandName} — {nowPlaying.release.title}
-              </div>
-            </div>
-
-            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-500">
-              {formatDuration(currentTime)}
-            </span>
-
-            <div className="min-w-0 flex-1 cursor-pointer">
-              <WavesurferPlayer
-                key={nowPlaying.track.streamUrl}
-                height={48}
-                barWidth={2}
-                barGap={1}
-                barRadius={2}
-                waveColor="#52525b"
-                progressColor="#d97706"
-                cursorColor="transparent"
-                url={proxyUrl(nowPlaying.track.streamUrl)}
-                onReady={onReady}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onTimeupdate={(ws: WaveSurfer) => setCurrentTime(ws.getCurrentTime())}
-              />
-            </div>
-
-            <span className="w-10 shrink-0 text-xs tabular-nums text-zinc-500">
-              {duration > 0 ? formatDuration(duration) : '—'}
-            </span>
-
-            <button
-              onClick={togglePlayPause}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-200 transition-colors hover:bg-zinc-700"
-            >
-              {isPlaying ? '⏸' : '▶'}
-            </button>
-
-            {loggedIn && nowPlaying.track.id && (() => {
-              const cid = catalogTrackCrateId(nowPlaying.track.id);
-              const inCrate = crateItemIds.has(cid);
-              return (
-                <button
-                  onClick={() => handleToggleCrate(nowPlaying.track.id)}
-                  className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded transition-colors ${
-                    inCrate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'
-                  }`}
-                  title={inCrate ? 'Remove from crate' : 'Add to crate'}
-                >
-                  <CrateIcon filled={inCrate} className="h-5 w-5" />
-                </button>
-              );
-            })()}
-
-            <a
-              href={nowPlaying.track.trackUrl ?? nowPlaying.release.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-sm text-zinc-600 transition-colors hover:text-zinc-400"
-              title="Open on Bandcamp"
-            >
-              ↗
-            </a>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -338,7 +242,7 @@ interface ReleaseCardProps {
   tags: string[];
   isLoading: boolean;
   tracks?: CatalogTrack[];
-  nowPlaying: NowPlaying | null;
+  playingTrackUrl: string | null;
   isPlayerPlaying: boolean;
   crateItemIds: Set<string>;
   itemCrateMap: Record<string, number[]>;
@@ -356,7 +260,7 @@ function ReleaseCard({
   tags,
   isLoading,
   tracks,
-  nowPlaying,
+  playingTrackUrl,
   isPlayerPlaying,
   crateItemIds,
   itemCrateMap,
@@ -415,7 +319,7 @@ function ReleaseCard({
           <div>
             {tracks.map((track) => {
               const isActive =
-                nowPlaying?.track.streamUrl === track.streamUrl &&
+                playingTrackUrl === track.streamUrl &&
                 track.streamUrl != null &&
                 isPlayerPlaying;
               const cid = catalogTrackCrateId(track.id);
