@@ -7,7 +7,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Bandpass',
+  title: { default: 'Bandpass', template: '%s - Bandpass' },
   description: 'Bandcamp discovery, filtered',
 };
 

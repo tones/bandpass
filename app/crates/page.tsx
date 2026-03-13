@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { getCrates, ensureDefaultCrate } from '@/lib/db/crates';
 import { AppHeader } from '@/components/AppHeader';
+
+export const metadata: Metadata = { title: 'Crates' };
 
 export default async function CratesPage() {
   const cookie = await getIdentityCookie();

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { getSyncState } from '@/lib/db/sync';
@@ -5,6 +6,8 @@ import { getItemCount, getItemCountByType } from '@/lib/db/queries';
 import { getWishlistItemCount } from '@/lib/db/crates';
 import { AppHeader } from '@/components/AppHeader';
 import { AccountView } from '@/components/AccountView';
+
+export const metadata: Metadata = { title: 'Account' };
 
 export default async function AccountPage() {
   const session = await getSession();

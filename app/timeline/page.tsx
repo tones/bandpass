@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { getBandcamp } from '@/lib/bandcamp';
@@ -7,6 +8,8 @@ import { getSyncState } from '@/lib/db/sync';
 import { getAllCrateItemIds, getCrates, getItemCrateMultiMap } from '@/lib/db/crates';
 import { FeedView } from '@/components/feed/FeedView';
 import { AppHeader } from '@/components/AppHeader';
+
+export const metadata: Metadata = { title: 'Timeline' };
 
 interface FeedPageProps {
   searchParams: Promise<{ tag?: string; type?: string; friend?: string }>;

@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { getSession } from '@/lib/session';
 import { MusicBrowse } from '@/components/music/MusicBrowse';
 import { AppHeader } from '@/components/AppHeader';
+
+export const metadata: Metadata = { title: 'Music' };
 
 export default async function MusicPage() {
   const session = await getSession();

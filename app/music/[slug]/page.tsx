@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { BandcampClient } from '@/lib/bandcamp/client';
 import { fetchDiscography, artIdToUrl, publicFetcher } from '@/lib/bandcamp/scraper';
@@ -10,6 +11,13 @@ export const dynamic = 'force-dynamic';
 
 interface MusicDetailPageProps {
   params: Promise<{ slug: string }>;
+}
+
+export async function generateMetadata({ params }: MusicDetailPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const releases = getCachedDiscography(slug);
+  const bandName = releases?.[0]?.bandName ?? slug;
+  return { title: bandName };
 }
 
 function slugToBandUrl(slug: string): string {
