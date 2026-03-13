@@ -106,7 +106,7 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
     if (process.env.ENABLE_AUDIO_ANALYSIS === 'true') {
       progress.isAnalyzingAudio = true;
       try {
-        const analyzed = await processAudioAnalysisQueue(identityCookie, 50, (processed, remaining) => {
+        const analyzed = await processAudioAnalysisQueue(identityCookie, (processed, remaining) => {
           progress.audioAnalyzed = processed;
           progress.audioRemaining = remaining;
         });
@@ -141,7 +141,8 @@ export async function GET() {
   const audioAnalysisPending = getAudioAnalysisPendingCount();
   const audioAnalysisDone = getAudioAnalysisDoneCount();
 
-  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
+  const audioNeedsSync = process.env.ENABLE_AUDIO_ANALYSIS === 'true' && audioAnalysisPending > 0;
+  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0 || audioNeedsSync;
   if (needsSync && !activeSyncs.has(fanId) && session.identityCookie) {
     startSync(fanId, session.identityCookie, !state?.lastSyncAt).catch((err) =>
       console.error('Auto-triggered sync error:', err),
