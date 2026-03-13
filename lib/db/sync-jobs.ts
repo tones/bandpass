@@ -10,6 +10,7 @@ export interface SyncJob {
   status: JobStatus;
   progressDone: number;
   progressTotal: number;
+  progressErrors: number;
   subPhase: string | null;
   error: string | null;
   createdAt: string;
@@ -23,6 +24,7 @@ interface SyncJobRow {
   status: string;
   progress_done: number;
   progress_total: number;
+  progress_errors: number;
   sub_phase: string | null;
   error: string | null;
   created_at: string;
@@ -37,6 +39,7 @@ function rowToJob(row: SyncJobRow): SyncJob {
     status: row.status as JobStatus,
     progressDone: row.progress_done,
     progressTotal: row.progress_total,
+    progressErrors: row.progress_errors ?? 0,
     subPhase: row.sub_phase,
     error: row.error,
     createdAt: row.created_at,
@@ -57,6 +60,13 @@ export function updateJobProgress(jobId: number, done: number, total: number, su
   db.prepare(
     "UPDATE sync_jobs SET progress_done = ?, progress_total = ?, sub_phase = ?, updated_at = datetime('now') WHERE id = ?",
   ).run(done, total, subPhase ?? null, jobId);
+}
+
+export function incrementJobErrors(jobId: number): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE sync_jobs SET progress_errors = progress_errors + 1, updated_at = datetime('now') WHERE id = ?",
+  ).run(jobId);
 }
 
 export function completeJob(jobId: number): void {

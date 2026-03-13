@@ -299,5 +299,13 @@ export function getDb(): Database.Database {
     `);
   }
 
+  if (schemaVersion < 16) {
+    db.exec(`
+      ALTER TABLE sync_jobs ADD COLUMN progress_errors INTEGER DEFAULT 0;
+
+      PRAGMA user_version = 16;
+    `);
+  }
+
   return db;
 }

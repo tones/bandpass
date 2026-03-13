@@ -6,7 +6,7 @@ import type { Worker as WorkerType } from 'worker_threads';
 const { Worker } = eval("require('worker_threads')") as { Worker: new (path: string) => WorkerType };
 import { getDb } from '@/lib/db/index';
 import { processEnrichmentQueue, getAudioAnalysisPendingCount } from '@/lib/db/sync';
-import { createJob, updateJobProgress, completeJob, failJob, getActiveJob, cleanupStaleJobs } from '@/lib/db/sync-jobs';
+import { createJob, updateJobProgress, completeJob, failJob, getActiveJob, cleanupStaleJobs, incrementJobErrors } from '@/lib/db/sync-jobs';
 import { getReleasesNeedingStreamRefresh, refreshStreamUrls, markNoStreamTracks, getPendingTracksForRelease } from '@/lib/db/catalog';
 import { fetchAlbumTracks, publicFetcher } from '@/lib/bandcamp/scraper';
 
@@ -133,7 +133,7 @@ function markAudioFailed(trackId: number) {
   ).run(trackId);
 }
 
-const WORKER_TIMEOUT_MS = 60_000;
+const WORKER_TIMEOUT_MS = 30_000;
 
 class WorkerDiedError extends Error {
   constructor(message: string) {
@@ -231,6 +231,7 @@ async function audioWorkerLoop() {
           }
 
           const release = releases[ri];
+          console.log(`Processing release ${ri + 1}/${releases.length}: ${release.releaseUrl}`);
 
           // Refresh stream URLs for this release
           try {
@@ -274,15 +275,19 @@ async function audioWorkerLoop() {
             try {
               const result = await postToWorker(worker, track, storedCookie);
               if ('error' in result && result.error) {
-                console.error(`Audio analysis failed for track ${result.trackId}: ${result.error}`);
+                console.error(`Track ${result.trackId} error: ${result.error} (url: ${track.stream_url.slice(0, 80)}...)`);
                 markAudioFailed(result.trackId);
+                incrementJobErrors(jobId);
+                consecutiveFailures++;
               } else {
                 saveAudioResult(result as AudioWorkerResult);
                 consecutiveFailures = 0;
               }
             } catch (err) {
-              console.error(`Worker error for track ${track.id}:`, err);
+              const msg = err instanceof Error ? err.message : String(err);
+              console.error(`Worker crash for track ${track.id}: ${msg} (url: ${track.stream_url.slice(0, 80)}...)`);
               markAudioFailed(track.id);
+              incrementJobErrors(jobId);
 
               if (worker) {
                 try { worker.terminate(); } catch { /* ignore */ }
@@ -291,7 +296,7 @@ async function audioWorkerLoop() {
 
               consecutiveFailures++;
               if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-                console.error(`${MAX_CONSECUTIVE_FAILURES} consecutive failures, aborting job`);
+                console.error(`Aborting: ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
                 failJob(jobId, `${MAX_CONSECUTIVE_FAILURES} consecutive track failures`);
                 aborted = true;
                 break;

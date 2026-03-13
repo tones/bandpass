@@ -26,29 +26,45 @@ async function analyzeTrack(req: AnalyzeRequest) {
     headers['Cookie'] = `identity=${req.cookie}`;
   }
 
-  const controller = new AbortController();
-  const fetchTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  let resp: Response;
+  // Phase 1: Fetch audio
+  let mp3Buffer: Buffer;
   try {
-    resp = await fetch(req.streamUrl, {
-      headers,
-      redirect: 'follow',
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(fetchTimer);
+    const controller = new AbortController();
+    const fetchTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    let resp: Response;
+    try {
+      resp = await fetch(req.streamUrl, {
+        headers,
+        redirect: 'follow',
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(fetchTimer);
+    }
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+
+    mp3Buffer = Buffer.from(await resp.arrayBuffer());
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`fetch failed: ${msg}`);
   }
 
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch audio: HTTP ${resp.status}`);
+  // Phase 2: Decode MP3 to PCM
+  let pcm: Float32Array;
+  try {
+    const decode = (await import('audio-decode')).default;
+    const audioBuffer = await decode(mp3Buffer);
+    pcm = audioBuffer.getChannelData(0);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`decode failed: ${msg}`);
   }
 
-  const mp3Buffer = Buffer.from(await resp.arrayBuffer());
-  const decode = (await import('audio-decode')).default;
-  const audioBuffer = await decode(mp3Buffer);
-  const pcm = audioBuffer.getChannelData(0);
-
+  // Phase 3: BPM + Key analysis
   const essentia = await getEssentia();
   const signal = essentia.arrayToVector(pcm);
 
@@ -61,6 +77,9 @@ async function analyzeTrack(req: AnalyzeRequest) {
     const keyCamelot = toCamelot(keyResult.key, keyResult.scale);
 
     return { bpm, musicalKey, keyCamelot };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`analysis failed: ${msg}`);
   } finally {
     signal.delete();
   }

@@ -34,6 +34,14 @@ function formatOldestDate(timestamp: number): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function buildAudioActiveLabel(done: number, errors: number, pending: number | null): string {
+  const parts: string[] = [];
+  if (done > 0) parts.push(`${done.toLocaleString()} done`);
+  if (errors > 0) parts.push(`${errors.toLocaleString()} errors`);
+  if (pending) parts.push(`${pending.toLocaleString()} remaining`);
+  return parts.length > 0 ? `Analyzing... (${parts.join(', ')})` : 'Analyzing...';
+}
+
 export function AccountView({
   username,
   totalItems: initialTotal,
@@ -88,7 +96,11 @@ export function AccountView({
   const audioAnalyzed = state?.audioAnalyzed ?? 0;
   const audioAnalysisPending = state?.audioAnalysisPending ?? null;
   const audioAnalysisDone = state?.audioAnalysisDone ?? 0;
+  const audioErrors = state?.audioErrors ?? 0;
+  const audioJobError = state?.audioJobError ?? null;
+  const audioJobStatus = state?.audioJobStatus ?? null;
   const audioAnalysisEnabled = state?.audioAnalysisEnabled ?? true;
+  const audioFailed = !isAnalyzingAudio && audioJobStatus === 'failed' && !!audioJobError;
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
@@ -156,32 +168,23 @@ export function AccountView({
                 Disabled on this server
                 {audioAnalysisPending !== null && audioAnalysisPending > 0 ? ` · ${audioAnalysisPending.toLocaleString()} tracks pending` : ''}
               </span>
-            ) : (
-              <span className="inline-flex items-center gap-2">
-                <StatusBadge
-                  done={!isAnalyzingAudio && audioAnalysisPending === 0 && enrichmentPendingCount === 0 && collectionSynced}
-                  active={isAnalyzingAudio}
-                  doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks analyzed` : 'Complete'}
-                  activeLabel={
-                    stopping
-                      ? 'Stopping...'
-                      : audioAnalyzed > 0
-                        ? `Analyzing... (${audioAnalyzed} done${audioAnalysisPending ? `, ${audioAnalysisPending.toLocaleString()} remaining` : ''})`
-                        : audioAnalysisPending
-                          ? `Analyzing... (${audioAnalysisPending.toLocaleString()} remaining)`
-                          : 'Analyzing...'
-                  }
-                  pendingLabel={audioAnalysisPending !== null && audioAnalysisPending > 0 ? `${audioAnalysisPending.toLocaleString()} tracks remaining` : 'Pending'}
-                />
-                {isAnalyzingAudio && !stopping && (
-                  <button
-                    onClick={stopAudioAnalysis}
-                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-                  >
-                    Stop
-                  </button>
-                )}
+            ) : audioFailed ? (
+              <span className="inline-flex items-center gap-1.5 text-red-400">
+                <span className="inline-block h-2 w-2 rounded-full bg-red-400" />
+                Failed: {audioJobError}
               </span>
+            ) : (
+              <StatusBadge
+                done={!isAnalyzingAudio && audioAnalysisPending === 0 && enrichmentPendingCount === 0 && collectionSynced}
+                active={isAnalyzingAudio}
+                doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks analyzed` : 'Complete'}
+                activeLabel={
+                  stopping
+                    ? 'Stopping...'
+                    : buildAudioActiveLabel(audioAnalyzed, audioErrors, audioAnalysisPending)
+                }
+                pendingLabel={audioAnalysisPending !== null && audioAnalysisPending > 0 ? `${audioAnalysisPending.toLocaleString()} tracks remaining` : 'Pending'}
+              />
             )}
           </Row>
         </Section>
@@ -194,6 +197,15 @@ export function AccountView({
           >
             {anySyncing ? 'Syncing...' : 'Sync now'}
           </button>
+          {isAnalyzingAudio && (
+            <button
+              onClick={stopAudioAnalysis}
+              disabled={stopping}
+              className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {stopping ? 'Stopping...' : 'Stop analysis'}
+            </button>
+          )}
           <form action={logout}>
             <button
               type="submit"
