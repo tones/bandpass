@@ -4,6 +4,7 @@ import { useState, useCallback, useTransition, useRef, useEffect } from 'react';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
 import type { Crate, CrateCatalogItem } from '@/lib/db/crates';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FeedItemCard } from './feed/FeedItem';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { TrackActions } from './TrackActions';
@@ -51,6 +52,7 @@ export function CratesView({
   const [wishlistItems, setWishlistItems] = useState(initialWishlistItems);
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
   const { playingTrackUrl, playingItem, isPlaying: playerIsPlaying, play: playFeedItem } = usePlayer();
+  const router = useRouter();
   const [confirmClear, setConfirmClear] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [isRefreshingWishlist, setIsRefreshingWishlist] = useState(false);
@@ -86,6 +88,7 @@ export function CratesView({
   const selectCrate = useCallback((crateId: number) => {
     setActiveCrateId(crateId);
     setConfirmClear(false);
+    router.replace(`/crates/${crateId}`, { scroll: false });
     const crate = crates.find((c) => c.id === crateId);
 
     startTransition(async () => {

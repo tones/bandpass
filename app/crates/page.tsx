@@ -1,7 +1,6 @@
+import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
-import { getExchangeRates } from '@/lib/currency';
-import { getCrates, getCrateItems, getCrateCatalogItems, getCrateWishlistItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap } from '@/lib/db/crates';
-import { CratesView } from '@/components/CratesView';
+import { getCrates, ensureDefaultCrate } from '@/lib/db/crates';
 import { AppHeader } from '@/components/AppHeader';
 
 export default async function CratesPage() {
@@ -31,29 +30,16 @@ export default async function CratesPage() {
   const crates = getCrates(fanId);
   const firstCrate = crates[0];
 
-  const isWishlist = firstCrate?.source === 'bandcamp_wishlist';
-  const initialItems = firstCrate && !isWishlist ? getCrateItems(firstCrate.id, fanId) : [];
-  const initialCatalogItems = firstCrate && !isWishlist ? getCrateCatalogItems(firstCrate.id, fanId) : [];
-  const initialWishlistItems = firstCrate
-    ? isWishlist
-      ? getWishlistItems(fanId)
-      : getCrateWishlistItems(firstCrate.id, fanId)
-    : [];
-  const exchangeRates = await getExchangeRates();
-  const initialItemCrateMap = getItemCrateMultiMap(fanId);
+  if (firstCrate) {
+    redirect(`/crates/${firstCrate.id}`);
+  }
 
   return (
     <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
       <AppHeader username={username} />
-      <CratesView
-        crates={crates}
-        initialCrateId={firstCrate?.id ?? null}
-        initialItems={initialItems}
-        initialCatalogItems={initialCatalogItems}
-        initialWishlistItems={initialWishlistItems}
-        exchangeRates={exchangeRates}
-        initialItemCrateMap={initialItemCrateMap}
-      />
+      <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
+        <p className="text-lg text-zinc-400">No crates yet</p>
+      </div>
     </main>
   );
 }

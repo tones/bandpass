@@ -1,15 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useNavigation } from '@/contexts/NavigationContext';
 
 type NavTab = 'timeline' | 'music' | 'crates';
-
-const NAV_ITEMS: { id: NavTab; label: string; href: string }[] = [
-  { id: 'music', label: 'Music', href: '/music' },
-  { id: 'timeline', label: 'Timeline', href: '/timeline' },
-  { id: 'crates', label: 'Crates', href: '/crates' },
-];
 
 interface AppHeaderProps {
   username?: string | null;
@@ -17,11 +12,27 @@ interface AppHeaderProps {
 
 export function AppHeader({ username }: AppHeaderProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { lastMusicPath, lastCratesPath, lastTimelinePath } = useNavigation();
+
+  if (pathname.startsWith('/music')) {
+    lastMusicPath.current = pathname;
+  }
+  if (pathname.startsWith('/crates')) {
+    lastCratesPath.current = pathname;
+  }
+
   const activeTab: NavTab | undefined =
     pathname.startsWith('/crates') ? 'crates'
     : pathname.startsWith('/timeline') ? 'timeline'
     : pathname.startsWith('/music') ? 'music'
     : undefined;
+
+  const navItems: { id: NavTab; label: string; root: string; lastPath: React.MutableRefObject<string> }[] = [
+    { id: 'music', label: 'Music', root: '/music', lastPath: lastMusicPath },
+    { id: 'timeline', label: 'Timeline', root: '/timeline', lastPath: lastTimelinePath },
+    { id: 'crates', label: 'Crates', root: '/crates', lastPath: lastCratesPath },
+  ];
 
   return (
     <header className="border-b border-zinc-800">
@@ -48,10 +59,16 @@ export function AppHeader({ username }: AppHeaderProps) {
         </div>
       </div>
       <nav className="flex gap-1 px-6 pb-2">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <Link
             key={item.id}
-            href={item.href}
+            href={item.root}
+            onClick={(e) => {
+              if (item.lastPath.current !== item.root) {
+                e.preventDefault();
+                router.push(item.lastPath.current);
+              }
+            }}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               activeTab === item.id
                 ? 'bg-zinc-800 text-zinc-100'

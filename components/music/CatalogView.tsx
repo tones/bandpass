@@ -7,9 +7,11 @@ import { formatDuration } from '@/lib/formatters';
 import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
+import Link from 'next/link';
 import { TagPill } from '@/components/TagPill';
 import { BpmKeyBadge } from '@/components/BpmKeyBadge';
 import { usePlayer } from '@/contexts/PlayerContext';
+import { useNavigation } from '@/contexts/NavigationContext';
 
 function catalogTrackCrateId(trackId: number): string {
   return `catalog-track-${trackId}`;
@@ -56,6 +58,7 @@ function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRelease): F
 
 export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateItemIds = [], initialCrates = [], initialItemCrateMap = {}, loggedIn = false }: CatalogViewProps) {
   const { playingTrackUrl, isPlaying, play } = usePlayer();
+  const { lastMusicPath } = useNavigation();
   const [crates] = useState<CrateInfo[]>(initialCrates);
   const [crateItemIds, setCrateItemIds] = useState<Set<string>>(() => new Set(initialCrateItemIds));
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
@@ -186,21 +189,30 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-6 pb-28">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-zinc-100">{bandName}</h2>
-          <a
-            href={bandUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-zinc-500 hover:text-zinc-300"
-          >
-            {bandUrl.replace('https://', '')} ↗
-          </a>
+      <div className="mb-6">
+        <Link
+          href="/music"
+          onClick={() => { lastMusicPath.current = '/music'; }}
+          className="mb-3 inline-flex items-center gap-1 text-sm text-zinc-500 transition-colors hover:text-zinc-300"
+        >
+          ← Browse artists
+        </Link>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-zinc-100">{bandName}</h2>
+            <a
+              href={bandUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-zinc-500 hover:text-zinc-300"
+            >
+              {bandUrl.replace('https://', '')} ↗
+            </a>
+          </div>
+          <span className="text-sm text-zinc-500">
+            {releases.length} release{releases.length !== 1 ? 's' : ''}
+          </span>
         </div>
-        <span className="text-sm text-zinc-500">
-          {releases.length} release{releases.length !== 1 ? 's' : ''}
-        </span>
       </div>
 
       <div className="space-y-2">

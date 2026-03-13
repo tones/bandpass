@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useTransition } from 'react';
+import { useState, useCallback, useTransition, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import type { DateRange } from 'react-day-picker';
 import type { FeedItem } from '@/lib/bandcamp';
 import { FeedItemCard } from './FeedItem';
@@ -12,6 +13,7 @@ import { queryFeed } from '@/app/timeline/actions';
 import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
 import type { CrateInfo } from '@/components/TrackActions';
 import { usePlayer } from '@/contexts/PlayerContext';
+import { useNavigation } from '@/contexts/NavigationContext';
 
 type FeedListEntry =
   | { type: 'header'; label: string }
@@ -58,6 +60,8 @@ interface FeedViewProps {
   oldestStoryDate?: number | null;
   exchangeRates?: Record<string, number>;
   initialTag?: string;
+  initialType?: string;
+  initialFriend?: string;
 }
 
 export function FeedView({
@@ -71,13 +75,19 @@ export function FeedView({
   oldestStoryDate,
   exchangeRates = {},
   initialTag,
+  initialType,
+  initialFriend,
 }: FeedViewProps) {
+  const router = useRouter();
+  const { lastTimelinePath } = useNavigation();
   const [items, setItems] = useState<FeedItem[]>(initialItems);
   const [totalItems, setTotalItems] = useState(initialTotalItems);
   const [tags, setTags] = useState(initialTags);
   const [friends, setFriends] = useState(initialFriends);
-  const [feedFilter, setFeedFilter] = useState<FeedFilter>('all');
-  const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>(
+    (initialType as FeedFilter) ?? 'all'
+  );
+  const [selectedFriend, setSelectedFriend] = useState<string | null>(initialFriend ?? null);
   const [selectedTag, setSelectedTag] = useState<string | null>(initialTag ?? null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [crates] = useState<CrateInfo[]>(initialCrates);
@@ -87,6 +97,25 @@ export function FeedView({
   const [isPending, startTransition] = useTransition();
   const [dynamicOldestDate, setDynamicOldestDate] = useState(oldestStoryDate ?? null);
 
+  useEffect(() => {
+    const qs = window.location.search;
+    lastTimelinePath.current = `/timeline${qs}`;
+  }, [lastTimelinePath]);
+
+  const syncUrl = useCallback(
+    (filter: FeedFilter, friend: string | null, tag: string | null) => {
+      const params = new URLSearchParams();
+      if (filter !== 'all') params.set('type', filter);
+      if (tag) params.set('tag', tag);
+      if (friend) params.set('friend', friend);
+      const qs = params.toString();
+      const url = qs ? `/timeline?${qs}` : '/timeline';
+      router.replace(url, { scroll: false });
+      lastTimelinePath.current = url;
+    },
+    [router, lastTimelinePath],
+  );
+
   const applyFilters = useCallback(
     (
       newFilter: FeedFilter,
@@ -94,6 +123,8 @@ export function FeedView({
       newTag: string | null,
       newDateRange: DateRange | undefined,
     ) => {
+      syncUrl(newFilter, newFriend, newTag);
+
       const dateFrom = newDateRange?.from
         ? new Date(newDateRange.from.getFullYear(), newDateRange.from.getMonth(), newDateRange.from.getDate()).toISOString()
         : undefined;
@@ -117,7 +148,7 @@ export function FeedView({
         setFriends(result.friends);
       });
     },
-    [],
+    [syncUrl],
   );
 
   const handleFeedFilterChange = useCallback(

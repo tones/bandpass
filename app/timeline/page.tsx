@@ -9,11 +9,11 @@ import { FeedView } from '@/components/feed/FeedView';
 import { AppHeader } from '@/components/AppHeader';
 
 interface FeedPageProps {
-  searchParams: Promise<{ tag?: string }>;
+  searchParams: Promise<{ tag?: string; type?: string; friend?: string }>;
 }
 
 export default async function FeedPage({ searchParams }: FeedPageProps) {
-  const { tag: initialTag } = await searchParams;
+  const { tag: initialTag, type: initialType, friend: initialFriend } = await searchParams;
   const cookie = await getIdentityCookie();
   const session = await getSession();
   const username = session.username ?? null;
@@ -51,7 +51,9 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
 
   const syncState = getSyncState(fanId);
   const exchangeRates = await getExchangeRates();
-  const items = syncState?.lastSyncAt ? getFeedItems(fanId, { tag: initialTag }) : [];
+  const validTypes = ['new_release', 'friend_purchase', 'my_purchase'] as const;
+  const storyType = validTypes.find((t) => t === initialType);
+  const items = syncState?.lastSyncAt ? getFeedItems(fanId, { tag: initialTag, storyType, friendUsername: initialFriend }) : [];
   const tags = syncState?.lastSyncAt ? getTagCounts(fanId) : [];
   const friends = syncState?.lastSyncAt ? getFriendCounts(fanId) : [];
   const totalItems = syncState?.lastSyncAt ? getItemCount(fanId) : 0;
@@ -73,6 +75,8 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
         oldestStoryDate={syncState?.oldestStoryDate ?? null}
         exchangeRates={exchangeRates}
         initialTag={initialTag}
+        initialType={storyType}
+        initialFriend={initialFriend}
       />
     </main>
   );
