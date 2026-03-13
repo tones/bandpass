@@ -122,16 +122,22 @@ export function cacheDiscography(
 ): CatalogRelease[] {
   const db = getDb();
 
-  db.prepare('DELETE FROM catalog_releases WHERE band_slug = ?').run(slug);
+  const existing = db.prepare(
+    "SELECT url, release_date, tags FROM catalog_releases WHERE band_slug = ?",
+  ).all(slug) as Array<{ url: string; release_date: string | null; tags: string }>;
+  const preserved = new Map(existing.map((r) => [r.url, { releaseDate: r.release_date, tags: r.tags }]));
+
+  db.prepare("DELETE FROM catalog_releases WHERE band_slug = ? AND source = 'discography'").run(slug);
 
   const insert = db.prepare(`
-    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'discography')
+    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, release_date, tags, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'discography')
   `);
 
   const insertMany = db.transaction(() => {
     for (const r of releases) {
-      insert.run(slug, bandName, bandUrl, r.title, r.url, r.imageUrl, r.releaseType);
+      const prev = preserved.get(r.url);
+      insert.run(slug, bandName, bandUrl, r.title, r.url, r.imageUrl, r.releaseType, prev?.releaseDate ?? null, prev?.tags ?? '[]');
     }
   });
   insertMany();
