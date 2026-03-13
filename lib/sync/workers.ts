@@ -6,7 +6,7 @@ import type { Worker as WorkerType } from 'worker_threads';
 const { Worker } = eval("require('worker_threads')") as { Worker: new (path: string) => WorkerType };
 import { getDb } from '@/lib/db/index';
 import { processEnrichmentQueue, getAudioAnalysisPendingCount } from '@/lib/db/sync';
-import { createJob, updateJobProgress, completeJob, failJob, getActiveJob } from '@/lib/db/sync-jobs';
+import { createJob, updateJobProgress, completeJob, failJob, getActiveJob, cleanupStaleJobs } from '@/lib/db/sync-jobs';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,6 +23,8 @@ export function ensureWorkersStarted(cookie?: string) {
   if (cookie) storedCookie = cookie;
   if (started) return;
   started = true;
+
+  cleanupStaleJobs();
 
   enrichmentWorkerLoop().catch((err) =>
     console.error('Enrichment worker crashed:', err),
@@ -131,15 +133,42 @@ function markAudioFailed(trackId: number) {
   ).run(trackId);
 }
 
+const WORKER_TIMEOUT_MS = 120_000;
+
 function postToWorker(worker: WorkerType, track: { id: number; stream_url: string }, cookie?: string): Promise<AudioWorkerMessage> {
-  return new Promise((resolve) => {
-    const handler = (msg: AudioWorkerMessage) => {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Worker timeout after ${WORKER_TIMEOUT_MS / 1000}s for track ${track.id}`));
+    }, WORKER_TIMEOUT_MS);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      (worker as unknown as NodeJS.EventEmitter).removeListener('message', onMessage);
+      (worker as unknown as NodeJS.EventEmitter).removeListener('error', onError);
+      (worker as unknown as NodeJS.EventEmitter).removeListener('exit', onExit);
+    };
+
+    const onMessage = (msg: AudioWorkerMessage) => {
       if ('trackId' in msg && msg.trackId === track.id) {
-        (worker as unknown as NodeJS.EventEmitter).removeListener('message', handler);
+        cleanup();
         resolve(msg);
       }
     };
-    worker.on('message', handler);
+
+    const onError = (err: Error) => {
+      cleanup();
+      reject(new Error(`Worker thread error: ${err.message}`));
+    };
+
+    const onExit = (code: number) => {
+      cleanup();
+      reject(new Error(`Worker thread exited with code ${code}`));
+    };
+
+    worker.on('message', onMessage);
+    worker.on('error', onError);
+    worker.on('exit', onExit);
     worker.postMessage({ trackId: track.id, streamUrl: track.stream_url, cookie });
   });
 }
@@ -186,17 +215,35 @@ async function audioWorkerLoop() {
       try {
         updateJobProgress(jobId, 0, totalPending);
 
-        while (true) {
+        let workerDied = false;
+
+        while (!workerDied) {
           const batch = getNextAudioBatch(50);
           if (batch.length === 0) break;
 
           for (const track of batch) {
-            const result = await postToWorker(worker, track, storedCookie);
-            if ('error' in result && result.error) {
-              console.error(`Audio analysis failed for track ${result.trackId}:`, result.error);
-              markAudioFailed(result.trackId);
-            } else {
-              saveAudioResult(result as AudioWorkerResult);
+            if (!worker) {
+              workerDied = true;
+              break;
+            }
+
+            try {
+              const result = await postToWorker(worker, track, storedCookie);
+              if ('error' in result && result.error) {
+                console.error(`Audio analysis failed for track ${result.trackId}:`, result.error);
+                markAudioFailed(result.trackId);
+              } else {
+                saveAudioResult(result as AudioWorkerResult);
+              }
+            } catch (err) {
+              console.error(`Worker communication error for track ${track.id}:`, err);
+              markAudioFailed(track.id);
+              if (worker) {
+                try { worker.terminate(); } catch { /* ignore */ }
+              }
+              worker = null;
+              workerDied = true;
+              break;
             }
 
             done++;
@@ -207,7 +254,12 @@ async function audioWorkerLoop() {
           }
         }
 
-        completeJob(jobId);
+        if (workerDied) {
+          console.error(`Audio worker died after processing ${done} tracks, will retry on next cycle`);
+          failJob(jobId, `Worker died after ${done} tracks`);
+        } else {
+          completeJob(jobId);
+        }
       } catch (err) {
         console.error('Audio worker loop error:', err);
         failJob(jobId, err instanceof Error ? err.message : String(err));

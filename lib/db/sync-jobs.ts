@@ -101,3 +101,17 @@ export function hasActiveUserSync(fanId: number): boolean {
   ).get(fanId);
   return !!row;
 }
+
+/**
+ * Mark any stale 'running' jobs as 'failed'. Called on startup to clean up
+ * jobs that were interrupted by a server restart.
+ */
+export function cleanupStaleJobs(): void {
+  const db = getDb();
+  const result = db.prepare(
+    "UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = datetime('now') WHERE status = 'running'",
+  ).run();
+  if (result.changes > 0) {
+    console.log(`Cleaned up ${result.changes} stale running job(s) from previous server instance`);
+  }
+}
