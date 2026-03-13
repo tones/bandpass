@@ -316,12 +316,23 @@ export function refreshStreamUrls(
   doAll();
 }
 
-export function markNoStreamTracks(): number {
+export function markNoStreamTracks(releaseId?: number): number {
   const db = getDb();
-  const result = db.prepare(`
-    UPDATE catalog_tracks
-    SET bpm_status = 'no_stream'
-    WHERE bpm_status IS NULL AND (stream_url IS NULL OR stream_url = '')
-  `).run();
+  if (releaseId != null) {
+    const result = db.prepare(
+      "UPDATE catalog_tracks SET bpm_status = 'no_stream' WHERE release_id = ? AND bpm_status IS NULL AND (stream_url IS NULL OR stream_url = '')",
+    ).run(releaseId);
+    return result.changes;
+  }
+  const result = db.prepare(
+    "UPDATE catalog_tracks SET bpm_status = 'no_stream' WHERE bpm_status IS NULL AND (stream_url IS NULL OR stream_url = '')",
+  ).run();
   return result.changes;
+}
+
+export function getPendingTracksForRelease(releaseId: number): Array<{ id: number; stream_url: string }> {
+  const db = getDb();
+  return db.prepare(
+    "SELECT id, stream_url FROM catalog_tracks WHERE release_id = ? AND stream_url IS NOT NULL AND stream_url != '' AND bpm_status IS NULL ORDER BY track_num",
+  ).all(releaseId) as Array<{ id: number; stream_url: string }>;
 }

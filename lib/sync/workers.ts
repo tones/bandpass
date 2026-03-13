@@ -7,7 +7,7 @@ const { Worker } = eval("require('worker_threads')") as { Worker: new (path: str
 import { getDb } from '@/lib/db/index';
 import { processEnrichmentQueue, getAudioAnalysisPendingCount } from '@/lib/db/sync';
 import { createJob, updateJobProgress, completeJob, failJob, getActiveJob, cleanupStaleJobs } from '@/lib/db/sync-jobs';
-import { getReleasesNeedingStreamRefresh, refreshStreamUrls, markNoStreamTracks } from '@/lib/db/catalog';
+import { getReleasesNeedingStreamRefresh, refreshStreamUrls, markNoStreamTracks, getPendingTracksForRelease } from '@/lib/db/catalog';
 import { fetchAlbumTracks, publicFetcher } from '@/lib/bandcamp/scraper';
 
 function sleep(ms: number): Promise<void> {
@@ -20,6 +20,11 @@ const AUDIO_ANALYSIS_DELAY_MS = 1500;
 let started = false;
 let storedCookie: string | undefined;
 let nudgeResolve: (() => void) | null = null;
+let audioCancelRequested = false;
+
+export function cancelAudioAnalysis() {
+  audioCancelRequested = true;
+}
 
 export function ensureWorkersStarted(cookie?: string) {
   if (cookie) storedCookie = cookie;
@@ -108,13 +113,6 @@ interface AudioWorkerError {
 
 type AudioWorkerMessage = AudioWorkerResult | AudioWorkerError;
 
-function getNextAudioBatch(limit: number): Array<{ id: number; stream_url: string }> {
-  const db = getDb();
-  return db.prepare(
-    "SELECT id, stream_url FROM catalog_tracks WHERE stream_url IS NOT NULL AND stream_url != '' AND bpm_status IS NULL ORDER BY id DESC LIMIT ?",
-  ).all(limit) as Array<{ id: number; stream_url: string }>;
-}
-
 function saveAudioResult(result: AudioWorkerResult) {
   const db = getDb();
   db.prepare(
@@ -195,40 +193,6 @@ function spawnWorker(): WorkerType {
   return new Worker(workerPath);
 }
 
-async function refreshStreamUrlsPhase(jobId: number): Promise<boolean> {
-  const releases = getReleasesNeedingStreamRefresh();
-  if (releases.length === 0) return true;
-
-  console.log(`Refreshing stream URLs for ${releases.length} releases...`);
-  let refreshed = 0;
-  let errors = 0;
-
-  for (const release of releases) {
-    try {
-      const album = await fetchAlbumTracks(publicFetcher, release.releaseUrl);
-      refreshStreamUrls(
-        release.releaseId,
-        album.tracks.map((t) => ({
-          trackNum: t.trackNum,
-          streamUrl: t.streamUrl,
-          trackUrl: t.trackUrl,
-        })),
-      );
-      refreshed++;
-    } catch (err) {
-      console.error(`Failed to refresh URLs for release ${release.releaseId} (${release.releaseUrl}):`, err);
-      errors++;
-    }
-
-    updateJobProgress(jobId, refreshed, releases.length, 'refreshing');
-    await sleep(URL_REFRESH_DELAY_MS);
-  }
-
-  const skipped = markNoStreamTracks();
-  console.log(`URL refresh complete: ${refreshed} releases refreshed, ${errors} errors, ${skipped} tracks marked no_stream`);
-  return true;
-}
-
 async function audioWorkerLoop() {
   await sleep(5_000);
 
@@ -247,25 +211,54 @@ async function audioWorkerLoop() {
         continue;
       }
 
+      audioCancelRequested = false;
       const jobId = createJob('audio_analysis');
       let done = 0;
       let consecutiveFailures = 0;
       let aborted = false;
 
       try {
-        updateJobProgress(jobId, 0, totalPending, 'refreshing');
+        const releases = getReleasesNeedingStreamRefresh();
+        updateJobProgress(jobId, 0, totalPending, 'analyzing');
+        console.log(`Audio analysis: ${releases.length} releases to process, ${totalPending} tracks pending`);
 
-        await refreshStreamUrlsPhase(jobId);
+        for (let ri = 0; ri < releases.length && !aborted; ri++) {
+          if (audioCancelRequested) {
+            console.log('Audio analysis cancelled by user');
+            failJob(jobId, 'Cancelled by user');
+            aborted = true;
+            break;
+          }
 
-        const analysisTotal = getAudioAnalysisPendingCount();
-        updateJobProgress(jobId, 0, analysisTotal, 'analyzing');
+          const release = releases[ri];
 
-        while (!aborted) {
-          const batch = getNextAudioBatch(50);
-          if (batch.length === 0) break;
+          // Refresh stream URLs for this release
+          try {
+            const album = await fetchAlbumTracks(publicFetcher, release.releaseUrl);
+            refreshStreamUrls(
+              release.releaseId,
+              album.tracks.map((t) => ({
+                trackNum: t.trackNum,
+                streamUrl: t.streamUrl,
+                trackUrl: t.trackUrl,
+              })),
+            );
+          } catch (err) {
+            console.error(`Failed to refresh URLs for release ${release.releaseId} (${release.releaseUrl}):`, err);
+          }
 
-          for (const track of batch) {
-            if (aborted) break;
+          markNoStreamTracks(release.releaseId);
+
+          // Analyze this release's tracks immediately
+          const tracks = getPendingTracksForRelease(release.releaseId);
+
+          for (const track of tracks) {
+            if (audioCancelRequested) {
+              console.log('Audio analysis cancelled by user');
+              failJob(jobId, 'Cancelled by user');
+              aborted = true;
+              break;
+            }
 
             if (!worker) {
               try {
@@ -312,6 +305,10 @@ async function audioWorkerLoop() {
             updateJobProgress(jobId, done, done + currentPending, 'analyzing');
 
             await sleep(AUDIO_ANALYSIS_DELAY_MS);
+          }
+
+          if (!aborted) {
+            await sleep(URL_REFRESH_DELAY_MS);
           }
         }
 

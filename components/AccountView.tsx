@@ -52,7 +52,21 @@ export function AccountView({
   const [wishlistSynced, setWishlistSynced] = useState(initialWishlistSynced);
   const [oldestDate, setOldestDate] = useState(initialOldestDate);
 
+  const [stopping, setStopping] = useState(false);
+
+  const stopAudioAnalysis = async () => {
+    setStopping(true);
+    try {
+      await fetch('/api/sync', { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to stop audio analysis:', err);
+    }
+  };
+
   const { state, isActive: anySyncing, triggerSync } = useSyncPolling({
+    onSyncComplete() {
+      setStopping(false);
+    },
     onStateChange(s) {
       setTotalItems(s.totalItems);
       setLastSyncAt(s.lastSyncAt);
@@ -60,6 +74,7 @@ export function AccountView({
       setCollectionSynced(s.collectionSynced);
       setWishlistSynced(s.wishlistSynced);
       if (s.oldestStoryDate) setOldestDate(s.oldestStoryDate);
+      if (!s.isAnalyzingAudio) setStopping(false);
     },
   });
 
@@ -73,7 +88,6 @@ export function AccountView({
   const audioAnalyzed = state?.audioAnalyzed ?? 0;
   const audioAnalysisPending = state?.audioAnalysisPending ?? null;
   const audioAnalysisDone = state?.audioAnalysisDone ?? 0;
-  const audioSubPhase = state?.audioSubPhase ?? null;
   const audioAnalysisEnabled = state?.audioAnalysisEnabled ?? true;
 
   return (
@@ -143,21 +157,31 @@ export function AccountView({
                 {audioAnalysisPending !== null && audioAnalysisPending > 0 ? ` · ${audioAnalysisPending.toLocaleString()} tracks pending` : ''}
               </span>
             ) : (
-              <StatusBadge
-                done={!isAnalyzingAudio && audioAnalysisPending === 0 && enrichmentPendingCount === 0 && collectionSynced}
-                active={isAnalyzingAudio}
-                doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks analyzed` : 'Complete'}
-                activeLabel={
-                  audioSubPhase === 'refreshing'
-                    ? `Refreshing stream URLs... (${audioAnalyzed} of ${(audioAnalyzed + (audioAnalysisPending ?? 0)).toLocaleString()} releases)`
-                    : audioAnalyzed > 0
-                      ? `Analyzing... (${audioAnalyzed} done${audioAnalysisPending ? `, ${audioAnalysisPending.toLocaleString()} remaining` : ''})`
-                      : audioAnalysisPending
-                        ? `Analyzing... (${audioAnalysisPending.toLocaleString()} remaining)`
-                        : 'Analyzing...'
-                }
-                pendingLabel={audioAnalysisPending !== null && audioAnalysisPending > 0 ? `${audioAnalysisPending.toLocaleString()} tracks remaining` : 'Pending'}
-              />
+              <span className="inline-flex items-center gap-2">
+                <StatusBadge
+                  done={!isAnalyzingAudio && audioAnalysisPending === 0 && enrichmentPendingCount === 0 && collectionSynced}
+                  active={isAnalyzingAudio}
+                  doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks analyzed` : 'Complete'}
+                  activeLabel={
+                    stopping
+                      ? 'Stopping...'
+                      : audioAnalyzed > 0
+                        ? `Analyzing... (${audioAnalyzed} done${audioAnalysisPending ? `, ${audioAnalysisPending.toLocaleString()} remaining` : ''})`
+                        : audioAnalysisPending
+                          ? `Analyzing... (${audioAnalysisPending.toLocaleString()} remaining)`
+                          : 'Analyzing...'
+                  }
+                  pendingLabel={audioAnalysisPending !== null && audioAnalysisPending > 0 ? `${audioAnalysisPending.toLocaleString()} tracks remaining` : 'Pending'}
+                />
+                {isAnalyzingAudio && !stopping && (
+                  <button
+                    onClick={stopAudioAnalysis}
+                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+                  >
+                    Stop
+                  </button>
+                )}
+              </span>
             )}
           </Row>
         </Section>
