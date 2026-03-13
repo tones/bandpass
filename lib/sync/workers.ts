@@ -133,7 +133,7 @@ function markAudioFailed(trackId: number) {
   ).run(trackId);
 }
 
-const WORKER_TIMEOUT_MS = 30_000;
+const WORKER_TIMEOUT_MS = 120_000;
 
 class WorkerDiedError extends Error {
   constructor(message: string) {
