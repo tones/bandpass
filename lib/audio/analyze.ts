@@ -6,7 +6,9 @@ export interface AudioAnalysis {
   keyCamelot: string | null;
 }
 
-let essentiaInstance: InstanceType<typeof import('essentia.js').Essentia> | null = null;
+import type { Essentia } from 'essentia.js';
+
+let essentiaInstance: Essentia | null = null;
 
 async function getEssentia() {
   if (essentiaInstance) return essentiaInstance;
