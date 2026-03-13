@@ -212,6 +212,8 @@ export function CratesView({
       artist: { id: 0, name: item.bandName, url: item.bandUrl },
       track: { title: item.trackTitle, duration: item.trackDuration, streamUrl: item.streamUrl },
       tags: [],
+      bpm: item.bpm ?? null,
+      musicalKey: item.musicalKey ?? null,
       price: null,
       socialSignal: { fan: null, alsoCollectedCount: 0 },
     });
@@ -230,6 +232,8 @@ export function CratesView({
         streamUrl: item.streamUrl,
       },
       tags: [],
+      bpm: item.bpm ?? null,
+      musicalKey: item.musicalKey ?? null,
       price: null,
       socialSignal: { fan: null, alsoCollectedCount: item.alsoCollectedCount },
     });
