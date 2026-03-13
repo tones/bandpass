@@ -141,8 +141,7 @@ export async function GET() {
   const audioAnalysisPending = getAudioAnalysisPendingCount();
   const audioAnalysisDone = getAudioAnalysisDoneCount();
 
-  const audioNeedsSync = process.env.ENABLE_AUDIO_ANALYSIS === 'true' && audioAnalysisPending > 0;
-  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0 || audioNeedsSync;
+  const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
   if (needsSync && !activeSyncs.has(fanId) && session.identityCookie) {
     startSync(fanId, session.identityCookie, !state?.lastSyncAt).catch((err) =>
       console.error('Auto-triggered sync error:', err),
