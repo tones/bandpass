@@ -24,8 +24,8 @@ import { normalizeBpm, toCamelot, formatKey } from '../lib/audio/camelot';
 import { isS3Configured, uploadTrackFromFile, getPresignedUrl, trackKey } from '../lib/s3';
 
 const POLL_INTERVAL_MS = 30_000;
-const TRACK_DELAY_MS = 1_500;
-const RELEASE_DELAY_MS = 2_000;
+const TRACK_DELAY_MS = 750;
+const RELEASE_DELAY_MS = 1_000;
 const MAX_CONSECUTIVE_FAILURES = 20;
 
 function sleep(ms: number): Promise<void> {
@@ -342,8 +342,10 @@ async function processReleases() {
               if (success) {
                 consecutiveFailures = 0;
                 done++;
-                const currentPending = await getAudioAnalysisPendingCount();
-                await updateJobProgress(jobId, done, done + currentPending, 'analyzing');
+                if (done % 10 === 0) {
+                  const currentPending = await getAudioAnalysisPendingCount();
+                  await updateJobProgress(jobId, done, done + currentPending, 'analyzing');
+                }
               } else {
                 consecutiveFailures++;
                 errors++;

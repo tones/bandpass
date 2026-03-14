@@ -5,7 +5,7 @@ primary_region = 'sjc'
 
 [env]
   ENABLE_AUDIO_ANALYSIS = "true"
-  ANALYZER_CONCURRENCY = "4"
+  ANALYZER_CONCURRENCY = "8"
 
 [processes]
   web = "node server.js"
