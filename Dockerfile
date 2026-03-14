@@ -15,7 +15,7 @@ RUN npm run build
 FROM node:22-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip \
-    && pip3 install --break-system-packages --no-cache-dir essentia \
+    && pip3 install --break-system-packages --no-cache-dir essentia==2.1b6.dev1389 \
     && apt-get purge -y python3-pip \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*

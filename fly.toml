@@ -6,6 +6,7 @@ primary_region = 'sjc'
 [env]
   ENABLE_AUDIO_ANALYSIS = "true"
   ANALYZER_CONCURRENCY = "8"
+  DB_POOL_SIZE = "20"
 
 [processes]
   web = "node server.js"

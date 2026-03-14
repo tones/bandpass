@@ -1,3 +1,9 @@
+/**
+ * Database connection pool and migration runner. All DB access in the app
+ * goes through query/queryOne/execute/transaction, which call ensureDb()
+ * to guarantee migrations have run before the first query. The pool size
+ * is configurable via DB_POOL_SIZE (default 10).
+ */
 import { Pool, PoolClient } from 'pg';
 import fs from 'fs';
 import path from 'path';
@@ -14,7 +20,7 @@ export function getPool(): Pool {
 
   pool = new Pool({
     connectionString,
-    max: 10,
+    max: parseInt(process.env.DB_POOL_SIZE ?? '10', 10),
   });
 
   return pool;
@@ -110,10 +116,11 @@ export async function runMigrations(): Promise<void> {
   }
 }
 
-let migrationsRun = false;
+let migrationsPromise: Promise<void> | null = null;
 
-export async function ensureDb(): Promise<void> {
-  if (migrationsRun) return;
-  await runMigrations();
-  migrationsRun = true;
+export function ensureDb(): Promise<void> {
+  if (!migrationsPromise) {
+    migrationsPromise = runMigrations();
+  }
+  return migrationsPromise;
 }

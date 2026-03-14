@@ -1,3 +1,10 @@
+/**
+ * Sync job lifecycle management. Each sync operation (user_sync, enrichment,
+ * audio_analysis) creates a job row to track progress, errors, heartbeat,
+ * and completion status. The UI polls getLatestJob/getActiveJob to display
+ * real-time progress. cleanupStaleJobs marks orphaned "running" jobs as
+ * failed on server restart.
+ */
 import { query, queryOne, execute } from './index';
 
 export type JobType = 'user_sync' | 'enrichment' | 'audio_analysis';

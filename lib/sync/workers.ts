@@ -1,10 +1,7 @@
 import { queryOne } from '@/lib/db/index';
 import { processEnrichmentQueue } from '@/lib/db/sync';
 import { createJob, updateJobProgress, completeJob, failJob, getActiveJob, cleanupStaleJobs } from '@/lib/db/sync-jobs';
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { sleep } from '@/lib/db/utils';
 
 const WORKER_POLL_INTERVAL_MS = 30_000;
 

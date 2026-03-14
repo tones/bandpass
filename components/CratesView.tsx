@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useTransition, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useTransition, useEffect, useMemo } from 'react';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
 import type { Crate, CrateCatalogItem, CrateReleaseItem, WishlistAlbumData } from '@/lib/db/crates';
 import type { CatalogTrack } from '@/lib/db/catalog';
@@ -8,13 +8,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FeedItemCard } from './feed/FeedItem';
 import { usePlayer } from '@/contexts/PlayerContext';
-import { TrackActions } from './TrackActions';
 import type { CrateInfo } from './TrackActions';
 import { AlbumCard } from '@/components/AlbumCard';
-import { TagPill } from '@/components/TagPill';
-import { BpmKeyBadge } from '@/components/BpmKeyBadge';
 import { catalogTrackToFeedItem, catalogItemToFeedItem, wishlistItemToFeedItem, crateReleaseToRelease } from '@/lib/formatters';
 import { extractSlug, getDomainIfDifferent } from '@/lib/bandcamp/scraper';
+import { CrateItemRow } from '@/components/crates/CrateItemRow';
+import { CrateSidebar } from '@/components/crates/CrateSidebar';
 import {
   removeFromCrateAction,
   addToCrateAction,
@@ -62,17 +61,10 @@ export function CratesView({
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
   const { playingTrackUrl, playingItem, isPlaying: playerIsPlaying, play: playFeedItem, setPlaylist } = usePlayer();
   const router = useRouter();
-  const [confirmClear, setConfirmClear] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [isRefreshingWishlist, setIsRefreshingWishlist] = useState(false);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [showNewCrate, setShowNewCrate] = useState(false);
-  const [newCrateName, setNewCrateName] = useState('');
-  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const activeCrate = crates.find((c) => c.id === activeCrateId) ?? null;
   const isWishlistCrate = activeCrate?.source === 'bandcamp_wishlist';
@@ -125,21 +117,8 @@ export function CratesView({
     return () => setPlaylist([]);
   }, [playlistItems, setPlaylist]);
 
-  useEffect(() => {
-    if (menuOpenId === null) return;
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpenId(null);
-        setConfirmDeleteId(null);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [menuOpenId]);
-
   const selectCrate = useCallback((crateId: number) => {
     setActiveCrateId(crateId);
-    setConfirmClear(false);
     router.replace(`/crates/${crateId}`, { scroll: false });
     const crate = crates.find((c) => c.id === crateId);
 
@@ -230,7 +209,6 @@ export function CratesView({
     setReleaseItems([]);
     setWishlistItems([]);
     setAlbumTracks({});
-    setConfirmClear(false);
     try {
       await clearCrateAction(activeCrateId);
     } catch {
@@ -290,24 +268,19 @@ export function CratesView({
     playFeedItem(catalogTrackToFeedItem(track, crateReleaseToRelease(release)));
   }, [playFeedItem]);
 
-  const handleCreateCrate = useCallback(() => {
-    const name = newCrateName.trim();
-    if (!name) return;
-    setShowNewCrate(false);
-    setNewCrateName('');
+  const handleCreateCrate = useCallback((name: string) => {
     startTransition(async () => {
       await createCrateAction(name);
       const updated = await getCratesAction();
       setCrates(updated);
     });
-  }, [newCrateName]);
+  }, []);
 
   const handleRename = useCallback(async (crateId: number) => {
     const name = renameValue.trim();
     if (!name) return;
     const prevName = crates.find((c) => c.id === crateId)?.name;
     setRenamingId(null);
-    setMenuOpenId(null);
     setCrates((prev) => prev.map((c) => c.id === crateId ? { ...c, name } : c));
     try {
       await renameCrateAction(crateId, name);
@@ -317,8 +290,6 @@ export function CratesView({
   }, [renameValue, crates]);
 
   const handleDelete = useCallback((crateId: number) => {
-    setMenuOpenId(null);
-    setConfirmDeleteId(null);
     setCrates((prev) => prev.filter((c) => c.id !== crateId));
     if (activeCrateId === crateId) {
       setActiveCrateId(null);
@@ -340,194 +311,21 @@ export function CratesView({
 
   return (
     <div className="flex min-h-0 flex-1">
-      {/* Sidebar */}
-      <div className="flex w-56 shrink-0 flex-col border-r border-zinc-800">
-        <nav className="flex-1 overflow-y-auto py-2">
-          {crates.map((crate) => {
-            const isActive = activeCrateId === crate.id;
-            const isUser = crate.source === 'user';
-
-            return (
-              <div key={crate.id} className="group relative">
-                {renamingId === crate.id ? (
-                  <div className="px-3 py-1.5">
-                    <input
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      maxLength={64}
-                      onBlur={() => handleRename(crate.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleRename(crate.id);
-                        if (e.key === 'Escape') setRenamingId(null);
-                      }}
-                      autoFocus
-                      className="w-full rounded bg-zinc-700 px-2 py-1 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-zinc-500"
-                    />
-                  </div>
-                ) : (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => selectCrate(crate.id)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectCrate(crate.id); } }}
-                    className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                      isActive
-                        ? 'bg-zinc-800 text-zinc-100'
-                        : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
-                    }`}
-                  >
-                    <span className="truncate">{crate.name}</span>
-                    {isUser && (
-                      <button
-                        type="button"
-                        aria-label="Crate options"
-                        aria-haspopup="menu"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (menuOpenId === crate.id) {
-                            setMenuOpenId(null);
-                          } else {
-                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                            setMenuPos({ top: rect.bottom + 4, left: rect.right - 160 });
-                            setMenuOpenId(crate.id);
-                          }
-                          setConfirmDeleteId(null);
-                        }}
-                        className={`flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-xs transition-colors hover:bg-zinc-700 hover:text-zinc-200 ${
-                          menuOpenId === crate.id
-                            ? 'text-zinc-200'
-                            : 'text-zinc-600 opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        ···
-                      </button>
-                    )}
-                  </div>
-                )}
-
-              </div>
-            );
-          })}
-        </nav>
-
-        <div className={`border-t border-zinc-800 px-3 py-3 ${playingItem ? 'pb-24' : ''}`}>
-          {showNewCrate ? (
-            <div className="flex flex-col gap-2">
-              <input
-                value={newCrateName}
-                onChange={(e) => setNewCrateName(e.target.value)}
-                maxLength={64}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreateCrate();
-                  if (e.key === 'Escape') { setShowNewCrate(false); setNewCrateName(''); }
-                }}
-                placeholder="Crate name..."
-                autoFocus
-                className="w-full rounded bg-zinc-800 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-zinc-600"
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCreateCrate}
-                  className="rounded bg-zinc-700 px-3 py-1 text-xs text-zinc-200 transition-colors hover:bg-zinc-600"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => { setShowNewCrate(false); setNewCrateName(''); }}
-                  className="rounded px-2 py-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowNewCrate(true)}
-              className="w-full rounded-md px-2 py-1.5 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-200"
-            >
-              + New Crate
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Three-dot dropdown menu (fixed position to avoid sidebar overflow clipping) */}
-      {menuOpenId !== null && menuPos && (() => {
-        const menuCrate = crates.find((c) => c.id === menuOpenId);
-        if (!menuCrate) return null;
-        return (
-          <div
-            ref={menuRef}
-            className="fixed z-50 w-40 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
-            style={{ top: menuPos.top, left: menuPos.left }}
-          >
-            {confirmDeleteId === menuCrate.id ? (
-              <div className="px-3 py-2">
-                <p className="mb-2 text-xs text-zinc-400">Delete &ldquo;{menuCrate.name}&rdquo;?</p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleDelete(menuCrate.id)}
-                    className="rounded bg-rose-600 px-2 py-1 text-xs text-white transition-colors hover:bg-rose-500"
-                  >
-                    Delete
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteId(null)}
-                    className="rounded px-2 py-1 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : confirmClear ? (
-              <div className="px-3 py-2">
-                <p className="mb-2 text-xs text-zinc-400">Clear all items?</p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => { handleClearAll(); setMenuOpenId(null); }}
-                    className="rounded bg-rose-600 px-2 py-1 text-xs text-white transition-colors hover:bg-rose-500"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    onClick={() => setConfirmClear(false)}
-                    className="rounded px-2 py-1 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <button
-                  onClick={() => {
-                    setMenuOpenId(null);
-                    setRenamingId(menuCrate.id);
-                    setRenameValue(menuCrate.name);
-                  }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                >
-                  Rename
-                </button>
-                <button
-                  onClick={() => setConfirmClear(true)}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                >
-                  Clear all items
-                </button>
-                {crates.filter((c) => c.source === 'user').length > 1 && (
-                  <button
-                    onClick={() => setConfirmDeleteId(menuCrate.id)}
-                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-rose-400 transition-colors hover:bg-zinc-800 hover:text-rose-300"
-                  >
-                    Delete crate
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        );
-      })()}
+      <CrateSidebar
+        crates={crates}
+        activeCrateId={activeCrateId}
+        hasPlayingItem={!!playingItem}
+        renamingId={renamingId}
+        renameValue={renameValue}
+        onSetRenameValue={setRenameValue}
+        onRename={handleRename}
+        onCancelRename={() => setRenamingId(null)}
+        onSelectCrate={selectCrate}
+        onStartRename={(id, name) => { setRenamingId(id); setRenameValue(name); }}
+        onDelete={handleDelete}
+        onClearAll={handleClearAll}
+        onCreate={handleCreateCrate}
+      />
 
       {/* Main content */}
       <div className={`min-w-0 flex-1 overflow-y-auto ${playingItem ? 'pb-24' : ''}`}>
@@ -713,94 +511,4 @@ export function CratesView({
   );
 }
 
-interface CrateItemRowProps {
-  title: string;
-  subtitle: React.ReactNode;
-  imageUrl: string;
-  streamUrl: string | null;
-  bandcampUrl: string;
-  isPlaying: boolean;
-  crateIds?: number[];
-  userCrates: CrateInfo[];
-  tags?: string[];
-  bpm?: number | null;
-  musicalKey?: string | null;
-  onPlay: () => void;
-  onToggleCrate: () => void;
-  onAddToCrate: (crateId: number) => void;
-  onRemoveFromCrate: (crateId: number) => void;
-}
-
-function CrateItemRow({
-  title,
-  subtitle,
-  imageUrl,
-  streamUrl,
-  bandcampUrl,
-  isPlaying,
-  crateIds,
-  userCrates,
-  tags,
-  bpm,
-  musicalKey,
-  onPlay,
-  onToggleCrate,
-  onAddToCrate,
-  onRemoveFromCrate,
-}: CrateItemRowProps) {
-  return (
-    <div
-      className={`flex items-center gap-4 px-6 py-3 transition-colors hover:bg-zinc-900/50 ${
-        isPlaying ? 'bg-zinc-900/80' : ''
-      }`}
-    >
-      <button
-        onClick={onPlay}
-        disabled={!streamUrl}
-        className="group relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded"
-      >
-        {imageUrl ? (
-          <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-zinc-800 text-zinc-600">♫</div>
-        )}
-        {streamUrl && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-            <span className="text-xl">{isPlaying ? '⏸' : '▶'}</span>
-          </div>
-        )}
-      </button>
-
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{title}</div>
-        <div className="truncate text-sm text-zinc-400">{subtitle}</div>
-        {(tags?.length || bpm || musicalKey) && (
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-            {tags && [...new Set(tags)].sort().slice(0, 4).map((tag) => (
-              <TagPill key={tag} tag={tag} />
-            ))}
-            <BpmKeyBadge bpm={bpm} musicalKey={musicalKey} />
-          </div>
-        )}
-      </div>
-
-      <TrackActions
-        isPlaying={isPlaying}
-        hasStream={!!streamUrl}
-        isInCrate={(crateIds?.length ?? 0) > 0}
-        bandcampUrl={bandcampUrl}
-        onPlay={onPlay}
-        onToggleCrate={onToggleCrate}
-        crates={userCrates}
-        itemCrateIds={crateIds}
-        onAddToCrate={onAddToCrate}
-        onRemoveFromCrate={onRemoveFromCrate}
-      />
-    </div>
-  );
-}
-
-function catalogTrackCrateId(trackId: number): string {
-  return `catalog-track-${trackId}`;
-}
 

@@ -1,3 +1,9 @@
+/**
+ * Bandcamp HTML scraper: extracts album metadata, track listings, and
+ * discography data from Bandcamp album/artist pages by parsing the
+ * embedded data-tralbum JSON and page HTML. Used by the enrichment
+ * pipeline and the artist discography endpoint.
+ */
 export type HtmlFetcher = (url: string) => Promise<string>;
 
 export const publicFetcher: HtmlFetcher = async (url: string) => {

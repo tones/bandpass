@@ -1,3 +1,10 @@
+/**
+ * Catalog data layer: the canonical source for release and track metadata.
+ * catalog_releases stores album/single info (from discography scrapes or
+ * enrichment), and catalog_tracks stores per-track data including BPM, key,
+ * stream URLs, and S3 audio storage keys. Other tables (feed_items,
+ * wishlist_items) link here via release_id/track_id foreign keys.
+ */
 import { query, queryOne, execute, transaction } from './index';
 import { safeParseTags } from './utils';
 
@@ -114,14 +121,9 @@ export async function cacheDiscography(
     releaseType: 'album' | 'track';
   }>,
 ): Promise<CatalogRelease[]> {
-  const existing = await query<{ url: string; release_date: string | null; tags: string | string[] }>(
-    "SELECT url, release_date, tags FROM catalog_releases WHERE band_slug = $1",
-    [slug],
-  );
-  const preserved = new Map(existing.map((r) => [r.url, { releaseDate: r.release_date, tags: r.tags }]));
+  const newUrls = new Set(releases.map((r) => r.url));
 
   await transaction(async (client) => {
-    await client.query("DELETE FROM catalog_releases WHERE band_slug = $1 AND source = 'discography'", [slug]);
     for (const r of releases) {
       const enrichmentExists = await client.query(
         "SELECT 1 FROM catalog_releases WHERE url = $1 AND source = 'enrichment'",
@@ -129,12 +131,32 @@ export async function cacheDiscography(
       );
       if (enrichmentExists.rows.length > 0) continue;
 
-      const prev = preserved.get(r.url);
-      const tagsVal = prev?.tags != null ? (typeof prev.tags === 'string' ? prev.tags : JSON.stringify(prev.tags)) : '[]';
+      const existing = await client.query(
+        "SELECT id FROM catalog_releases WHERE url = $1 AND source = 'discography'",
+        [r.url],
+      );
+
+      if (existing.rows.length > 0) {
+        await client.query(
+          `UPDATE catalog_releases SET band_name = $1, band_url = $2, title = $3,
+           image_url = $4, release_type = $5, scraped_at = CURRENT_TIMESTAMP
+           WHERE id = $6`,
+          [bandName, bandUrl, r.title, r.imageUrl, r.releaseType, existing.rows[0].id],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'discography')`,
+          [slug, bandName, bandUrl, r.title, r.url, r.imageUrl, r.releaseType],
+        );
+      }
+    }
+
+    if (newUrls.size > 0) {
+      const placeholders = [...newUrls].map((_, i) => `$${i + 2}`).join(',');
       await client.query(
-        `INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, release_date, tags, source)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'discography')`,
-        [slug, bandName, bandUrl, r.title, r.url, r.imageUrl, r.releaseType, prev?.releaseDate ?? null, tagsVal],
+        `DELETE FROM catalog_releases WHERE band_slug = $1 AND source = 'discography' AND url NOT IN (${placeholders})`,
+        [slug, ...newUrls],
       );
     }
   });
@@ -264,7 +286,7 @@ export async function getArtistsFromFeed(fanId: number): Promise<Array<{
     artist_url: string;
     track_count: number;
   }>(`
-    SELECT artist_name, artist_url, COUNT(*)::int as track_count
+    SELECT MAX(artist_name) as artist_name, artist_url, COUNT(*)::int as track_count
     FROM feed_items
     WHERE fan_id = $1 AND artist_url != ''
     GROUP BY artist_url

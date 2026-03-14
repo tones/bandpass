@@ -1,3 +1,11 @@
+/**
+ * Audio enrichment worker: a standalone Node process (Fly.io "worker" group)
+ * that polls for catalog tracks needing BPM/key analysis. For each release,
+ * it refreshes stream URLs, spawns a pool of Python Essentia processes
+ * (ANALYZER_CONCURRENCY), optionally uploads audio to S3, and writes results
+ * back to catalog_tracks. Progress is tracked via sync_jobs with periodic
+ * heartbeats. Gracefully shuts down on SIGTERM/SIGINT.
+ */
 import { spawn, ChildProcess } from 'child_process';
 import { createInterface, Interface } from 'readline';
 import fs from 'fs';
@@ -21,16 +29,13 @@ import {
 import { getAudioAnalysisPendingCount } from '../lib/db/sync';
 import { fetchAlbumTracks, publicFetcher } from '../lib/bandcamp/scraper';
 import { normalizeBpm, toCamelot, formatKey } from '../lib/audio/camelot';
-import { isS3Configured, uploadTrackFromFile, getPresignedUrl, trackKey } from '../lib/s3';
+import { isS3Configured, uploadTrackFromFile } from '../lib/s3';
+import { sleep } from '../lib/db/utils';
 
 const POLL_INTERVAL_MS = 30_000;
 const TRACK_DELAY_MS = 750;
 const RELEASE_DELAY_MS = 1_000;
 const MAX_CONSECUTIVE_FAILURES = 20;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 class EssentiaProcess {
   private proc: ChildProcess | null = null;
@@ -421,3 +426,12 @@ main().catch((err) => {
   console.error('Worker fatal:', err);
   process.exit(1);
 });
+
+function handleShutdown(signal: string) {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  if (pool) pool.killAll();
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));

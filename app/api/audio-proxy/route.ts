@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getIdentityCookie } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { queryOne } from '@/lib/db/index';
 import { isS3Configured, getPresignedUrl } from '@/lib/s3';
 
@@ -17,12 +17,21 @@ function isAllowedUrl(url: string): boolean {
 }
 
 export async function GET(request: NextRequest) {
+  const session = await getSession();
+  if (!session.fanId) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   const trackId = request.nextUrl.searchParams.get('trackId');
 
   if (trackId && isS3Configured()) {
+    const numericId = parseInt(trackId, 10);
+    if (isNaN(numericId)) {
+      return NextResponse.json({ error: 'Invalid trackId' }, { status: 400 });
+    }
     const row = await queryOne<{ audio_storage_key: string | null }>(
       'SELECT audio_storage_key FROM catalog_tracks WHERE id = $1',
-      [Number(trackId)],
+      [numericId],
     );
 
     if (row?.audio_storage_key) {
@@ -37,9 +46,8 @@ export async function GET(request: NextRequest) {
   }
 
   const reqHeaders: Record<string, string> = {};
-  const identityCookie = await getIdentityCookie();
-  if (identityCookie) {
-    reqHeaders['Cookie'] = `identity=${identityCookie}`;
+  if (session.identityCookie) {
+    reqHeaders['Cookie'] = `identity=${session.identityCookie}`;
   }
 
   const upstream = await fetch(url, { headers: reqHeaders });

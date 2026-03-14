@@ -12,6 +12,7 @@ import sys
 import json
 import tempfile
 import urllib.request
+import shutil
 import os
 import time
 
@@ -32,7 +33,7 @@ def analyze(url: str) -> dict:
         t0 = time.time()
         with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_S) as resp:
             with open(tmp_path, "wb") as f:
-                f.write(resp.read())
+                shutil.copyfileobj(resp, f)
         t_download = time.time()
 
         audio = es.MonoLoader(filename=tmp_path, sampleRate=44100)()

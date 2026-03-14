@@ -39,13 +39,12 @@ export async function uploadTrackFromFile(
   filePath: string,
 ): Promise<string> {
   const key = trackKey(trackId);
-  const body = fs.readFileSync(filePath);
 
   await getClient().send(
     new PutObjectCommand({
       Bucket: getBucket(),
       Key: key,
-      Body: body,
+      Body: fs.createReadStream(filePath),
       ContentType: 'audio/mpeg',
     }),
   );

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getIdentityCookie } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { BandcampClient } from '@/lib/bandcamp/client';
 import { fetchDiscography, fetchAlbumTracks, artIdToUrl, publicFetcher } from '@/lib/bandcamp/scraper';
 import type { HtmlFetcher } from '@/lib/bandcamp/scraper';
@@ -14,10 +14,9 @@ import { safeParseTags } from '@/lib/db/utils';
 
 export const dynamic = 'force-dynamic';
 
-async function getFetcher(): Promise<HtmlFetcher> {
-  const cookie = await getIdentityCookie();
-  if (cookie) {
-    const client = new BandcampClient(cookie);
+async function getFetcher(identityCookie?: string): Promise<HtmlFetcher> {
+  if (identityCookie) {
+    const client = new BandcampClient(identityCookie);
     return (url: string) => client.getHtml(url);
   }
   return publicFetcher;
@@ -34,6 +33,11 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
+  const session = await getSession();
+  if (!session.fanId) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   const { slug } = await params;
   const cached = await getCachedDiscography(slug);
   if (cached) {
@@ -41,7 +45,7 @@ export async function GET(
   }
 
   try {
-    const fetcher = await getFetcher();
+    const fetcher = await getFetcher(session.identityCookie);
     const bandUrl = slugToBandUrl(slug);
     const result = await fetchDiscography(fetcher, bandUrl);
 
@@ -73,6 +77,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
+  const session = await getSession();
+  if (!session.fanId) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   await params;
 
   const body = await request.json();
@@ -103,7 +112,7 @@ export async function POST(
   }
 
   try {
-    const fetcher = await getFetcher();
+    const fetcher = await getFetcher(session.identityCookie);
     const album = await fetchAlbumTracks(fetcher, albumUrl);
 
     const tracks = await cacheAlbumTracks(

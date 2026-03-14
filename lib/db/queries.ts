@@ -1,7 +1,14 @@
+/**
+ * Feed query layer: reading, filtering, and counting feed items.
+ * Queries JOIN through catalog_releases/catalog_tracks for enriched
+ * tags, BPM, and key data, falling back to inline values when the FK
+ * link hasn't been established yet.
+ */
 import { query, queryOne } from './index';
 import type { FeedItem, StoryType } from '@/lib/bandcamp/types/domain';
 import type { CatalogTrack, CatalogTrackRow } from './catalog';
 import { rowToTrack } from './catalog';
+import { tagsWithFallback } from './utils';
 
 export interface FeedFilters {
   storyType?: StoryType;
@@ -110,7 +117,7 @@ export async function getFeedItems(fanId: number, filters: FeedFilters = {}): Pr
     fi.album_id, fi.album_title, fi.album_url, fi.album_image_url,
     fi.artist_id, fi.artist_name, fi.artist_url,
     fi.track_title, fi.track_duration, fi.track_stream_url,
-    CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE fi.tags END AS tags,
+    ${tagsWithFallback('cr', 'fi')} AS tags,
     fi.price_amount, fi.price_currency,
     fi.fan_name, fi.fan_username, fi.also_collected_count,
     COALESCE(ct.bpm, fi.bpm) AS bpm,
@@ -129,7 +136,7 @@ export async function getFeedItems(fanId: number, filters: FeedFilters = {}): Pr
       SELECT DISTINCT ${selectCols}
       ${joins},
       jsonb_array_elements_text(
-        CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE fi.tags END
+        ${tagsWithFallback('cr', 'fi')}
       ) AS t(value)
       WHERE ${conditions.join(' AND ')}
       ORDER BY fi.date DESC
@@ -161,7 +168,7 @@ export async function getTagCounts(fanId: number): Promise<TagCount[]> {
     FROM feed_items fi
     LEFT JOIN catalog_releases cr ON cr.id = fi.release_id,
     jsonb_array_elements_text(
-      CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE fi.tags END
+      ${tagsWithFallback('cr', 'fi')}
     ) AS t(value)
     WHERE fi.fan_id = $1
     GROUP BY t.value

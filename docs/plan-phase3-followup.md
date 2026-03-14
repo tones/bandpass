@@ -35,14 +35,18 @@ FROM feed_items;
 
 ## Step 2: Stop dual-writing BPM/key
 
-Currently, `feed_items.bpm` and `feed_items.musical_key` are never written by
-the enrichment worker (audio analysis results go straight to `catalog_tracks`).
-However, the read queries already use `COALESCE(ct.bpm, fi.bpm)`, so there is
-no active dual-write to remove for BPM/key -- the inline columns are just
-legacy nulls from before audio analysis existed.
+The audio analysis worker (`worker/main.ts`, `saveAudioResult()`) currently
+writes BPM/key to three places: `catalog_tracks`, `feed_items`, and
+`wishlist_items`. The read queries already use `COALESCE(ct.bpm, fi.bpm)`,
+so the `feed_items` and `wishlist_items` writes are redundant once `track_id`
+coverage is high enough.
 
-Verify this is still true by checking `lib/db/sync.ts` and `worker/main.ts`
-for any writes to `feed_items.bpm` or `feed_items.musical_key`.
+To stop dual-writing, remove these two UPDATE statements from `saveAudioResult()`
+in `worker/main.ts`:
+- `UPDATE feed_items SET bpm = ..., musical_key = ... WHERE track_stream_url = ...`
+- `UPDATE wishlist_items SET bpm = ..., musical_key = ... WHERE stream_url = ...`
+
+Only do this after Step 1 backfill is complete and `track_id` coverage is >80%.
 
 ## Step 3: Drop redundant inline columns
 

@@ -40,7 +40,7 @@ function getPool() {
   }
   pool = new import_pg.Pool({
     connectionString,
-    max: 10
+    max: parseInt(process.env.DB_POOL_SIZE ?? "10", 10)
   });
   return pool;
 }
@@ -110,11 +110,17 @@ async function runMigrations() {
     }
   }
 }
-var migrationsRun = false;
-async function ensureDb() {
-  if (migrationsRun) return;
-  await runMigrations();
-  migrationsRun = true;
+var migrationsPromise = null;
+function ensureDb() {
+  if (!migrationsPromise) {
+    migrationsPromise = runMigrations();
+  }
+  return migrationsPromise;
+}
+
+// lib/db/utils.ts
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 // lib/db/catalog.ts
@@ -385,12 +391,11 @@ function trackKey(trackId) {
 }
 async function uploadTrackFromFile(trackId, filePath) {
   const key = trackKey(trackId);
-  const body = import_fs2.default.readFileSync(filePath);
   await getClient().send(
     new import_client_s3.PutObjectCommand({
       Bucket: getBucket(),
       Key: key,
-      Body: body,
+      Body: import_fs2.default.createReadStream(filePath),
       ContentType: "audio/mpeg"
     })
   );
@@ -399,12 +404,9 @@ async function uploadTrackFromFile(trackId, filePath) {
 
 // worker/main.ts
 var POLL_INTERVAL_MS = 3e4;
-var TRACK_DELAY_MS = 1500;
-var RELEASE_DELAY_MS = 2e3;
+var TRACK_DELAY_MS = 750;
+var RELEASE_DELAY_MS = 1e3;
 var MAX_CONSECUTIVE_FAILURES = 20;
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
 var EssentiaProcess = class {
   constructor(id = 0) {
     this.id = id;
@@ -661,8 +663,10 @@ async function processReleases() {
             if (success) {
               consecutiveFailures = 0;
               done++;
-              const currentPending = await getAudioAnalysisPendingCount();
-              await updateJobProgress(jobId, done, done + currentPending, "analyzing");
+              if (done % 10 === 0) {
+                const currentPending = await getAudioAnalysisPendingCount();
+                await updateJobProgress(jobId, done, done + currentPending, "analyzing");
+              }
             } else {
               consecutiveFailures++;
               errors++;
@@ -726,3 +730,10 @@ main().catch((err) => {
   console.error("Worker fatal:", err);
   process.exit(1);
 });
+function handleShutdown(signal) {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  if (pool2) pool2.killAll();
+  process.exit(0);
+}
+process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+process.on("SIGINT", () => handleShutdown("SIGINT"));

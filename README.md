@@ -29,15 +29,21 @@ When you first connect your Bandcamp account, Bandpass syncs your feed history a
 ```
 UI Layer (app/ routes + React components)
   │
-  │  Server actions query SQLite, client components render
+  │  Server actions query Postgres, client components render
   │
 Data Layer (lib/db/)
   │
-  ├── index.ts      — SQLite connection + schema (better-sqlite3, versioned migrations)
+  ├── index.ts      — Postgres connection pool + versioned SQL migrations
   ├── queries.ts    — getFeedItems(), getTagCounts(), getFriendCounts()
   ├── sync.ts       — Background sync (feed, collection, wishlist, catalog enrichment)
   ├── crates.ts     — Crate CRUD (multi-list management, keyed by fanId)
-  └── catalog.ts    — Artist/label discography + track cache
+  ├── catalog.ts    — Artist/label discography + track cache
+  └── sync-jobs.ts  — Background job lifecycle (audio analysis, user sync)
+  │
+Audio Worker (worker/)
+  │
+  ├── main.ts       — Node.js worker: downloads tracks, dispatches to analyzer pool
+  └── analyze.py    — Python Essentia process for BPM/key detection
   │
 Bandcamp Client (lib/bandcamp/)
   │
@@ -48,7 +54,7 @@ Bandcamp Client (lib/bandcamp/)
   └── types/      — Raw API response types + normalized domain types
 ```
 
-Server components load initial data from SQLite. Client components handle audio playback, filtering (via server actions), and crate management (optimistic UI + server action persistence with error rollback). The sync API route (`/api/sync`) triggers background feed syncing into SQLite. The music API route (`/api/music/[slug]`) fetches and caches artist discographies and album tracks.
+Server components load initial data from Postgres. Client components handle audio playback, filtering (via server actions), and crate management (optimistic UI + server action persistence with error rollback). The sync API route (`/api/sync`) triggers background feed syncing. The music API route (`/api/music/[slug]`) fetches and caches artist discographies and album tracks. A separate worker process runs audio analysis (BPM/key detection via Python Essentia) and uploads results to S3.
 
 See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 
@@ -64,7 +70,7 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 | `scripts/inspect-feed.ts` | Diagnostic script — dumps raw feed response shapes |
 | `scripts/feed-depth.ts` | Diagnostic script — measures how far back the feed goes |
 | `lib/bandcamp/` | The Bandcamp API client + HTML scraper |
-| `lib/db/` | SQLite database layer (schema, queries, sync, crates, catalog) |
+| `lib/db/` | Postgres database layer (schema, queries, sync, crates, catalog) |
 | `components/feed/` | Feed UI components |
 | `components/music/` | Music/catalog UI components |
 
@@ -75,7 +81,7 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 - Next.js 16 (App Router)
 - TypeScript
 - Tailwind CSS v4
-- better-sqlite3 (SQLite)
+- PostgreSQL (via pg)
 - iron-session (encrypted cookie sessions)
 - wavesurfer.js (waveform audio player)
 - react-day-picker (date range filter)
@@ -86,7 +92,7 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 - Custom Bandcamp API client (`lib/bandcamp/`) — thin typed wrapper over Bandcamp's internal JSON APIs, no third-party scraping libraries
 - HTML scraper (`lib/bandcamp/scraper.ts`) — extracts structured JSON from Bandcamp's `data-client-items`, `data-tralbum`, and `data-band` HTML attributes for discography, track, and tag data
 - Feed fetching via `POST /fan_dash_feed_updates` with cookie auth
-- SQLite caching (`data/bandpass.db`) — background sync pulls feed history on first login, then deep syncs older data and smart incremental updates on subsequent visits
+- Postgres caching — background sync pulls feed history on first login, then deep syncs older data and smart incremental updates on subsequent visits
 - Five-stage sync pipeline: initial feed → deep feed history → collection (purchases) → wishlist → catalog enrichment
 - Three-section app: Music (default landing page, works without login), Feed (requires login), Crates (requires login)
 - Music section browses any Bandcamp artist/label domain — full discography with tracks expanded, release dates, genre tags, inline playback and bookmarking
