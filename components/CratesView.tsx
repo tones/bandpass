@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useTransition, useRef, useEffect } from 'react';
+import { useState, useCallback, useTransition, useRef, useEffect, useMemo } from 'react';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
 import type { Crate, CrateCatalogItem, CrateReleaseItem, WishlistAlbumData } from '@/lib/db/crates';
 import type { CatalogTrack } from '@/lib/db/catalog';
@@ -60,7 +60,7 @@ export function CratesView({
   const [wishlistItems, setWishlistItems] = useState(initialWishlistItems);
   const [albumTracks, setAlbumTracks] = useState<Record<string, WishlistAlbumData>>(initialAlbumTracks);
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
-  const { playingTrackUrl, playingItem, isPlaying: playerIsPlaying, play: playFeedItem } = usePlayer();
+  const { playingTrackUrl, playingItem, isPlaying: playerIsPlaying, play: playFeedItem, setPlaylist } = usePlayer();
   const router = useRouter();
   const [confirmClear, setConfirmClear] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -81,6 +81,84 @@ export function CratesView({
   const totalCount = isWishlistCrate
     ? wishlistItems.length
     : items.length + catalogItems.length + releaseItems.length + wishlistItems.length;
+
+  const playlistItems = useMemo(() => {
+    const result: FeedItem[] = [];
+
+    for (const item of items) {
+      if (item.track?.streamUrl) result.push(item);
+    }
+
+    for (const item of catalogItems) {
+      if (item.streamUrl) {
+        result.push({
+          id: item.crateItemId,
+          storyType: 'new_release',
+          date: new Date(),
+          album: { id: 0, title: item.releaseTitle, url: item.releaseUrl, imageUrl: item.imageUrl },
+          artist: { id: 0, name: item.bandName, url: item.bandUrl },
+          track: { title: item.trackTitle, duration: item.trackDuration, streamUrl: item.streamUrl },
+          tags: [],
+          bpm: item.bpm ?? null,
+          musicalKey: item.musicalKey ?? null,
+          price: null,
+          socialSignal: { fan: null, alsoCollectedCount: 0 },
+        });
+      }
+    }
+
+    for (const release of releaseItems) {
+      for (const track of release.tracks) {
+        if (track.streamUrl) {
+          result.push(catalogTrackToFeedItem(track, {
+            id: release.releaseId,
+            bandSlug: release.bandSlug,
+            bandName: release.bandName,
+            bandUrl: release.bandUrl,
+            title: release.releaseTitle,
+            url: release.releaseUrl,
+            imageUrl: release.imageUrl,
+            releaseType: release.releaseType,
+            scrapedAt: '',
+            releaseDate: release.releaseDate,
+            tags: release.tags,
+          }));
+        }
+      }
+    }
+
+    for (const item of wishlistItems) {
+      const data = item.tralbumType === 'a' ? albumTracks[item.itemUrl] : undefined;
+      if (data && data.tracks.length > 0) {
+        for (const track of data.tracks) {
+          if (track.streamUrl) {
+            result.push(catalogTrackToFeedItem(track, data.release));
+          }
+        }
+      } else if (item.streamUrl) {
+        result.push({
+          id: item.id,
+          storyType: 'new_release',
+          date: new Date(),
+          album: { id: item.tralbumId, title: item.title, url: item.itemUrl, imageUrl: item.imageUrl },
+          artist: { id: 0, name: item.artistName, url: item.artistUrl },
+          track: { title: item.featuredTrackTitle ?? item.title, duration: item.featuredTrackDuration ?? 0, streamUrl: item.streamUrl },
+          tags: [],
+          bpm: item.bpm ?? null,
+          musicalKey: item.musicalKey ?? null,
+          price: null,
+          socialSignal: { fan: null, alsoCollectedCount: item.alsoCollectedCount },
+        });
+      }
+    }
+
+    return result;
+  }, [items, catalogItems, releaseItems, wishlistItems, albumTracks]);
+
+  useEffect(() => {
+    setPlaylist(playlistItems);
+    return () => setPlaylist([]);
+  }, [playlistItems, setPlaylist]);
 
   useEffect(() => {
     if (menuOpenId === null) return;

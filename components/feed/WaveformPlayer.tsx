@@ -6,6 +6,7 @@ import type WaveSurfer from 'wavesurfer.js';
 import type { FeedItem } from '@/lib/bandcamp';
 import { formatDuration, proxyUrl } from '@/lib/formatters';
 import { CrateIcon } from '@/components/icons/CrateIcon';
+import { usePlayer } from '@/contexts/PlayerContext';
 import {
   getCratesAction,
   getItemCratesAction,
@@ -48,7 +49,7 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
     let cancelled = false;
     setPickerOpen(false);
     getCratesAction()
-      .then((c) => { if (!cancelled) setCrates(c.map(({ id, name }) => ({ id, name }))); })
+      .then((c) => { if (!cancelled) setCrates(c.filter((cr) => cr.source === 'user').map(({ id, name }) => ({ id, name }))); })
       .catch(() => {});
     getItemCratesAction(item.id)
       .then((ids) => { if (!cancelled) setItemCrateIds(ids); })
@@ -112,6 +113,8 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
     wavesurfer?.playPause();
   }, [wavesurfer]);
 
+  const { next, prev, canGoNext, canGoPrev } = usePlayer();
+
   useImperativeHandle(ref, () => ({ togglePlayPause }), [togglePlayPause]);
 
   return (
@@ -158,10 +161,36 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
         </span>
 
         <button
+          onClick={prev}
+          disabled={!canGoPrev}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
+            canGoPrev
+              ? 'cursor-pointer text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+              : 'cursor-default text-zinc-700'
+          }`}
+          title="Previous track"
+        >
+          ⏮
+        </button>
+
+        <button
           onClick={togglePlayPause}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-200 transition-colors hover:bg-zinc-700"
+          className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-zinc-800 text-zinc-200 transition-colors hover:bg-zinc-700"
         >
           {isPlaying ? '⏸' : '▶'}
+        </button>
+
+        <button
+          onClick={next}
+          disabled={!canGoNext}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
+            canGoNext
+              ? 'cursor-pointer text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+              : 'cursor-default text-zinc-700'
+          }`}
+          title="Next track"
+        >
+          ⏭
         </button>
 
         <div className="relative" ref={pickerRef}>

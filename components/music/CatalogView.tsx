@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { CatalogRelease, CatalogTrack } from '@/lib/db/catalog';
 import { catalogTrackToFeedItem } from '@/lib/formatters';
 import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
@@ -44,7 +44,7 @@ interface TagsCache {
 }
 
 export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateItemIds = [], initialCrates = [], initialItemCrateMap = {}, loggedIn = false }: CatalogViewProps) {
-  const { playingTrackUrl, isPlaying, play } = usePlayer();
+  const { playingTrackUrl, isPlaying, play, setPlaylist } = usePlayer();
   const { lastMusicPath } = useNavigation();
   const [crates] = useState<CrateInfo[]>(initialCrates);
   const [crateItemIds, setCrateItemIds] = useState<Set<string>>(() => new Set(initialCrateItemIds));
@@ -102,6 +102,20 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
     }
     loadAll();
   }, [releases, fetchTracks]);
+
+  const playlistItems = useMemo(() =>
+    releases.flatMap((release) =>
+      (trackCache[release.id] ?? [])
+        .filter((t) => t.streamUrl)
+        .map((t) => catalogTrackToFeedItem(t, release))
+    ),
+    [releases, trackCache],
+  );
+
+  useEffect(() => {
+    setPlaylist(playlistItems);
+    return () => setPlaylist([]);
+  }, [playlistItems, setPlaylist]);
 
   const playTrack = useCallback((track: CatalogTrack, release: CatalogRelease) => {
     if (!track.streamUrl) return;

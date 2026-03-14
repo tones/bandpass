@@ -93,9 +93,14 @@ export function FeedView({
   const [crates] = useState<CrateInfo[]>(initialCrates);
   const [crateItemIds, setCrateItemIds] = useState<Set<string>>(new Set(initialCrateItemIds));
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
-  const { playingTrackUrl, playingItem, isPlaying: isPlayerPlaying, play: handlePlay } = usePlayer();
+  const { playingTrackUrl, playingItem, isPlaying: isPlayerPlaying, play: handlePlay, setPlaylist } = usePlayer();
   const [isPending, startTransition] = useTransition();
   const [dynamicOldestDate, setDynamicOldestDate] = useState(oldestStoryDate ?? null);
+
+  useEffect(() => {
+    setPlaylist(items.filter((i) => i.track?.streamUrl));
+    return () => setPlaylist([]);
+  }, [items, setPlaylist]);
 
   useEffect(() => {
     const qs = window.location.search;
