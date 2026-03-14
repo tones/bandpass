@@ -208,7 +208,7 @@ async function main() {
 
   if (process.env.ENABLE_AUDIO_ANALYSIS !== 'true') {
     console.log('Audio worker disabled (ENABLE_AUDIO_ANALYSIS != true). Idling.');
-    await new Promise(() => {});
+    setInterval(() => {}, 60_000);
     return;
   }
 
