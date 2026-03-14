@@ -204,6 +204,8 @@ async function main() {
     process.exit(1);
   }
 
+  await cleanupStaleJobs(['audio_analysis']);
+
   if (process.env.ENABLE_AUDIO_ANALYSIS !== 'true') {
     console.log('Audio worker disabled (ENABLE_AUDIO_ANALYSIS != true). Idling.');
     await new Promise(() => {});
@@ -211,7 +213,6 @@ async function main() {
   }
 
   console.log('Audio worker starting...');
-  await cleanupStaleJobs(['audio_analysis']);
 
   // Pre-load Essentia WASM so it's warm for first analysis
   await getEssentia();
