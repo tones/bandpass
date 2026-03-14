@@ -1,3 +1,8 @@
+/**
+ * Next.js middleware -- runs in the EDGE RUNTIME, not Node.js.
+ * Do NOT import Node built-ins (crypto, fs, Buffer, etc.) here.
+ * Use only Web APIs (TextEncoder, btoa, fetch, crypto.subtle, etc.).
+ */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
