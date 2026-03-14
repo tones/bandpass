@@ -26,8 +26,8 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Audio analysis worker thread (compiled by esbuild during build)
-COPY --from=builder --chown=nextjs:nodejs /app/lib/audio/worker.js ./lib/audio/worker.js
+# Standalone audio worker process (compiled by esbuild during build)
+COPY --from=builder --chown=nextjs:nodejs /app/worker/main.js ./worker/main.js
 
 # Database migrations
 COPY --from=builder --chown=nextjs:nodejs /app/lib/db/migrations ./lib/db/migrations

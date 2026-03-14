@@ -4,7 +4,8 @@ import { BandcampAPI } from '@/lib/bandcamp/api';
 import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, getEnrichmentPendingCount, getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from '@/lib/db/sync';
 import { createJob, updateJobProgress, completeJob, failJob, hasActiveUserSync, getActiveJob, getLatestJob } from '@/lib/db/sync-jobs';
 import { getItemCount } from '@/lib/db/queries';
-import { ensureWorkersStarted, nudgeWorkers, cancelAudioAnalysis } from '@/lib/sync/workers';
+import { ensureWorkersStarted, nudgeWorkers } from '@/lib/sync/workers';
+import { requestJobCancel } from '@/lib/db/sync-jobs';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,7 +128,7 @@ export async function GET() {
     audioErrors: audioJob?.progressErrors ?? 0,
     audioJobError: audioJob?.error ?? null,
     audioJobStatus: audioJob?.status ?? null,
-    audioAnalysisEnabled: process.env.ENABLE_AUDIO_ANALYSIS === 'true',
+    audioAnalysisEnabled: true,
   });
 }
 
@@ -137,7 +138,10 @@ export async function DELETE() {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  cancelAudioAnalysis();
+  const audioJob = await getActiveJob('audio_analysis');
+  if (audioJob) {
+    await requestJobCancel(audioJob.id);
+  }
   return NextResponse.json({ status: 'cancel_requested' });
 }
 

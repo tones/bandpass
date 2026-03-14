@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  serverExternalPackages: ['pg', 'audio-decode', 'essentia.js'],
+  serverExternalPackages: ['pg'],
 };
 
 export default nextConfig;

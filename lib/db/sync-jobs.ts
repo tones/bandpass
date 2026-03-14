@@ -122,6 +122,13 @@ export async function hasActiveUserSync(fanId: number): Promise<boolean> {
   return !!row;
 }
 
+export async function requestJobCancel(jobId: number): Promise<void> {
+  await execute(
+    'UPDATE sync_jobs SET cancel_requested = true, updated_at = NOW() WHERE id = $1',
+    [jobId],
+  );
+}
+
 export async function cleanupStaleJobs(): Promise<void> {
   const result = await execute(
     "UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = NOW() WHERE status = 'running'",
