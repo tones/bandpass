@@ -129,10 +129,19 @@ export async function requestJobCancel(jobId: number): Promise<void> {
   );
 }
 
-export async function cleanupStaleJobs(): Promise<void> {
-  const result = await execute(
-    "UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = NOW() WHERE status = 'running'",
-  );
+export async function cleanupStaleJobs(jobTypes?: JobType[]): Promise<void> {
+  let result;
+  if (jobTypes && jobTypes.length > 0) {
+    const placeholders = jobTypes.map((_, i) => `$${i + 1}`).join(', ');
+    result = await execute(
+      `UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = NOW() WHERE status = 'running' AND job_type IN (${placeholders})`,
+      jobTypes,
+    );
+  } else {
+    result = await execute(
+      "UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = NOW() WHERE status = 'running'",
+    );
+  }
   if (result.rowCount > 0) {
     console.log(`Cleaned up ${result.rowCount} stale running job(s) from previous server instance`);
   }

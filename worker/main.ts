@@ -205,7 +205,7 @@ async function main() {
   }
 
   console.log('Audio worker starting...');
-  await cleanupStaleJobs();
+  await cleanupStaleJobs(['audio_analysis']);
 
   // Pre-load Essentia WASM so it's warm for first analysis
   await getEssentia();

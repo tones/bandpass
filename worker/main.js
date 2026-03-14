@@ -214,10 +214,19 @@ async function getActiveJob(jobType, fanId) {
   );
   return row ? rowToJob(row) : null;
 }
-async function cleanupStaleJobs() {
-  const result = await execute(
-    "UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = NOW() WHERE status = 'running'"
-  );
+async function cleanupStaleJobs(jobTypes) {
+  let result;
+  if (jobTypes && jobTypes.length > 0) {
+    const placeholders = jobTypes.map((_, i) => `$${i + 1}`).join(", ");
+    result = await execute(
+      `UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = NOW() WHERE status = 'running' AND job_type IN (${placeholders})`,
+      jobTypes
+    );
+  } else {
+    result = await execute(
+      "UPDATE sync_jobs SET status = 'failed', error = 'Server restarted', updated_at = NOW() WHERE status = 'running'"
+    );
+  }
   if (result.rowCount > 0) {
     console.log(`Cleaned up ${result.rowCount} stale running job(s) from previous server instance`);
   }
@@ -490,7 +499,7 @@ async function main() {
     process.exit(1);
   }
   console.log("Audio worker starting...");
-  await cleanupStaleJobs();
+  await cleanupStaleJobs(["audio_analysis"]);
   await getEssentia();
   while (true) {
     try {

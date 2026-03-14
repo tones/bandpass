@@ -15,7 +15,7 @@ export function ensureWorkersStarted(cookie?: string) {
   if (started) return;
   started = true;
 
-  cleanupStaleJobs().catch((err) => console.error('Failed to clean up stale jobs:', err));
+  cleanupStaleJobs(['user_sync', 'enrichment']).catch((err) => console.error('Failed to clean up stale jobs:', err));
 
   enrichmentWorkerLoop().catch((err) =>
     console.error('Enrichment worker crashed:', err),
