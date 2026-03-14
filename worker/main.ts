@@ -204,13 +204,16 @@ async function main() {
     process.exit(1);
   }
 
-  await cleanupStaleJobs(['audio_analysis']);
-
   if (process.env.ENABLE_AUDIO_ANALYSIS !== 'true') {
+    await execute(
+      "UPDATE sync_jobs SET status = 'done', error = NULL, updated_at = NOW() WHERE status = 'running' AND job_type = 'audio_analysis'",
+    );
     console.log('Audio worker disabled (ENABLE_AUDIO_ANALYSIS != true). Idling.');
     setInterval(() => {}, 60_000);
     return;
   }
+
+  await cleanupStaleJobs(['audio_analysis']);
 
   console.log('Audio worker starting...');
 
