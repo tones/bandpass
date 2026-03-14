@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { getBandcamp } from '@/lib/bandcamp';
 import { getExchangeRates } from '@/lib/currency';
-import { getFeedItems, getTagCounts, getFriendCounts, getItemCount } from '@/lib/db/queries';
+import { getFeedItems, getTagCounts, getFriendCounts, getItemCount, getAlbumTracksForFeedItems } from '@/lib/db/queries';
 import { getSyncState } from '@/lib/db/sync';
 import { getAllCrateItemIds, getCrates, getItemCrateMultiMap } from '@/lib/db/crates';
 import { FeedView } from '@/components/feed/FeedView';
@@ -63,6 +63,8 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   const crateItemIds = syncState?.lastSyncAt ? await getAllCrateItemIds(fanId) : new Set<string>();
   const crates = syncState?.lastSyncAt ? (await getCrates(fanId)).filter((c) => c.source === 'user') : [];
   const itemCrateMap = syncState?.lastSyncAt ? await getItemCrateMultiMap(fanId) : {};
+  const albumUrls = [...new Set(items.map((i) => i.album.url).filter(Boolean))];
+  const albumTracksMap = albumUrls.length > 0 ? await getAlbumTracksForFeedItems(albumUrls) : {};
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -75,6 +77,7 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
         initialCrateItemIds={[...crateItemIds]}
         initialCrates={crates}
         initialItemCrateMap={itemCrateMap}
+        initialAlbumTracksMap={albumTracksMap}
         oldestStoryDate={syncState?.oldestStoryDate ?? null}
         exchangeRates={exchangeRates}
         initialTag={initialTag}

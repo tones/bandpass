@@ -89,7 +89,7 @@ export async function GET() {
   const isCollectionSyncing = isUserSyncing && (userSyncJob?.progressDone ?? 0) >= 2 && (userSyncJob?.progressDone ?? 0) < 3;
   const isWishlistSyncing = isUserSyncing && (userSyncJob?.progressDone ?? 0) >= 3 && (userSyncJob?.progressDone ?? 0) < 4;
 
-  const isEnrichingTags = enrichmentJob?.status === 'running';
+  const isEnriching = enrichmentJob?.status === 'running';
   const isAnalyzingAudio = audioJob?.status === 'running';
 
   const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
@@ -114,9 +114,9 @@ export async function GET() {
     collectionSynced: state?.collectionSynced ?? false,
     isWishlistSyncing,
     wishlistSynced: state?.wishlistSynced ?? false,
-    isEnrichingTags,
-    tagsEnriched: enrichmentJob?.progressDone ?? 0,
-    enrichmentPendingCount: isEnrichingTags
+    isEnriching,
+    enrichedCount: enrichmentJob?.progressDone ?? 0,
+    enrichmentPendingCount: isEnriching
       ? (enrichmentJob?.progressTotal ?? 0) - (enrichmentJob?.progressDone ?? 0)
       : enrichmentPendingCount,
     isAnalyzingAudio,

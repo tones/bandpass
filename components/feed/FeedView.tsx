@@ -4,6 +4,8 @@ import { useState, useCallback, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DateRange } from 'react-day-picker';
 import type { FeedItem } from '@/lib/bandcamp';
+import type { CatalogTrack, CatalogRelease } from '@/lib/db/catalog';
+import { catalogTrackToFeedItem } from '@/lib/formatters';
 import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
 import { FilterBar } from './FilterBar';
@@ -57,6 +59,7 @@ interface FeedViewProps {
   initialCrateItemIds?: string[];
   initialCrates?: CrateInfo[];
   initialItemCrateMap?: Record<string, number[]>;
+  initialAlbumTracksMap?: Record<string, CatalogTrack[]>;
   oldestStoryDate?: number | null;
   exchangeRates?: Record<string, number>;
   initialTag?: string;
@@ -72,6 +75,7 @@ export function FeedView({
   initialCrateItemIds = [],
   initialCrates = [],
   initialItemCrateMap = {},
+  initialAlbumTracksMap = {},
   oldestStoryDate,
   exchangeRates = {},
   initialTag,
@@ -93,14 +97,39 @@ export function FeedView({
   const [crates] = useState<CrateInfo[]>(initialCrates);
   const [crateItemIds, setCrateItemIds] = useState<Set<string>>(new Set(initialCrateItemIds));
   const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
+  const [albumTracksMap, setAlbumTracksMap] = useState<Record<string, CatalogTrack[]>>(initialAlbumTracksMap);
   const { playingTrackUrl, playingItem, isPlaying: isPlayerPlaying, play: handlePlay, setPlaylist } = usePlayer();
   const [isPending, startTransition] = useTransition();
   const [dynamicOldestDate, setDynamicOldestDate] = useState(oldestStoryDate ?? null);
 
   useEffect(() => {
-    setPlaylist(items.filter((i) => i.track?.streamUrl));
+    const playlistItems: FeedItem[] = [];
+    for (const item of items) {
+      const tracks = albumTracksMap[item.album.url];
+      if (tracks && tracks.length > 1) {
+        const pseudoRelease: CatalogRelease = {
+          id: 0,
+          bandSlug: '',
+          bandName: item.artist.name,
+          bandUrl: item.artist.url,
+          title: item.album.title,
+          url: item.album.url,
+          imageUrl: item.album.imageUrl,
+          releaseType: 'album',
+          scrapedAt: '',
+          releaseDate: null,
+          tags: [],
+        };
+        for (const t of tracks) {
+          if (t.streamUrl) playlistItems.push(catalogTrackToFeedItem(t, pseudoRelease));
+        }
+      } else if (item.track?.streamUrl) {
+        playlistItems.push(item);
+      }
+    }
+    setPlaylist(playlistItems);
     return () => setPlaylist([]);
-  }, [items, setPlaylist]);
+  }, [items, albumTracksMap, setPlaylist]);
 
   useEffect(() => {
     const qs = window.location.search;
@@ -151,6 +180,7 @@ export function FeedView({
         setTotalItems(result.totalItems);
         setTags(result.tags);
         setFriends(result.friends);
+        setAlbumTracksMap(result.albumTracksMap);
       });
     },
     [syncUrl],
@@ -301,6 +331,22 @@ export function FeedView({
               itemCrateIds={itemCrateMap[entry.item.id]}
               onAddToCrate={(crateId) => handleAddToCrate(entry.item.id, crateId)}
               onRemoveFromCrate={(crateId) => handleRemoveFromCrate(entry.item.id, crateId)}
+              albumTracks={albumTracksMap[entry.item.album.url]}
+              playingTrackUrl={playingTrackUrl}
+              isPlayerPlaying={isPlayerPlaying}
+              itemCrateMap={itemCrateMap}
+              onPlayAlbumTrack={(track) => {
+                const pseudoRelease: CatalogRelease = {
+                  id: 0, bandSlug: '', bandName: entry.item.artist.name,
+                  bandUrl: entry.item.artist.url, title: entry.item.album.title,
+                  url: entry.item.album.url, imageUrl: entry.item.album.imageUrl,
+                  releaseType: 'album', scrapedAt: '', releaseDate: null, tags: [],
+                };
+                handlePlay(catalogTrackToFeedItem(track, pseudoRelease));
+              }}
+              onToggleTrackCrate={toggleCrate}
+              onAddTrackToCrate={handleAddToCrate}
+              onRemoveTrackFromCrate={handleRemoveFromCrate}
             />
           ),
         )}

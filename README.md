@@ -16,7 +16,7 @@ When you first connect your Bandcamp account, Bandpass syncs your feed history a
 
 **View your Bandcamp wishlist.** Your Bandcamp wishlist appears as a read-only crate in Bandpass, synced from your account. Refresh it anytime to pick up changes.
 
-**Tag enrichment.** Bandpass automatically backfills genre tags for your purchases and wishlist items by scraping album pages in the background. Tags appear on items across the app as they're enriched.
+**Catalog enrichment.** Bandpass automatically backfills genre tags, tracks, and release dates for your feed items and wishlist by scraping album pages in the background. Enriched data appears across the app as items are processed.
 
 **Explore artist and label catalogs.** Browse any Bandcamp artist or label at `/music`. See their full discography with all tracks expanded, release dates, and genre tags. Play any track inline and bookmark it to a crate. Tags link back to your feed filtered by that genre.
 
@@ -35,7 +35,7 @@ Data Layer (lib/db/)
   │
   ├── index.ts      — SQLite connection + schema (better-sqlite3, versioned migrations)
   ├── queries.ts    — getFeedItems(), getTagCounts(), getFriendCounts()
-  ├── sync.ts       — Background sync (feed, collection, wishlist, tag enrichment)
+  ├── sync.ts       — Background sync (feed, collection, wishlist, catalog enrichment)
   ├── crates.ts     — Crate CRUD (multi-list management, keyed by fanId)
   └── catalog.ts    — Artist/label discography + track cache
   │
@@ -87,7 +87,7 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 - HTML scraper (`lib/bandcamp/scraper.ts`) — extracts structured JSON from Bandcamp's `data-client-items`, `data-tralbum`, and `data-band` HTML attributes for discography, track, and tag data
 - Feed fetching via `POST /fan_dash_feed_updates` with cookie auth
 - SQLite caching (`data/bandpass.db`) — background sync pulls feed history on first login, then deep syncs older data and smart incremental updates on subsequent visits
-- Five-stage sync pipeline: initial feed → deep feed history → collection (purchases) → wishlist → tag enrichment
+- Five-stage sync pipeline: initial feed → deep feed history → collection (purchases) → wishlist → catalog enrichment
 - Three-section app: Music (default landing page, works without login), Feed (requires login), Crates (requires login)
 - Music section browses any Bandcamp artist/label domain — full discography with tracks expanded, release dates, genre tags, inline playback and bookmarking
 - Feed page with story type filters (New Releases, Friend Purchases, Also Purchased), friend filter, tag filter with one-click clear, and date range picker
@@ -97,7 +97,7 @@ See `docs/plans/2026-03-08-bandpass-design.md` for the full design document.
 - Currency conversion (prices shown in USD with original currency below)
 - Crates — create, rename, delete multiple named lists. Bookmark tracks in the feed or on artist pages. Multi-select picker when multiple crates exist. "Open all on Bandcamp" bulk action
 - Bandcamp wishlist sync — paginated import of wishlist items, stale item cleanup on refresh
-- Tag enrichment queue — background scraping of album pages to backfill genre tags for purchases and wishlist items, with retry and progress tracking
+- Catalog enrichment queue — background scraping of album pages to backfill genre tags, tracks, and release dates for feed items and wishlist, with retry and progress tracking
 - Authorization — all crate-mutating operations verify fan ownership
 - Deep background sync with progress indicator — continues loading older feed history while you browse
 - Site-wide password gate (optional, via `SITE_PASSWORD` env var)

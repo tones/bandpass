@@ -31,6 +31,7 @@ export interface CatalogTrack {
   bpm: number | null;
   musicalKey: string | null;
   keyCamelot: string | null;
+  audioStorageKey: string | null;
 }
 
 const STALE_HOURS = 24;
@@ -131,6 +132,12 @@ export async function cacheDiscography(
   await transaction(async (client) => {
     await client.query("DELETE FROM catalog_releases WHERE band_slug = $1 AND source = 'discography'", [slug]);
     for (const r of releases) {
+      const enrichmentExists = await client.query(
+        "SELECT 1 FROM catalog_releases WHERE url = $1 AND source = 'enrichment'",
+        [r.url],
+      );
+      if (enrichmentExists.rows.length > 0) continue;
+
       const prev = preserved.get(r.url);
       const tagsVal = prev?.tags != null ? (typeof prev.tags === 'string' ? prev.tags : JSON.stringify(prev.tags)) : '[]';
       await client.query(
@@ -156,6 +163,7 @@ export async function getCachedAlbumTracks(releaseId: number): Promise<CatalogTr
     bpm: number | null;
     musical_key: string | null;
     key_camelot: string | null;
+    audio_storage_key: string | null;
   }>(`
     SELECT * FROM catalog_tracks WHERE release_id = $1 ORDER BY track_num
   `, [releaseId]);
@@ -175,6 +183,7 @@ function rowToTrack(row: {
   bpm: number | null;
   musical_key: string | null;
   key_camelot: string | null;
+  audio_storage_key: string | null;
 }): CatalogTrack {
   return {
     id: row.id,
@@ -187,6 +196,7 @@ function rowToTrack(row: {
     bpm: row.bpm ?? null,
     musicalKey: row.musical_key ?? null,
     keyCamelot: row.key_camelot ?? null,
+    audioStorageKey: row.audio_storage_key ?? null,
   };
 }
 

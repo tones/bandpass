@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import type { FeedItem } from '@/lib/bandcamp';
+import type { CatalogTrack } from '@/lib/db/catalog';
 import { extractSlug, getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import { convertToUsd } from '@/lib/currency';
 import { formatDuration, formatPrice } from '@/lib/formatters';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
+import { TrackList } from '@/components/TrackList';
 import { TagPill } from '@/components/TagPill';
 import { BpmKeyBadge } from '@/components/BpmKeyBadge';
 
@@ -20,6 +22,14 @@ interface FeedItemCardProps {
   onAddToCrate?: (crateId: number) => void;
   onRemoveFromCrate?: (crateId: number) => void;
   variant?: 'feed' | 'crate';
+  albumTracks?: CatalogTrack[];
+  playingTrackUrl?: string | null;
+  isPlayerPlaying?: boolean;
+  itemCrateMap?: Record<string, number[]>;
+  onPlayAlbumTrack?: (track: CatalogTrack) => void;
+  onToggleTrackCrate?: (itemId: string) => void;
+  onAddTrackToCrate?: (itemId: string, crateId: number) => void;
+  onRemoveTrackFromCrate?: (itemId: string, crateId: number) => void;
 }
 
 const STORY_BADGES: Record<string, { label: string; className: string }> = {
@@ -67,6 +77,14 @@ export function FeedItemCard({
   onAddToCrate,
   onRemoveFromCrate,
   variant = 'feed',
+  albumTracks,
+  playingTrackUrl,
+  isPlayerPlaying: isPlayerPlayingProp,
+  itemCrateMap = {},
+  onPlayAlbumTrack,
+  onToggleTrackCrate,
+  onAddTrackToCrate,
+  onRemoveTrackFromCrate,
 }: FeedItemCardProps) {
   const isCrate = variant === 'crate';
 
@@ -77,89 +95,124 @@ export function FeedItemCard({
       : signal.fan.name
     : null;
 
-  return (
-    <div
-      className={`flex items-center gap-4 px-6 py-3 transition-colors hover:bg-zinc-900/50 ${
-        isPlaying ? 'bg-zinc-900/80' : ''
-      }`}
-    >
-      <button
-        onClick={onPlay}
-        disabled={!item.track?.streamUrl}
-        className="group relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded"
-      >
-        <img src={item.album.imageUrl} alt={item.album.title} className="h-full w-full object-cover" />
-        {item.track?.streamUrl && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-            <span className="text-xl">{isPlaying ? '⏸' : '▶'}</span>
-          </div>
-        )}
-      </button>
+  const hasAlbumTracks = albumTracks && albumTracks.length > 1;
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="truncate font-medium">
-            {item.track?.title ?? item.album.title}
-          </span>
-          {!isCrate && (
-            <>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STORY_BADGES[item.storyType]?.className ?? 'bg-zinc-800 text-zinc-400'}`}>
-                {STORY_BADGES[item.storyType]?.label ?? item.storyType}
-              </span>
-              <span className="shrink-0 text-xs text-zinc-600">
-                {formatRelativeDate(new Date(item.date))}
-              </span>
-            </>
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-4 px-6 py-3 transition-colors hover:bg-zinc-900/50 ${
+          isPlaying ? 'bg-zinc-900/80' : ''
+        }`}
+      >
+        <button
+          onClick={onPlay}
+          disabled={!item.track?.streamUrl}
+          className="group relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded"
+        >
+          <img src={item.album.imageUrl} alt={item.album.title} className="h-full w-full object-cover" />
+          {item.track?.streamUrl && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+              <span className="text-xl">{isPlaying ? '⏸' : '▶'}</span>
+            </div>
           )}
-        </div>
-        <div className="truncate text-sm text-zinc-400">
-          <Link
-            href={`/music/${extractSlug(item.artist.url)}`}
-            className="hover:text-zinc-200 hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {item.artist.name}
-          </Link>
-          {getDomainIfDifferent(item.artist.name, item.artist.url) && (
-            <span className="text-zinc-600">
-              {' · '}<Link href={`/music/${extractSlug(item.artist.url)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artist.name, item.artist.url)}</Link>
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="truncate font-medium">
+              {hasAlbumTracks ? item.album.title : (item.track?.title ?? item.album.title)}
             </span>
-          )}
-          <span className="text-zinc-600">
-            {' · '}{item.album.title}
-            {item.track && ` (${formatDuration(item.track.duration)})`}
-            {item.price && (() => {
-              const { amount, currency } = item.price;
-              const isUsd = currency === 'USD';
-              const usdAmount = isUsd ? amount : convertToUsd(amount, currency, exchangeRates);
-              const display = usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency);
-              return ` · ${display}`;
-            })()}
-          </span>
+            {!isCrate && (
+              <>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STORY_BADGES[item.storyType]?.className ?? 'bg-zinc-800 text-zinc-400'}`}>
+                  {STORY_BADGES[item.storyType]?.label ?? item.storyType}
+                </span>
+                <span className="shrink-0 text-xs text-zinc-600">
+                  {formatRelativeDate(new Date(item.date))}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="truncate text-sm text-zinc-400">
+            <Link
+              href={`/music/${extractSlug(item.artist.url)}`}
+              className="hover:text-zinc-200 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {item.artist.name}
+            </Link>
+            {getDomainIfDifferent(item.artist.name, item.artist.url) && (
+              <span className="text-zinc-600">
+                {' · '}<Link href={`/music/${extractSlug(item.artist.url)}`} className="hover:text-zinc-200 hover:underline" onClick={(e) => e.stopPropagation()}>{getDomainIfDifferent(item.artist.name, item.artist.url)}</Link>
+              </span>
+            )}
+            {!hasAlbumTracks && (
+              <span className="text-zinc-600">
+                {' · '}{item.album.title}
+                {item.track && ` (${formatDuration(item.track.duration)})`}
+                {item.price && (() => {
+                  const { amount, currency } = item.price;
+                  const isUsd = currency === 'USD';
+                  const usdAmount = isUsd ? amount : convertToUsd(amount, currency, exchangeRates);
+                  const display = usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency);
+                  return ` · ${display}`;
+                })()}
+              </span>
+            )}
+            {hasAlbumTracks && (
+              <span className="text-zinc-600">
+                {' · '}{albumTracks.length} tracks
+                {item.price && (() => {
+                  const { amount, currency } = item.price;
+                  const isUsd = currency === 'USD';
+                  const usdAmount = isUsd ? amount : convertToUsd(amount, currency, exchangeRates);
+                  const display = usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency);
+                  return ` · ${display}`;
+                })()}
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+            {[...new Set(item.tags)].sort().slice(0, 4).map((tag) => (
+              <TagPill key={tag} tag={tag} />
+            ))}
+            {!hasAlbumTracks && <BpmKeyBadge bpm={item.bpm} musicalKey={item.musicalKey} />}
+            {!isCrate && signalText && (
+              <span className="text-xs text-amber-500/80">{signalText}</span>
+            )}
+          </div>
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-          {[...new Set(item.tags)].sort().slice(0, 4).map((tag) => (
-            <TagPill key={tag} tag={tag} />
-          ))}
-          <BpmKeyBadge bpm={item.bpm} musicalKey={item.musicalKey} />
-          {!isCrate && signalText && (
-            <span className="text-xs text-amber-500/80">{signalText}</span>
-          )}
-        </div>
+
+        <TrackActions
+          isPlaying={isPlaying}
+          hasStream={!!item.track?.streamUrl}
+          isInCrate={isInCrate}
+          bandcampUrl={item.album.url}
+          onPlay={onPlay}
+          onToggleCrate={onToggleCrate}
+          crates={crates}
+          itemCrateIds={itemCrateIds}
+          onAddToCrate={onAddToCrate}
+          onRemoveFromCrate={onRemoveFromCrate}
+        />
       </div>
 
-      <TrackActions
-        isPlaying={isPlaying}
-        hasStream={!!item.track?.streamUrl}
-        isInCrate={isInCrate}
-        bandcampUrl={item.album.url}
-        onPlay={onPlay}
-        onToggleCrate={onToggleCrate}
-        crates={crates}
-        itemCrateIds={itemCrateIds}
-        onAddToCrate={onAddToCrate}
-        onRemoveFromCrate={onRemoveFromCrate}
-      />
+      {hasAlbumTracks && onPlayAlbumTrack && onToggleTrackCrate && onAddTrackToCrate && onRemoveTrackFromCrate && (
+        <div className="ml-6 border-l border-zinc-800/50 pl-2">
+          <TrackList
+            tracks={albumTracks}
+            playingTrackUrl={playingTrackUrl ?? null}
+            isPlayerPlaying={isPlayerPlayingProp ?? false}
+            fallbackUrl={item.album.url}
+            crates={crates ?? []}
+            itemCrateMap={itemCrateMap}
+            onPlayTrack={onPlayAlbumTrack}
+            onToggleCrate={onToggleTrackCrate}
+            onAddToCrate={onAddTrackToCrate}
+            onRemoveFromCrate={onRemoveTrackFromCrate}
+          />
+        </div>
+      )}
     </div>
   );
 }

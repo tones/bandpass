@@ -27,8 +27,10 @@ export function formatPrice(amount: number, currency: string): string {
   return `${sym} ${amount.toFixed(2)}`;
 }
 
-export function proxyUrl(url: string): string {
-  return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
+export function proxyUrl(url: string, catalogTrackId?: number): string {
+  let path = `/api/audio-proxy?url=${encodeURIComponent(url)}`;
+  if (catalogTrackId) path += `&trackId=${catalogTrackId}`;
+  return path;
 }
 
 import type { CatalogTrack, CatalogRelease } from '@/lib/db/catalog';
@@ -41,7 +43,7 @@ export function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRele
     date: new Date(),
     album: { id: release.id, title: release.title, url: release.url, imageUrl: release.imageUrl },
     artist: { id: 0, name: release.bandName, url: release.bandUrl },
-    track: { title: track.title, duration: track.duration, streamUrl: track.streamUrl },
+    track: { title: track.title, duration: track.duration, streamUrl: track.streamUrl, catalogTrackId: track.id },
     tags: [],
     bpm: track.bpm,
     musicalKey: track.musicalKey,

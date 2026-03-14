@@ -2,13 +2,9 @@ import type { CatalogTrack } from '@/lib/db/catalog';
 import { getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import { TrackActions } from './TrackActions';
 import type { CrateInfo } from './TrackActions';
-import { AlbumTrackRow } from './AlbumTrackRow';
+import { TrackList } from './TrackList';
 import { TagPill } from './TagPill';
 import Link from 'next/link';
-
-function catalogTrackCrateId(trackId: number): string {
-  return `catalog-track-${trackId}`;
-}
 
 interface AlbumCardProps {
   title: string;
@@ -121,23 +117,18 @@ export function AlbumCard({
 
       {tracks.length > 0 && (
         <div className="border-t border-zinc-800/50">
-          {tracks.map((track) => {
-            const cid = catalogTrackCrateId(track.id);
-            return (
-              <AlbumTrackRow
-                key={track.id}
-                track={track}
-                isActive={playingTrackUrl === track.streamUrl && track.streamUrl != null && isPlayerPlaying}
-                fallbackUrl={bandcampUrl}
-                crates={userCrates}
-                crateIds={itemCrateMap[cid]}
-                onPlay={() => onPlayTrack(track)}
-                onToggleCrate={() => onToggleTrackCrate(cid)}
-                onAddToCrate={(crateId) => onAddTrackToCrate(cid, crateId)}
-                onRemoveFromCrate={(crateId) => onRemoveTrackFromCrate(cid, crateId)}
-              />
-            );
-          })}
+          <TrackList
+            tracks={tracks}
+            playingTrackUrl={playingTrackUrl}
+            isPlayerPlaying={isPlayerPlaying}
+            fallbackUrl={bandcampUrl}
+            crates={userCrates}
+            itemCrateMap={itemCrateMap}
+            onPlayTrack={onPlayTrack}
+            onToggleCrate={onToggleTrackCrate}
+            onAddToCrate={onAddTrackToCrate}
+            onRemoveFromCrate={onRemoveTrackFromCrate}
+          />
         </div>
       )}
     </div>

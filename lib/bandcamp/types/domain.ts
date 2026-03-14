@@ -21,6 +21,7 @@ export interface FeedItem {
     title: string;
     duration: number;
     streamUrl: string | null;
+    catalogTrackId?: number;
   } | null;
   tags: string[];
   bpm: number | null;

@@ -38,7 +38,8 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const prevUrlRef = useRef(trackUrl);
-  const proxied = proxyUrl(trackUrl);
+  const catalogTrackId = item.track?.catalogTrackId;
+  const proxied = proxyUrl(trackUrl, catalogTrackId);
 
   const [crates, setCrates] = useState<CrateInfo[]>([]);
   const [itemCrateIds, setItemCrateIds] = useState<number[]>([]);
@@ -105,9 +106,9 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
   useEffect(() => {
     if (wavesurfer && trackUrl !== prevUrlRef.current) {
       prevUrlRef.current = trackUrl;
-      wavesurfer.load(proxyUrl(trackUrl));
+      wavesurfer.load(proxyUrl(trackUrl, catalogTrackId));
     }
-  }, [wavesurfer, trackUrl]);
+  }, [wavesurfer, trackUrl, catalogTrackId]);
 
   const togglePlayPause = useCallback(() => {
     wavesurfer?.playPause();

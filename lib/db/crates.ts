@@ -207,9 +207,10 @@ export async function getCrateReleaseItems(crateId: number, fanId: number): Prom
       id: number; release_id: number; track_num: number; title: string;
       duration: number; stream_url: string | null; track_url: string | null;
       bpm: number | null; musical_key: string | null; key_camelot: string | null;
+      audio_storage_key: string | null;
     }>(`
       SELECT id, release_id, track_num, title, duration, stream_url, track_url,
-             bpm, musical_key, key_camelot
+             bpm, musical_key, key_camelot, audio_storage_key
       FROM catalog_tracks
       WHERE release_id IN (${placeholders})
       ORDER BY release_id, track_num
@@ -227,6 +228,7 @@ export async function getCrateReleaseItems(crateId: number, fanId: number): Prom
         bpm: t.bpm,
         musicalKey: t.musical_key,
         keyCamelot: t.key_camelot,
+        audioStorageKey: t.audio_storage_key,
       });
     }
   }
@@ -424,13 +426,14 @@ export async function getWishlistAlbumTracks(itemUrls: string[]): Promise<Record
     bpm: number | null;
     musical_key: string | null;
     key_camelot: string | null;
+    audio_storage_key: string | null;
   }>(`
     SELECT cr.id as release_id, cr.band_slug, cr.band_name, cr.band_url,
            cr.title as release_title, cr.url as release_url, cr.image_url,
            cr.release_type, cr.scraped_at, cr.release_date, cr.tags as release_tags,
            ct.id as track_id, ct.track_num, ct.title as track_title,
            ct.duration, ct.stream_url, ct.track_url,
-           ct.bpm, ct.musical_key, ct.key_camelot
+           ct.bpm, ct.musical_key, ct.key_camelot, ct.audio_storage_key
     FROM catalog_releases cr
     JOIN catalog_tracks ct ON ct.release_id = cr.id
     WHERE cr.url IN (${placeholders})
@@ -474,6 +477,7 @@ export async function getWishlistAlbumTracks(itemUrls: string[]): Promise<Record
       bpm: r.bpm ?? null,
       musicalKey: r.musical_key ?? null,
       keyCamelot: r.key_camelot ?? null,
+      audioStorageKey: r.audio_storage_key ?? null,
     });
   }
   return result;

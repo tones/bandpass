@@ -6,15 +6,11 @@ import { catalogTrackToFeedItem } from '@/lib/formatters';
 import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
-import { AlbumTrackRow } from '@/components/AlbumTrackRow';
+import { TrackList } from '@/components/TrackList';
 import Link from 'next/link';
 import { TagPill } from '@/components/TagPill';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { useNavigation } from '@/contexts/NavigationContext';
-
-function catalogTrackCrateId(trackId: number): string {
-  return `catalog-track-${trackId}`;
-}
 
 function catalogReleaseCrateId(releaseId: number): string {
   return `catalog-release-${releaseId}`;
@@ -346,26 +342,19 @@ function ReleaseCard({
             Loading tracks...
           </div>
         ) : tracks && tracks.length > 0 ? (
-          <div>
-            {tracks.map((track) => {
-              const cid = catalogTrackCrateId(track.id);
-              return (
-                <AlbumTrackRow
-                  key={track.id}
-                  track={track}
-                  isActive={playingTrackUrl === track.streamUrl && track.streamUrl != null && isPlayerPlaying}
-                  fallbackUrl={release.url}
-                  crates={crates}
-                  crateIds={itemCrateMap[cid]}
-                  showCrate={loggedIn}
-                  onPlay={() => onPlayTrack(track)}
-                  onToggleCrate={() => onToggleItem(cid)}
-                  onAddToCrate={(crateId) => onAddItemToCrate(cid, crateId)}
-                  onRemoveFromCrate={(crateId) => onRemoveItemFromCrate(cid, crateId)}
-                />
-              );
-            })}
-          </div>
+          <TrackList
+            tracks={tracks}
+            playingTrackUrl={playingTrackUrl}
+            isPlayerPlaying={isPlayerPlaying}
+            fallbackUrl={release.url}
+            crates={crates}
+            itemCrateMap={itemCrateMap}
+            showCrate={loggedIn}
+            onPlayTrack={onPlayTrack}
+            onToggleCrate={onToggleItem}
+            onAddToCrate={onAddItemToCrate}
+            onRemoveFromCrate={onRemoveItemFromCrate}
+          />
         ) : tracks !== undefined ? (
           <div className="px-4 py-4 text-center text-sm text-zinc-500">
             No tracks found

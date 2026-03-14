@@ -22,6 +22,11 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// worker/main.ts
+var import_child_process = require("child_process");
+var import_readline = require("readline");
+var import_fs3 = __toESM(require("fs"));
+
 // lib/db/index.ts
 var import_pg = require("pg");
 var import_fs = __toESM(require("fs"));
@@ -56,17 +61,17 @@ async function execute(sql, params) {
 }
 async function transaction(fn) {
   await ensureDb();
-  const client = await getPool().connect();
+  const client2 = await getPool().connect();
   try {
-    await client.query("BEGIN");
-    const result = await fn(client);
-    await client.query("COMMIT");
+    await client2.query("BEGIN");
+    const result = await fn(client2);
+    await client2.query("COMMIT");
     return result;
   } catch (err) {
-    await client.query("ROLLBACK");
+    await client2.query("ROLLBACK");
     throw err;
   } finally {
-    client.release();
+    client2.release();
   }
 }
 async function runMigrations() {
@@ -90,18 +95,18 @@ async function runMigrations() {
     const version = file.replace(".sql", "");
     if (appliedVersions.has(version)) continue;
     const sql = import_fs.default.readFileSync(import_path.default.join(migrationsDir, file), "utf-8");
-    const client = await p.connect();
+    const client2 = await p.connect();
     try {
-      await client.query("BEGIN");
-      await client.query(sql);
-      await client.query("INSERT INTO schema_migrations (version) VALUES ($1)", [version]);
-      await client.query("COMMIT");
+      await client2.query("BEGIN");
+      await client2.query(sql);
+      await client2.query("INSERT INTO schema_migrations (version) VALUES ($1)", [version]);
+      await client2.query("COMMIT");
       console.log(`Applied migration: ${file}`);
     } catch (err) {
-      await client.query("ROLLBACK");
+      await client2.query("ROLLBACK");
       throw err;
     } finally {
-      client.release();
+      client2.release();
     }
   }
 }
@@ -124,9 +129,9 @@ async function getReleasesNeedingStreamRefresh() {
   return rows.map((r) => ({ releaseId: r.release_id, releaseUrl: r.release_url }));
 }
 async function refreshStreamUrls(releaseId, freshTracks) {
-  await transaction(async (client) => {
+  await transaction(async (client2) => {
     for (const t of freshTracks) {
-      await client.query(
+      await client2.query(
         "UPDATE catalog_tracks SET stream_url = $1, track_url = COALESCE($2, track_url) WHERE release_id = $3 AND track_num = $4",
         [t.streamUrl, t.trackUrl, releaseId, t.trackNum]
       );
@@ -348,55 +353,136 @@ function normalizeBpm(bpm) {
   return Math.round(bpm * 10) / 10;
 }
 
+// lib/s3.ts
+var import_client_s3 = require("@aws-sdk/client-s3");
+var import_s3_request_presigner = require("@aws-sdk/s3-request-presigner");
+var import_fs2 = __toESM(require("fs"));
+var client = null;
+function getClient() {
+  if (client) return client;
+  client = new import_client_s3.S3Client({ region: process.env.AWS_S3_REGION || "us-east-2" });
+  return client;
+}
+function getBucket() {
+  const bucket = process.env.AWS_S3_BUCKET;
+  if (!bucket) throw new Error("AWS_S3_BUCKET is not set");
+  return bucket;
+}
+function isS3Configured() {
+  return !!(process.env.AWS_S3_BUCKET && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+}
+function trackKey(trackId) {
+  return `tracks/${trackId}.mp3`;
+}
+async function uploadTrackFromFile(trackId, filePath) {
+  const key = trackKey(trackId);
+  const body = import_fs2.default.readFileSync(filePath);
+  await getClient().send(
+    new import_client_s3.PutObjectCommand({
+      Bucket: getBucket(),
+      Key: key,
+      Body: body,
+      ContentType: "audio/mpeg"
+    })
+  );
+  return key;
+}
+
 // worker/main.ts
 var POLL_INTERVAL_MS = 3e4;
 var TRACK_DELAY_MS = 1500;
 var RELEASE_DELAY_MS = 2e3;
-var FETCH_TIMEOUT_MS = 1e4;
 var MAX_CONSECUTIVE_FAILURES = 20;
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
-var essentiaInstance = null;
-async function getEssentia() {
-  if (essentiaInstance) return essentiaInstance;
-  console.log("Loading Essentia WASM...");
-  const { Essentia, EssentiaWASM } = await import("essentia.js");
-  essentiaInstance = new Essentia(EssentiaWASM);
-  console.log("Essentia WASM loaded");
-  return essentiaInstance;
-}
-async function analyzeTrack(streamUrl) {
-  const controller = new AbortController();
-  const fetchTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let resp;
-  try {
-    resp = await fetch(streamUrl, { redirect: "follow", signal: controller.signal });
-  } finally {
-    clearTimeout(fetchTimer);
+var EssentiaProcess = class {
+  constructor() {
+    this.proc = null;
+    this.rl = null;
+    this.pending = null;
   }
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const mp3Buffer = Buffer.from(await resp.arrayBuffer());
-  const decode = (await import("audio-decode")).default;
-  const audioBuffer = await decode(mp3Buffer);
-  const pcm = audioBuffer.getChannelData(0);
-  const essentia = await getEssentia();
-  const signal = essentia.arrayToVector(pcm);
-  try {
-    const bpmResult = essentia.PercivalBpmEstimator(signal);
-    const bpm = normalizeBpm(bpmResult.bpm);
-    const keyResult = essentia.KeyExtractor(signal);
-    const musicalKey = formatKey(keyResult.key, keyResult.scale);
-    const keyCamelot = toCamelot(keyResult.key, keyResult.scale);
-    return { bpm, musicalKey, keyCamelot };
-  } finally {
-    signal.delete();
+  async ensure() {
+    if (this.proc && this.proc.exitCode === null) return;
+    await this.start();
   }
-}
-async function saveAudioResult(trackId, streamUrl, result) {
+  start() {
+    return new Promise((resolve, reject) => {
+      console.log("Spawning Python Essentia analyzer...");
+      this.proc = (0, import_child_process.spawn)("python3", ["worker/analyze.py"], {
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+      this.rl = (0, import_readline.createInterface)({ input: this.proc.stdout });
+      this.rl.on("line", (line) => {
+        if (!this.pending) return;
+        const { resolve: res, reject: rej } = this.pending;
+        this.pending = null;
+        try {
+          const result = JSON.parse(line);
+          if (result.error) rej(new Error(result.error));
+          else res(result);
+        } catch {
+          rej(new Error(`Invalid JSON from analyzer: ${line}`));
+        }
+      });
+      const stderrLines = [];
+      const stderrRl = (0, import_readline.createInterface)({ input: this.proc.stderr });
+      stderrRl.on("line", (line) => {
+        if (line.includes("essentia-analyzer ready")) {
+          console.log("Python Essentia analyzer ready");
+          resolve();
+        } else {
+          console.log(`  [python] ${line}`);
+        }
+        stderrLines.push(line);
+      });
+      this.proc.on("exit", (code) => {
+        console.log(`Python analyzer exited with code ${code}`);
+        if (this.pending) {
+          this.pending.reject(new Error(`Analyzer process exited (code ${code})`));
+          this.pending = null;
+        }
+      });
+      this.proc.on("error", (err) => {
+        console.error("Failed to spawn Python analyzer:", err.message);
+        reject(err);
+      });
+      setTimeout(() => {
+        if (stderrLines.length === 0) {
+          reject(new Error("Python analyzer did not start within 10s"));
+        }
+      }, 1e4);
+    });
+  }
+  async analyze(streamUrl) {
+    await this.ensure();
+    const raw = await new Promise(
+      (resolve, reject) => {
+        this.pending = { resolve, reject };
+        this.proc.stdin.write(JSON.stringify({ url: streamUrl }) + "\n");
+      }
+    );
+    console.log(`  [timing] ${raw.timing}`);
+    return {
+      bpm: normalizeBpm(raw.bpm),
+      musicalKey: formatKey(raw.key, raw.scale),
+      keyCamelot: toCamelot(raw.key, raw.scale),
+      tempFile: raw.file
+    };
+  }
+  kill() {
+    if (this.proc && this.proc.exitCode === null) {
+      this.proc.stdin.end();
+      this.proc.kill();
+    }
+  }
+};
+var analyzer = new EssentiaProcess();
+var s3Enabled = false;
+async function saveAudioResult(trackId, streamUrl, result, audioStorageKey) {
   await execute(
-    "UPDATE catalog_tracks SET bpm = $1, musical_key = $2, key_camelot = $3, bpm_status = 'done' WHERE id = $4",
-    [result.bpm, result.musicalKey, result.keyCamelot, trackId]
+    "UPDATE catalog_tracks SET bpm = $1, musical_key = $2, key_camelot = $3, bpm_status = 'done', audio_storage_key = COALESCE($5, audio_storage_key) WHERE id = $4",
+    [result.bpm, result.musicalKey, result.keyCamelot, trackId, audioStorageKey ?? null]
   );
   await execute(
     "UPDATE feed_items SET bpm = $1, musical_key = $2 WHERE track_stream_url = $3 AND bpm IS NULL",
@@ -408,10 +494,7 @@ async function saveAudioResult(trackId, streamUrl, result) {
   );
 }
 async function markAudioFailed(trackId) {
-  await execute(
-    "UPDATE catalog_tracks SET bpm_status = 'failed' WHERE id = $1",
-    [trackId]
-  );
+  await execute("UPDATE catalog_tracks SET bpm_status = 'failed' WHERE id = $1", [trackId]);
 }
 async function isJobCancelled(jobId) {
   const row = await queryOne(
@@ -462,8 +545,23 @@ async function processReleases() {
         }
         try {
           console.log(`  Track ${track.id}: analyzing...`);
-          const result = await analyzeTrack(track.stream_url);
-          await saveAudioResult(track.id, track.stream_url, result);
+          const result = await analyzer.analyze(track.stream_url);
+          let storageKey;
+          if (s3Enabled && result.tempFile) {
+            try {
+              storageKey = await uploadTrackFromFile(track.id, result.tempFile);
+              console.log(`  Track ${track.id}: uploaded to S3 (${storageKey})`);
+            } catch (uploadErr) {
+              console.error(`  Track ${track.id}: S3 upload failed, continuing without storage:`, uploadErr);
+            }
+          }
+          if (result.tempFile) {
+            try {
+              import_fs3.default.unlinkSync(result.tempFile);
+            } catch {
+            }
+          }
+          await saveAudioResult(track.id, track.stream_url, result, storageKey);
           console.log(`  Track ${track.id}: bpm=${result.bpm} key=${result.musicalKey}`);
           consecutiveFailures = 0;
         } catch (err) {
@@ -508,8 +606,8 @@ async function main() {
     return;
   }
   await cleanupStaleJobs(["audio_analysis"]);
-  console.log("Audio worker starting...");
-  await getEssentia();
+  s3Enabled = isS3Configured();
+  console.log(`Audio worker starting... (S3 storage: ${s3Enabled ? "enabled" : "disabled"})`);
   while (true) {
     try {
       await processReleases();

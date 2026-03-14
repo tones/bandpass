@@ -89,8 +89,8 @@ export function AccountView({
   const isDeepSyncing = state?.isDeepSyncing ?? false;
   const isCollectionSyncing = state?.isCollectionSyncing ?? false;
   const isWishlistSyncing = state?.isWishlistSyncing ?? false;
-  const isEnrichingTags = state?.isEnrichingTags ?? false;
-  const tagsEnriched = state?.tagsEnriched ?? 0;
+  const isEnriching = state?.isEnriching ?? false;
+  const enrichedCount = state?.enrichedCount ?? 0;
   const enrichmentPendingCount = state?.enrichmentPendingCount ?? null;
   const isAnalyzingAudio = state?.isAnalyzingAudio ?? false;
   const audioAnalyzed = state?.audioAnalyzed ?? 0;
@@ -152,12 +152,12 @@ export function AccountView({
               pendingLabel="Pending"
             />
           </Row>
-          <Row label="Tag enrichment">
+          <Row label="Catalog enrichment">
             <StatusBadge
-              done={!isEnrichingTags && enrichmentPendingCount === 0 && wishlistSynced && collectionSynced}
-              active={isEnrichingTags}
+              done={!isEnriching && enrichmentPendingCount === 0 && wishlistSynced && collectionSynced}
+              active={isEnriching}
               doneLabel="Complete"
-              activeLabel={tagsEnriched > 0 ? `Enriching... (${tagsEnriched} done${enrichmentPendingCount ? `, ${enrichmentPendingCount.toLocaleString()} remaining` : ''})` : enrichmentPendingCount ? `Enriching... (${enrichmentPendingCount.toLocaleString()} remaining)` : 'Enriching...'}
+              activeLabel={enrichedCount > 0 ? `Enriching... (${enrichedCount} done${enrichmentPendingCount ? `, ${enrichmentPendingCount.toLocaleString()} remaining` : ''})` : enrichmentPendingCount ? `Enriching... (${enrichmentPendingCount.toLocaleString()} remaining)` : 'Enriching...'}
               pendingLabel={enrichmentPendingCount !== null && enrichmentPendingCount > 0 ? `${enrichmentPendingCount.toLocaleString()} items remaining` : 'Pending'}
             />
           </Row>

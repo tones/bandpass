@@ -309,7 +309,7 @@ async function setCollectionSynced(fanId: number) {
   );
 }
 
-async function enrichPurchaseTags(fanId: number) {
+async function enrichFeedItems(fanId: number) {
   await execute(`
     UPDATE feed_items SET tags = (
       SELECT f2.tags FROM feed_items f2
@@ -367,7 +367,7 @@ export async function syncCollection(api: BandcampAPI, fanId: number): Promise<n
       lastToken = page.lastToken;
     }
 
-    await enrichPurchaseTags(fanId);
+    await enrichFeedItems(fanId);
     await setCollectionSynced(fanId);
   } finally {
     await setSyncing(fanId, false);
@@ -417,7 +417,7 @@ export async function syncCollectionIncremental(api: BandcampAPI, fanId: number)
       lastToken = page.lastToken;
     }
 
-    if (totalNew > 0) await enrichPurchaseTags(fanId);
+    if (totalNew > 0) await enrichFeedItems(fanId);
 
     const countRow = await queryOne<{ c: string }>('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1', [fanId]);
     const dbTotal = parseInt(countRow!.c, 10);
@@ -562,18 +562,18 @@ async function deleteStaleWishlistItems(fanId: number, keepIds: Set<string>) {
 }
 
 // ---------------------------------------------------------------------------
-// Tag enrichment queue
+// Catalog enrichment queue
 // ---------------------------------------------------------------------------
 
 /**
- * Populate the enrichment queue with album URLs from purchases missing tags
+ * Populate the enrichment queue with album URLs from feed items missing tags
  * and all wishlist items. Resets previously failed items so they get retried.
  */
 export async function enqueueForEnrichment(fanId: number): Promise<number> {
   return await transaction(async (client) => {
     const { rows: purchases } = await client.query(
       `SELECT DISTINCT album_url FROM feed_items
-       WHERE fan_id = $1 AND story_type = 'my_purchase' AND tags = '[]'::jsonb AND album_url != ''`,
+       WHERE fan_id = $1 AND tags = '[]'::jsonb AND album_url != ''`,
       [fanId],
     );
 
@@ -606,15 +606,15 @@ export async function enqueueForEnrichment(fanId: number): Promise<number> {
 }
 
 /**
- * Returns the number of items still needing tag enrichment: items with empty
- * tags, non-empty URLs, and whose URLs have NOT already been attempted in the
- * enrichment queue (any status). This prevents endless retriggers for albums
- * that genuinely have no tags or that repeatedly fail to scrape.
+ * Returns the number of items still needing catalog enrichment: items with
+ * empty tags, non-empty URLs, and whose URLs have NOT already been attempted
+ * in the enrichment queue (any status). This prevents endless retriggers for
+ * albums that genuinely have no tags or that repeatedly fail to scrape.
  */
 export async function getEnrichmentPendingCount(fanId: number): Promise<number> {
   const purchases = await queryOne<{ c: string }>(`
     SELECT COUNT(*) AS c FROM feed_items fi
-    WHERE fi.fan_id = $1 AND fi.story_type = 'my_purchase' AND fi.tags = '[]'::jsonb
+    WHERE fi.fan_id = $1 AND fi.tags = '[]'::jsonb
       AND fi.album_url != ''
       AND NOT EXISTS (SELECT 1 FROM enrichment_queue eq WHERE eq.album_url = fi.album_url)
   `, [fanId]);

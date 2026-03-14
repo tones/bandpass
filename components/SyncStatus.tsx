@@ -35,13 +35,13 @@ export function SyncStatus({ onSyncComplete, onOldestDateChange }: SyncStatusPro
         onOldestDateChange?.(data.oldestStoryDate);
       }
 
-      const active = data.isSyncing || data.isDeepSyncing || data.isCollectionSyncing || data.isWishlistSyncing || data.isEnrichingTags;
+      const active = data.isSyncing || data.isDeepSyncing || data.isCollectionSyncing || data.isWishlistSyncing || data.isEnriching;
       if (active) {
-        if (data.isEnrichingTags) {
+        if (data.isEnriching) {
           const parts: string[] = [];
-          if (data.tagsEnriched) parts.push(`${data.tagsEnriched} done`);
+          if (data.enrichedCount) parts.push(`${data.enrichedCount} done`);
           if (data.enrichmentPendingCount) parts.push(`${data.enrichmentPendingCount.toLocaleString()} remaining`);
-          setMessage(parts.length ? `Enriching tags... (${parts.join(', ')})` : 'Enriching tags...');
+          setMessage(parts.length ? `Enriching catalog... (${parts.join(', ')})` : 'Enriching catalog...');
         } else if (data.isWishlistSyncing) {
           setMessage('Syncing wishlist...');
         } else if (data.isCollectionSyncing) {

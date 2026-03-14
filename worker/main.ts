@@ -1,3 +1,6 @@
+import { spawn, ChildProcess } from 'child_process';
+import { createInterface, Interface } from 'readline';
+import fs from 'fs';
 import { execute, queryOne } from '../lib/db/index';
 import {
   getReleasesNeedingStreamRefresh,
@@ -17,73 +20,126 @@ import {
 import { getAudioAnalysisPendingCount } from '../lib/db/sync';
 import { fetchAlbumTracks, publicFetcher } from '../lib/bandcamp/scraper';
 import { normalizeBpm, toCamelot, formatKey } from '../lib/audio/camelot';
-
-import type { Essentia } from 'essentia.js';
+import { isS3Configured, uploadTrackFromFile, getPresignedUrl, trackKey } from '../lib/s3';
 
 const POLL_INTERVAL_MS = 30_000;
 const TRACK_DELAY_MS = 1_500;
 const RELEASE_DELAY_MS = 2_000;
-const FETCH_TIMEOUT_MS = 10_000;
 const MAX_CONSECUTIVE_FAILURES = 20;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-let essentiaInstance: Essentia | null = null;
+class EssentiaProcess {
+  private proc: ChildProcess | null = null;
+  private rl: Interface | null = null;
+  private pending: {
+    resolve: (v: { bpm: number; key: string; scale: string; timing: string; file?: string }) => void;
+    reject: (e: Error) => void;
+  } | null = null;
 
-async function getEssentia(): Promise<Essentia> {
-  if (essentiaInstance) return essentiaInstance;
-  console.log('Loading Essentia WASM...');
-  const { Essentia, EssentiaWASM } = await import('essentia.js');
-  essentiaInstance = new Essentia(EssentiaWASM);
-  console.log('Essentia WASM loaded');
-  return essentiaInstance;
-}
-
-async function analyzeTrack(
-  streamUrl: string,
-): Promise<{ bpm: number; musicalKey: string; keyCamelot: string | null }> {
-  const controller = new AbortController();
-  const fetchTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  let resp: Response;
-  try {
-    resp = await fetch(streamUrl, { redirect: 'follow', signal: controller.signal });
-  } finally {
-    clearTimeout(fetchTimer);
+  async ensure(): Promise<void> {
+    if (this.proc && this.proc.exitCode === null) return;
+    await this.start();
   }
 
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const mp3Buffer = Buffer.from(await resp.arrayBuffer());
+  private start(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      console.log('Spawning Python Essentia analyzer...');
+      this.proc = spawn('python3', ['worker/analyze.py'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
 
-  const decode = (await import('audio-decode')).default;
-  const audioBuffer = await decode(mp3Buffer);
-  const pcm = audioBuffer.getChannelData(0);
+      this.rl = createInterface({ input: this.proc.stdout! });
+      this.rl.on('line', (line) => {
+        if (!this.pending) return;
+        const { resolve: res, reject: rej } = this.pending;
+        this.pending = null;
+        try {
+          const result = JSON.parse(line);
+          if (result.error) rej(new Error(result.error));
+          else res(result);
+        } catch {
+          rej(new Error(`Invalid JSON from analyzer: ${line}`));
+        }
+      });
 
-  const essentia = await getEssentia();
-  const signal = essentia.arrayToVector(pcm);
+      const stderrLines: string[] = [];
+      const stderrRl = createInterface({ input: this.proc.stderr! });
+      stderrRl.on('line', (line) => {
+        if (line.includes('essentia-analyzer ready')) {
+          console.log('Python Essentia analyzer ready');
+          resolve();
+        } else {
+          console.log(`  [python] ${line}`);
+        }
+        stderrLines.push(line);
+      });
 
-  try {
-    const bpmResult = essentia.PercivalBpmEstimator(signal);
-    const bpm = normalizeBpm(bpmResult.bpm);
-    const keyResult = essentia.KeyExtractor(signal);
-    const musicalKey = formatKey(keyResult.key, keyResult.scale);
-    const keyCamelot = toCamelot(keyResult.key, keyResult.scale);
-    return { bpm, musicalKey, keyCamelot };
-  } finally {
-    signal.delete();
+      this.proc.on('exit', (code) => {
+        console.log(`Python analyzer exited with code ${code}`);
+        if (this.pending) {
+          this.pending.reject(new Error(`Analyzer process exited (code ${code})`));
+          this.pending = null;
+        }
+      });
+
+      this.proc.on('error', (err) => {
+        console.error('Failed to spawn Python analyzer:', err.message);
+        reject(err);
+      });
+
+      setTimeout(() => {
+        if (stderrLines.length === 0) {
+          reject(new Error('Python analyzer did not start within 10s'));
+        }
+      }, 10_000);
+    });
+  }
+
+  async analyze(
+    streamUrl: string,
+  ): Promise<{ bpm: number; musicalKey: string; keyCamelot: string | null; tempFile?: string }> {
+    await this.ensure();
+
+    const raw = await new Promise<{ bpm: number; key: string; scale: string; timing: string; file?: string }>(
+      (resolve, reject) => {
+        this.pending = { resolve, reject };
+        this.proc!.stdin!.write(JSON.stringify({ url: streamUrl }) + '\n');
+      },
+    );
+
+    console.log(`  [timing] ${raw.timing}`);
+
+    return {
+      bpm: normalizeBpm(raw.bpm),
+      musicalKey: formatKey(raw.key, raw.scale),
+      keyCamelot: toCamelot(raw.key, raw.scale),
+      tempFile: raw.file,
+    };
+  }
+
+  kill() {
+    if (this.proc && this.proc.exitCode === null) {
+      this.proc.stdin!.end();
+      this.proc.kill();
+    }
   }
 }
+
+const analyzer = new EssentiaProcess();
+let s3Enabled = false;
 
 async function saveAudioResult(
   trackId: number,
   streamUrl: string,
   result: { bpm: number; musicalKey: string; keyCamelot: string | null },
+  audioStorageKey?: string,
 ) {
   await execute(
-    "UPDATE catalog_tracks SET bpm = $1, musical_key = $2, key_camelot = $3, bpm_status = 'done' WHERE id = $4",
-    [result.bpm, result.musicalKey, result.keyCamelot, trackId],
+    "UPDATE catalog_tracks SET bpm = $1, musical_key = $2, key_camelot = $3, bpm_status = 'done', audio_storage_key = COALESCE($5, audio_storage_key) WHERE id = $4",
+    [result.bpm, result.musicalKey, result.keyCamelot, trackId, audioStorageKey ?? null],
   );
   await execute(
     'UPDATE feed_items SET bpm = $1, musical_key = $2 WHERE track_stream_url = $3 AND bpm IS NULL',
@@ -96,10 +152,7 @@ async function saveAudioResult(
 }
 
 async function markAudioFailed(trackId: number) {
-  await execute(
-    "UPDATE catalog_tracks SET bpm_status = 'failed' WHERE id = $1",
-    [trackId],
-  );
+  await execute("UPDATE catalog_tracks SET bpm_status = 'failed' WHERE id = $1", [trackId]);
 }
 
 async function isJobCancelled(jobId: number): Promise<boolean> {
@@ -161,8 +214,23 @@ async function processReleases() {
 
         try {
           console.log(`  Track ${track.id}: analyzing...`);
-          const result = await analyzeTrack(track.stream_url);
-          await saveAudioResult(track.id, track.stream_url, result);
+          const result = await analyzer.analyze(track.stream_url);
+
+          let storageKey: string | undefined;
+          if (s3Enabled && result.tempFile) {
+            try {
+              storageKey = await uploadTrackFromFile(track.id, result.tempFile);
+              console.log(`  Track ${track.id}: uploaded to S3 (${storageKey})`);
+            } catch (uploadErr) {
+              console.error(`  Track ${track.id}: S3 upload failed, continuing without storage:`, uploadErr);
+            }
+          }
+
+          if (result.tempFile) {
+            try { fs.unlinkSync(result.tempFile); } catch {}
+          }
+
+          await saveAudioResult(track.id, track.stream_url, result, storageKey);
           console.log(`  Track ${track.id}: bpm=${result.bpm} key=${result.musicalKey}`);
           consecutiveFailures = 0;
         } catch (err) {
@@ -215,10 +283,8 @@ async function main() {
 
   await cleanupStaleJobs(['audio_analysis']);
 
-  console.log('Audio worker starting...');
-
-  // Pre-load Essentia WASM so it's warm for first analysis
-  await getEssentia();
+  s3Enabled = isS3Configured();
+  console.log(`Audio worker starting... (S3 storage: ${s3Enabled ? 'enabled' : 'disabled'})`);
 
   while (true) {
     try {

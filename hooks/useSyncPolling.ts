@@ -14,8 +14,8 @@ export interface SyncState {
   isWishlistSyncing: boolean;
   wishlistSynced: boolean;
   wishlistItemsFound?: number;
-  isEnrichingTags: boolean;
-  tagsEnriched?: number;
+  isEnriching: boolean;
+  enrichedCount?: number;
   enrichmentPendingCount?: number;
   isAnalyzingAudio: boolean;
   audioAnalyzed?: number;
@@ -51,8 +51,8 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
   }, []);
 
   const isActive = useCallback((s: SyncState) => {
-    const jobRunning = s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing || s.isWishlistSyncing || s.isEnrichingTags || s.isAnalyzingAudio;
-    const enrichmentQueued = (s.enrichmentPendingCount ?? 0) > 0 && !s.isEnrichingTags;
+    const jobRunning = s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing || s.isWishlistSyncing || s.isEnriching || s.isAnalyzingAudio;
+    const enrichmentQueued = (s.enrichmentPendingCount ?? 0) > 0 && !s.isEnriching;
     return jobRunning || enrichmentQueued;
   }, []);
 

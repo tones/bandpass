@@ -1,5 +1,6 @@
 import { query, queryOne } from './index';
 import type { FeedItem, StoryType } from '@/lib/bandcamp/types/domain';
+import type { CatalogTrack } from './catalog';
 
 export interface FeedFilters {
   storyType?: StoryType;
@@ -187,4 +188,59 @@ export async function getItemCountByType(fanId: number, storyType: string): Prom
     [fanId, storyType],
   );
   return row ? parseInt(row.c, 10) : 0;
+}
+
+export async function getAlbumTracksForFeedItems(
+  albumUrls: string[],
+): Promise<Record<string, CatalogTrack[]>> {
+  if (albumUrls.length === 0) return {};
+
+  const rows = await query<{
+    album_url: string;
+    id: number;
+    release_id: number;
+    track_num: number;
+    title: string;
+    duration: number;
+    stream_url: string | null;
+    track_url: string | null;
+    bpm: number | null;
+    musical_key: string | null;
+    key_camelot: string | null;
+    audio_storage_key: string | null;
+  }>(`
+    SELECT cr.url AS album_url,
+           ct.id, ct.release_id, ct.track_num, ct.title, ct.duration,
+           ct.stream_url, ct.track_url, ct.bpm, ct.musical_key,
+           ct.key_camelot, ct.audio_storage_key
+    FROM catalog_releases cr
+    JOIN catalog_tracks ct ON ct.release_id = cr.id
+    WHERE cr.url = ANY($1)
+    ORDER BY cr.url, ct.track_num
+  `, [albumUrls]);
+
+  const map: Record<string, CatalogTrack[]> = {};
+  for (const row of rows) {
+    if (!map[row.album_url]) map[row.album_url] = [];
+    map[row.album_url].push({
+      id: row.id,
+      releaseId: row.release_id,
+      trackNum: row.track_num,
+      title: row.title,
+      duration: row.duration,
+      streamUrl: row.stream_url,
+      trackUrl: row.track_url,
+      bpm: row.bpm ?? null,
+      musicalKey: row.musical_key ?? null,
+      keyCamelot: row.key_camelot ?? null,
+      audioStorageKey: row.audio_storage_key ?? null,
+    });
+  }
+
+  // Only include releases with multiple tracks (albums, not singles)
+  for (const url of Object.keys(map)) {
+    if (map[url].length <= 1) delete map[url];
+  }
+
+  return map;
 }
