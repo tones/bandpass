@@ -1,6 +1,7 @@
 import { query, queryOne } from './index';
 import type { FeedItem, StoryType } from '@/lib/bandcamp/types/domain';
-import type { CatalogTrack } from './catalog';
+import type { CatalogTrack, CatalogTrackRow } from './catalog';
+import { rowToTrack } from './catalog';
 
 export interface FeedFilters {
   storyType?: StoryType;
@@ -35,15 +36,8 @@ export interface FeedItemRow {
   musical_key: string | null;
 }
 
-function safeParseTags(tags: string | string[]): string[] {
-  if (Array.isArray(tags)) return tags;
-  try {
-    const parsed = JSON.parse(tags);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
+import { safeParseTags } from './utils';
+export { safeParseTags };
 
 export function rowToFeedItem(row: FeedItemRow): FeedItem {
   return {
@@ -195,20 +189,7 @@ export async function getAlbumTracksForFeedItems(
 ): Promise<Record<string, CatalogTrack[]>> {
   if (albumUrls.length === 0) return {};
 
-  const rows = await query<{
-    album_url: string;
-    id: number;
-    release_id: number;
-    track_num: number;
-    title: string;
-    duration: number;
-    stream_url: string | null;
-    track_url: string | null;
-    bpm: number | null;
-    musical_key: string | null;
-    key_camelot: string | null;
-    audio_storage_key: string | null;
-  }>(`
+  const rows = await query<CatalogTrackRow & { album_url: string }>(`
     SELECT cr.url AS album_url,
            ct.id, ct.release_id, ct.track_num, ct.title, ct.duration,
            ct.stream_url, ct.track_url, ct.bpm, ct.musical_key,
@@ -221,20 +202,7 @@ export async function getAlbumTracksForFeedItems(
 
   const map: Record<string, CatalogTrack[]> = {};
   for (const row of rows) {
-    if (!map[row.album_url]) map[row.album_url] = [];
-    map[row.album_url].push({
-      id: row.id,
-      releaseId: row.release_id,
-      trackNum: row.track_num,
-      title: row.title,
-      duration: row.duration,
-      streamUrl: row.stream_url,
-      trackUrl: row.track_url,
-      bpm: row.bpm ?? null,
-      musicalKey: row.musical_key ?? null,
-      keyCamelot: row.key_camelot ?? null,
-      audioStorageKey: row.audio_storage_key ?? null,
-    });
+    (map[row.album_url] ??= []).push(rowToTrack(row));
   }
 
   // Only include releases with multiple tracks (albums, not singles)

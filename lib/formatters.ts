@@ -34,7 +34,8 @@ export function proxyUrl(url: string, catalogTrackId?: number): string {
 }
 
 import type { CatalogTrack, CatalogRelease } from '@/lib/db/catalog';
-import type { FeedItem } from '@/lib/bandcamp/types/domain';
+import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
+import type { CrateCatalogItem, CrateReleaseItem } from '@/lib/db/crates';
 
 export function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRelease): FeedItem {
   return {
@@ -49,5 +50,73 @@ export function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRele
     musicalKey: track.musicalKey,
     price: null,
     socialSignal: { fan: null, alsoCollectedCount: 0 },
+  };
+}
+
+export function feedItemToPseudoRelease(item: FeedItem): CatalogRelease {
+  return {
+    id: 0,
+    bandSlug: '',
+    bandName: item.artist.name,
+    bandUrl: item.artist.url,
+    title: item.album.title,
+    url: item.album.url,
+    imageUrl: item.album.imageUrl,
+    releaseType: 'album',
+    scrapedAt: '',
+    releaseDate: null,
+    tags: [],
+  };
+}
+
+export function catalogItemToFeedItem(item: CrateCatalogItem): FeedItem {
+  return {
+    id: item.crateItemId,
+    storyType: 'new_release',
+    date: new Date(),
+    album: { id: 0, title: item.releaseTitle, url: item.releaseUrl, imageUrl: item.imageUrl },
+    artist: { id: 0, name: item.bandName, url: item.bandUrl },
+    track: { title: item.trackTitle, duration: item.trackDuration, streamUrl: item.streamUrl },
+    tags: [],
+    bpm: item.bpm ?? null,
+    musicalKey: item.musicalKey ?? null,
+    price: null,
+    socialSignal: { fan: null, alsoCollectedCount: 0 },
+  };
+}
+
+export function wishlistItemToFeedItem(item: WishlistItem): FeedItem {
+  return {
+    id: item.id,
+    storyType: 'new_release',
+    date: new Date(),
+    album: { id: item.tralbumId, title: item.title, url: item.itemUrl, imageUrl: item.imageUrl },
+    artist: { id: 0, name: item.artistName, url: item.artistUrl },
+    track: {
+      title: item.featuredTrackTitle ?? item.title,
+      duration: item.featuredTrackDuration ?? 0,
+      streamUrl: item.streamUrl,
+    },
+    tags: [],
+    bpm: item.bpm ?? null,
+    musicalKey: item.musicalKey ?? null,
+    price: null,
+    socialSignal: { fan: null, alsoCollectedCount: item.alsoCollectedCount },
+  };
+}
+
+export function crateReleaseToRelease(release: CrateReleaseItem): CatalogRelease {
+  return {
+    id: release.releaseId,
+    bandSlug: release.bandSlug,
+    bandName: release.bandName,
+    bandUrl: release.bandUrl,
+    title: release.releaseTitle,
+    url: release.releaseUrl,
+    imageUrl: release.imageUrl,
+    releaseType: release.releaseType,
+    scrapedAt: '',
+    releaseDate: release.releaseDate,
+    tags: release.tags,
   };
 }

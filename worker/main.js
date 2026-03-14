@@ -425,19 +425,23 @@ var EssentiaProcess = class {
           rej(new Error(`Invalid JSON from analyzer: ${line}`));
         }
       });
-      const stderrLines = [];
+      let resolved = false;
       const stderrRl = (0, import_readline.createInterface)({ input: this.proc.stderr });
       stderrRl.on("line", (line) => {
         if (line.includes("essentia-analyzer ready")) {
+          resolved = true;
           console.log("Python Essentia analyzer ready");
           resolve();
         } else {
           console.log(`  [python] ${line}`);
         }
-        stderrLines.push(line);
       });
       this.proc.on("exit", (code) => {
         console.log(`Python analyzer exited with code ${code}`);
+        if (!resolved) {
+          resolved = true;
+          reject(new Error(`Analyzer process exited before ready (code ${code})`));
+        }
         if (this.pending) {
           this.pending.reject(new Error(`Analyzer process exited (code ${code})`));
           this.pending = null;
@@ -445,10 +449,14 @@ var EssentiaProcess = class {
       });
       this.proc.on("error", (err) => {
         console.error("Failed to spawn Python analyzer:", err.message);
-        reject(err);
+        if (!resolved) {
+          resolved = true;
+          reject(err);
+        }
       });
       setTimeout(() => {
-        if (stderrLines.length === 0) {
+        if (!resolved) {
+          resolved = true;
           reject(new Error("Python analyzer did not start within 10s"));
         }
       }, 1e4);

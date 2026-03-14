@@ -1,4 +1,5 @@
 import { query, queryOne, execute, transaction } from './index';
+import { safeParseTags } from './utils';
 
 function normalizeDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -87,16 +88,6 @@ function rowToRelease(row: {
   release_date: string | null;
   tags: string | string[];
 }): CatalogRelease {
-  let tags: string[] = [];
-  if (Array.isArray(row.tags)) {
-    tags = row.tags;
-  } else if (typeof row.tags === 'string') {
-    try {
-      tags = JSON.parse(row.tags || '[]');
-    } catch {
-      tags = [];
-    }
-  }
   return {
     id: row.id,
     bandSlug: row.band_slug,
@@ -108,7 +99,7 @@ function rowToRelease(row: {
     releaseType: row.release_type as 'album' | 'track',
     scrapedAt: row.scraped_at instanceof Date ? row.scraped_at.toISOString() : row.scraped_at,
     releaseDate: row.release_date,
-    tags,
+    tags: safeParseTags(row.tags),
   };
 }
 
@@ -172,7 +163,7 @@ export async function getCachedAlbumTracks(releaseId: number): Promise<CatalogTr
   return rows.map(rowToTrack);
 }
 
-function rowToTrack(row: {
+export interface CatalogTrackRow {
   id: number;
   release_id: number;
   track_num: number;
@@ -184,7 +175,9 @@ function rowToTrack(row: {
   musical_key: string | null;
   key_camelot: string | null;
   audio_storage_key: string | null;
-}): CatalogTrack {
+}
+
+export function rowToTrack(row: CatalogTrackRow): CatalogTrack {
   return {
     id: row.id,
     releaseId: row.release_id,

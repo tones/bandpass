@@ -5,7 +5,8 @@ import WavesurferPlayer from '@wavesurfer/react';
 import type WaveSurfer from 'wavesurfer.js';
 import type { FeedItem } from '@/lib/bandcamp';
 import { formatDuration, proxyUrl } from '@/lib/formatters';
-import { CrateIcon } from '@/components/icons/CrateIcon';
+import { TrackActions } from '@/components/TrackActions';
+import type { CrateInfo } from '@/components/TrackActions';
 import { usePlayer } from '@/contexts/PlayerContext';
 import {
   getCratesAction,
@@ -14,11 +15,6 @@ import {
   addToCrateAction,
   removeFromCrateAction,
 } from '@/app/crates/actions';
-
-interface CrateInfo {
-  id: number;
-  name: string;
-}
 
 interface WaveformPlayerProps {
   item: FeedItem;
@@ -43,12 +39,9 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
 
   const [crates, setCrates] = useState<CrateInfo[]>([]);
   const [itemCrateIds, setItemCrateIds] = useState<number[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setPickerOpen(false);
     getCratesAction()
       .then((c) => { if (!cancelled) setCrates(c.filter((cr) => cr.source === 'user').map(({ id, name }) => ({ id, name }))); })
       .catch(() => {});
@@ -58,43 +51,25 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
     return () => { cancelled = true; };
   }, [item.id]);
 
-  useEffect(() => {
-    if (!pickerOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setPickerOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [pickerOpen]);
-
-  const isInAnyCrate = itemCrateIds.length > 0;
-  const multiCrate = crates.length > 1;
-
-  const handleCrateClick = useCallback(() => {
-    if (multiCrate) {
-      setPickerOpen((prev) => !prev);
-    } else {
+  const handleToggleCrate = useCallback(() => {
+    setItemCrateIds((prev) => (prev.length > 0 ? [] : crates.length === 1 ? [crates[0].id] : []));
+    toggleDefaultCrate(item.id).catch(() => {
       setItemCrateIds((prev) => (prev.length > 0 ? [] : crates.length === 1 ? [crates[0].id] : []));
-      toggleDefaultCrate(item.id).catch(() => {
-        setItemCrateIds((prev) => (prev.length > 0 ? [] : crates.length === 1 ? [crates[0].id] : []));
-      });
-    }
-  }, [multiCrate, item.id, crates]);
+    });
+  }, [item.id, crates]);
 
-  const handlePickerToggle = useCallback((crateId: number, isIn: boolean) => {
-    if (isIn) {
+  const handleAddToCrate = useCallback((crateId: number) => {
+    setItemCrateIds((prev) => [...prev, crateId]);
+    addToCrateAction(crateId, item.id).catch(() => {
       setItemCrateIds((prev) => prev.filter((id) => id !== crateId));
-      removeFromCrateAction(crateId, item.id).catch(() => {
-        setItemCrateIds((prev) => [...prev, crateId]);
-      });
-    } else {
+    });
+  }, [item.id]);
+
+  const handleRemoveFromCrate = useCallback((crateId: number) => {
+    setItemCrateIds((prev) => prev.filter((id) => id !== crateId));
+    removeFromCrateAction(crateId, item.id).catch(() => {
       setItemCrateIds((prev) => [...prev, crateId]);
-      addToCrateAction(crateId, item.id).catch(() => {
-        setItemCrateIds((prev) => prev.filter((id) => id !== crateId));
-      });
-    }
+    });
   }, [item.id]);
 
   const onReady = useCallback((ws: WaveSurfer) => {
@@ -194,51 +169,20 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
           ⏭
         </button>
 
-        <div className="relative" ref={pickerRef}>
-          <button
-            onClick={handleCrateClick}
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded transition-colors ${
-              isInAnyCrate
-                ? 'text-amber-400 hover:text-amber-300'
-                : 'text-zinc-600 hover:text-zinc-400'
-            }`}
-            title={isInAnyCrate ? 'Remove from crate' : 'Add to crate'}
-          >
-            <CrateIcon filled={isInAnyCrate} />
-          </button>
-
-          {pickerOpen && multiCrate && (
-            <div className="absolute bottom-full right-0 z-30 mb-1 min-w-[160px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
-              {crates.map((crate) => {
-                const isIn = itemCrateIds.includes(crate.id);
-                return (
-                  <button
-                    key={crate.id}
-                    onClick={() => handlePickerToggle(crate.id, isIn)}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-zinc-800"
-                  >
-                    <span className={`w-4 text-center text-xs ${isIn ? 'text-amber-400' : 'text-zinc-700'}`}>
-                      {isIn ? '✓' : ''}
-                    </span>
-                    <span className={isIn ? 'text-zinc-100' : 'text-zinc-400'}>
-                      {crate.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <a
-          href={item.album.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-sm text-zinc-600 transition-colors hover:text-zinc-400"
-          title="Open on Bandcamp"
-        >
-          ↗
-        </a>
+        <TrackActions
+          isPlaying={false}
+          hasStream={false}
+          isInCrate={itemCrateIds.length > 0}
+          bandcampUrl={item.album.url}
+          onPlay={() => {}}
+          onToggleCrate={handleToggleCrate}
+          size="md"
+          showPlayButton={false}
+          crates={crates}
+          itemCrateIds={itemCrateIds}
+          onAddToCrate={handleAddToCrate}
+          onRemoveFromCrate={handleRemoveFromCrate}
+        />
 
         {onClose && (
           <button

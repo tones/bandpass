@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useCallback, useRef, useEffect, useMemo, useState } from 'react';
 import type { CatalogRelease, CatalogTrack } from '@/lib/db/catalog';
 import { catalogTrackToFeedItem } from '@/lib/formatters';
-import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
+import { useCrateActions } from '@/hooks/useCrateActions';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
 import { TrackList } from '@/components/TrackList';
@@ -42,9 +42,9 @@ interface TagsCache {
 export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateItemIds = [], initialCrates = [], initialItemCrateMap = {}, loggedIn = false }: CatalogViewProps) {
   const { playingTrackUrl, isPlaying, play, setPlaylist } = usePlayer();
   const { lastMusicPath } = useNavigation();
-  const [crates] = useState<CrateInfo[]>(initialCrates);
-  const [crateItemIds, setCrateItemIds] = useState<Set<string>>(() => new Set(initialCrateItemIds));
-  const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
+  const { crates, crateItemIds, itemCrateMap, toggleCrate, addToCrate, removeFromCrate } = useCrateActions({
+    initialCrateItemIds, initialCrates, initialItemCrateMap,
+  });
   const [trackCache, setTrackCache] = useState<TrackCache>({});
   const [releaseDates, setReleaseDates] = useState<ReleaseDateCache>({});
   const [tagsCache, setTagsCache] = useState<TagsCache>({});
@@ -118,69 +118,6 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
     play(catalogTrackToFeedItem(track, release));
   }, [play]);
 
-  const handleToggleItem = useCallback(async (id: string) => {
-    setCrateItemIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    try {
-      await toggleDefaultCrate(id);
-    } catch {
-      setCrateItemIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-    }
-  }, []);
-
-  const handleAddItemToCrate = useCallback(async (id: string, crateId: number) => {
-    setCrateItemIds((prev) => new Set(prev).add(id));
-    setItemCrateMap((prev) => ({
-      ...prev,
-      [id]: [...(prev[id] ?? []), crateId],
-    }));
-    try {
-      await addToCrateAction(crateId, id);
-    } catch {
-      setItemCrateMap((prev) => {
-        const updated = (prev[id] ?? []).filter((c) => c !== crateId);
-        const next = { ...prev };
-        if (updated.length === 0) delete next[id];
-        else next[id] = updated;
-        return next;
-      });
-    }
-  }, []);
-
-  const handleRemoveItemFromCrate = useCallback(async (id: string, crateId: number) => {
-    const prevCrateIds = itemCrateMap[id] ?? [];
-    const updated = prevCrateIds.filter((c) => c !== crateId);
-    if (updated.length === 0) {
-      setCrateItemIds((prevIds) => {
-        const s = new Set(prevIds);
-        s.delete(id);
-        return s;
-      });
-      setItemCrateMap((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-    } else {
-      setItemCrateMap((prev) => ({ ...prev, [id]: updated }));
-    }
-    try {
-      await removeFromCrateAction(crateId, id);
-    } catch {
-      setCrateItemIds((prevIds) => new Set(prevIds).add(id));
-      setItemCrateMap((prev) => ({ ...prev, [id]: prevCrateIds }));
-    }
-  }, [itemCrateMap]);
-
   return (
     <div className="mx-auto max-w-4xl px-6 py-6 pb-28">
       <div className="mb-6">
@@ -225,9 +162,9 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
             crates={crates}
             loggedIn={loggedIn}
             onPlayTrack={(track) => playTrack(track, release)}
-            onToggleItem={handleToggleItem}
-            onAddItemToCrate={handleAddItemToCrate}
-            onRemoveItemFromCrate={handleRemoveItemFromCrate}
+            onToggleItem={toggleCrate}
+            onAddItemToCrate={addToCrate}
+            onRemoveItemFromCrate={removeFromCrate}
           />
         ))}
       </div>

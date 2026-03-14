@@ -13,7 +13,7 @@ import type { CrateInfo } from './TrackActions';
 import { AlbumCard } from '@/components/AlbumCard';
 import { TagPill } from '@/components/TagPill';
 import { BpmKeyBadge } from '@/components/BpmKeyBadge';
-import { catalogTrackToFeedItem } from '@/lib/formatters';
+import { catalogTrackToFeedItem, catalogItemToFeedItem, wishlistItemToFeedItem, crateReleaseToRelease } from '@/lib/formatters';
 import { extractSlug, getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import {
   removeFromCrateAction,
@@ -91,38 +91,15 @@ export function CratesView({
 
     for (const item of catalogItems) {
       if (item.streamUrl) {
-        result.push({
-          id: item.crateItemId,
-          storyType: 'new_release',
-          date: new Date(),
-          album: { id: 0, title: item.releaseTitle, url: item.releaseUrl, imageUrl: item.imageUrl },
-          artist: { id: 0, name: item.bandName, url: item.bandUrl },
-          track: { title: item.trackTitle, duration: item.trackDuration, streamUrl: item.streamUrl },
-          tags: [],
-          bpm: item.bpm ?? null,
-          musicalKey: item.musicalKey ?? null,
-          price: null,
-          socialSignal: { fan: null, alsoCollectedCount: 0 },
-        });
+        result.push(catalogItemToFeedItem(item));
       }
     }
 
     for (const release of releaseItems) {
+      const rel = crateReleaseToRelease(release);
       for (const track of release.tracks) {
         if (track.streamUrl) {
-          result.push(catalogTrackToFeedItem(track, {
-            id: release.releaseId,
-            bandSlug: release.bandSlug,
-            bandName: release.bandName,
-            bandUrl: release.bandUrl,
-            title: release.releaseTitle,
-            url: release.releaseUrl,
-            imageUrl: release.imageUrl,
-            releaseType: release.releaseType,
-            scrapedAt: '',
-            releaseDate: release.releaseDate,
-            tags: release.tags,
-          }));
+          result.push(catalogTrackToFeedItem(track, rel));
         }
       }
     }
@@ -136,19 +113,7 @@ export function CratesView({
           }
         }
       } else if (item.streamUrl) {
-        result.push({
-          id: item.id,
-          storyType: 'new_release',
-          date: new Date(),
-          album: { id: item.tralbumId, title: item.title, url: item.itemUrl, imageUrl: item.imageUrl },
-          artist: { id: 0, name: item.artistName, url: item.artistUrl },
-          track: { title: item.featuredTrackTitle ?? item.title, duration: item.featuredTrackDuration ?? 0, streamUrl: item.streamUrl },
-          tags: [],
-          bpm: item.bpm ?? null,
-          musicalKey: item.musicalKey ?? null,
-          price: null,
-          socialSignal: { fan: null, alsoCollectedCount: item.alsoCollectedCount },
-        });
+        result.push(wishlistItemToFeedItem(item));
       }
     }
 
@@ -308,39 +273,11 @@ export function CratesView({
   const handlePlay = playFeedItem;
 
   const handlePlayCatalog = useCallback((item: CrateCatalogItem) => {
-    playFeedItem({
-      id: item.crateItemId,
-      storyType: 'new_release',
-      date: new Date(),
-      album: { id: 0, title: item.releaseTitle, url: item.releaseUrl, imageUrl: item.imageUrl },
-      artist: { id: 0, name: item.bandName, url: item.bandUrl },
-      track: { title: item.trackTitle, duration: item.trackDuration, streamUrl: item.streamUrl },
-      tags: [],
-      bpm: item.bpm ?? null,
-      musicalKey: item.musicalKey ?? null,
-      price: null,
-      socialSignal: { fan: null, alsoCollectedCount: 0 },
-    });
+    playFeedItem(catalogItemToFeedItem(item));
   }, [playFeedItem]);
 
   const handlePlayWishlist = useCallback((item: WishlistItem) => {
-    playFeedItem({
-      id: item.id,
-      storyType: 'new_release',
-      date: new Date(),
-      album: { id: item.tralbumId, title: item.title, url: item.itemUrl, imageUrl: item.imageUrl },
-      artist: { id: 0, name: item.artistName, url: item.artistUrl },
-      track: {
-        title: item.featuredTrackTitle ?? item.title,
-        duration: item.featuredTrackDuration ?? 0,
-        streamUrl: item.streamUrl,
-      },
-      tags: [],
-      bpm: item.bpm ?? null,
-      musicalKey: item.musicalKey ?? null,
-      price: null,
-      socialSignal: { fan: null, alsoCollectedCount: item.alsoCollectedCount },
-    });
+    playFeedItem(wishlistItemToFeedItem(item));
   }, [playFeedItem]);
 
   const handlePlayAlbumTrack = useCallback((track: CatalogTrack, item: WishlistItem) => {
@@ -350,19 +287,7 @@ export function CratesView({
   }, [playFeedItem, albumTracks]);
 
   const handlePlayReleaseTrack = useCallback((track: CatalogTrack, release: CrateReleaseItem) => {
-    playFeedItem(catalogTrackToFeedItem(track, {
-      id: release.releaseId,
-      bandSlug: release.bandSlug,
-      bandName: release.bandName,
-      bandUrl: release.bandUrl,
-      title: release.releaseTitle,
-      url: release.releaseUrl,
-      imageUrl: release.imageUrl,
-      releaseType: release.releaseType,
-      scrapedAt: '',
-      releaseDate: release.releaseDate,
-      tags: release.tags,
-    }));
+    playFeedItem(catalogTrackToFeedItem(track, crateReleaseToRelease(release)));
   }, [playFeedItem]);
 
   const handleCreateCrate = useCallback(() => {

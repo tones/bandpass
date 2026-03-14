@@ -4,16 +4,15 @@ import { useState, useCallback, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DateRange } from 'react-day-picker';
 import type { FeedItem } from '@/lib/bandcamp';
-import type { CatalogTrack, CatalogRelease } from '@/lib/db/catalog';
-import { catalogTrackToFeedItem } from '@/lib/formatters';
+import type { CatalogTrack } from '@/lib/db/catalog';
+import { catalogTrackToFeedItem, feedItemToPseudoRelease } from '@/lib/formatters';
 import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
 import { FilterBar } from './FilterBar';
 import type { FeedFilter } from './FilterBar';
 import { SyncStatus } from '@/components/SyncStatus';
 import { queryFeed } from '@/app/timeline/actions';
-import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
-import type { CrateInfo } from '@/components/TrackActions';
+import { useCrateActions } from '@/hooks/useCrateActions';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 
@@ -57,7 +56,7 @@ interface FeedViewProps {
   initialTags: { name: string; count: number }[];
   initialFriends: { name: string; username: string; count: number }[];
   initialCrateItemIds?: string[];
-  initialCrates?: CrateInfo[];
+  initialCrates?: { id: number; name: string }[];
   initialItemCrateMap?: Record<string, number[]>;
   initialAlbumTracksMap?: Record<string, CatalogTrack[]>;
   oldestStoryDate?: number | null;
@@ -94,11 +93,11 @@ export function FeedView({
   const [selectedFriend, setSelectedFriend] = useState<string | null>(initialFriend ?? null);
   const [selectedTag, setSelectedTag] = useState<string | null>(initialTag ?? null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [crates] = useState<CrateInfo[]>(initialCrates);
-  const [crateItemIds, setCrateItemIds] = useState<Set<string>>(new Set(initialCrateItemIds));
-  const [itemCrateMap, setItemCrateMap] = useState<Record<string, number[]>>(initialItemCrateMap);
+  const { crates, crateItemIds, itemCrateMap, toggleCrate, addToCrate, removeFromCrate } = useCrateActions({
+    initialCrateItemIds, initialCrates, initialItemCrateMap,
+  });
   const [albumTracksMap, setAlbumTracksMap] = useState<Record<string, CatalogTrack[]>>(initialAlbumTracksMap);
-  const { playingTrackUrl, playingItem, isPlaying: isPlayerPlaying, play: handlePlay, setPlaylist } = usePlayer();
+  const { playingTrackUrl, isPlaying: isPlayerPlaying, play: handlePlay, setPlaylist } = usePlayer();
   const [isPending, startTransition] = useTransition();
   const [dynamicOldestDate, setDynamicOldestDate] = useState(oldestStoryDate ?? null);
 
@@ -107,19 +106,7 @@ export function FeedView({
     for (const item of items) {
       const tracks = albumTracksMap[item.album.url];
       if (tracks && tracks.length > 1) {
-        const pseudoRelease: CatalogRelease = {
-          id: 0,
-          bandSlug: '',
-          bandName: item.artist.name,
-          bandUrl: item.artist.url,
-          title: item.album.title,
-          url: item.album.url,
-          imageUrl: item.album.imageUrl,
-          releaseType: 'album',
-          scrapedAt: '',
-          releaseDate: null,
-          tags: [],
-        };
+        const pseudoRelease = feedItemToPseudoRelease(item);
         for (const t of tracks) {
           if (t.streamUrl) playlistItems.push(catalogTrackToFeedItem(t, pseudoRelease));
         }
@@ -228,69 +215,6 @@ export function FeedView({
     setDynamicOldestDate((prev) => (prev === null || timestamp < prev) ? timestamp : prev);
   }, []);
 
-  const toggleCrate = useCallback(async (id: string) => {
-    setCrateItemIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    try {
-      await toggleDefaultCrate(id);
-    } catch {
-      setCrateItemIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-    }
-  }, []);
-
-  const handleAddToCrate = useCallback(async (itemId: string, crateId: number) => {
-    setCrateItemIds((prev) => new Set(prev).add(itemId));
-    setItemCrateMap((prev) => ({
-      ...prev,
-      [itemId]: [...(prev[itemId] ?? []), crateId],
-    }));
-    try {
-      await addToCrateAction(crateId, itemId);
-    } catch {
-      setItemCrateMap((prev) => {
-        const updated = (prev[itemId] ?? []).filter((id) => id !== crateId);
-        const next = { ...prev };
-        if (updated.length === 0) delete next[itemId];
-        else next[itemId] = updated;
-        return next;
-      });
-    }
-  }, []);
-
-  const handleRemoveFromCrate = useCallback(async (itemId: string, crateId: number) => {
-    const prevCrateIds = itemCrateMap[itemId] ?? [];
-    const updated = prevCrateIds.filter((id) => id !== crateId);
-    if (updated.length === 0) {
-      setCrateItemIds((prevIds) => {
-        const s = new Set(prevIds);
-        s.delete(itemId);
-        return s;
-      });
-      setItemCrateMap((prev) => {
-        const next = { ...prev };
-        delete next[itemId];
-        return next;
-      });
-    } else {
-      setItemCrateMap((prev) => ({ ...prev, [itemId]: updated }));
-    }
-    try {
-      await removeFromCrateAction(crateId, itemId);
-    } catch {
-      setCrateItemIds((prevIds) => new Set(prevIds).add(itemId));
-      setItemCrateMap((prev) => ({ ...prev, [itemId]: prevCrateIds }));
-    }
-  }, [itemCrateMap]);
-
   const grouped = groupByDate(items);
 
   return (
@@ -323,30 +247,27 @@ export function FeedView({
               key={entry.item.id}
               item={entry.item}
               isInCrate={crateItemIds.has(entry.item.id)}
-              isPlaying={isPlayerPlaying && playingTrackUrl === entry.item.track?.streamUrl}
+              isPlaying={isPlayerPlaying && (
+                playingTrackUrl === entry.item.track?.streamUrl ||
+                (albumTracksMap[entry.item.album.url]?.some((t) => t.streamUrl === playingTrackUrl) ?? false)
+              )}
               onToggleCrate={() => toggleCrate(entry.item.id)}
               onPlay={() => handlePlay(entry.item)}
               exchangeRates={exchangeRates}
               crates={crates}
               itemCrateIds={itemCrateMap[entry.item.id]}
-              onAddToCrate={(crateId) => handleAddToCrate(entry.item.id, crateId)}
-              onRemoveFromCrate={(crateId) => handleRemoveFromCrate(entry.item.id, crateId)}
-              albumTracks={albumTracksMap[entry.item.album.url]}
-              playingTrackUrl={playingTrackUrl}
-              isPlayerPlaying={isPlayerPlaying}
-              itemCrateMap={itemCrateMap}
-              onPlayAlbumTrack={(track) => {
-                const pseudoRelease: CatalogRelease = {
-                  id: 0, bandSlug: '', bandName: entry.item.artist.name,
-                  bandUrl: entry.item.artist.url, title: entry.item.album.title,
-                  url: entry.item.album.url, imageUrl: entry.item.album.imageUrl,
-                  releaseType: 'album', scrapedAt: '', releaseDate: null, tags: [],
-                };
-                handlePlay(catalogTrackToFeedItem(track, pseudoRelease));
-              }}
-              onToggleTrackCrate={toggleCrate}
-              onAddTrackToCrate={handleAddToCrate}
-              onRemoveTrackFromCrate={handleRemoveFromCrate}
+              onAddToCrate={(crateId) => addToCrate(entry.item.id, crateId)}
+              onRemoveFromCrate={(crateId) => removeFromCrate(entry.item.id, crateId)}
+              albumTrackContext={albumTracksMap[entry.item.album.url] ? {
+                tracks: albumTracksMap[entry.item.album.url],
+                playingTrackUrl,
+                isPlayerPlaying,
+                itemCrateMap,
+                onPlayTrack: (track) => handlePlay(catalogTrackToFeedItem(track, feedItemToPseudoRelease(entry.item))),
+                onToggleCrate: toggleCrate,
+                onAddToCrate: addToCrate,
+                onRemoveFromCrate: removeFromCrate,
+              } : undefined}
             />
           ),
         )}

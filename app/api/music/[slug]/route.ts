@@ -10,6 +10,7 @@ import {
   cacheAlbumTracks,
 } from '@/lib/db/catalog';
 import { queryOne } from '@/lib/db/index';
+import { safeParseTags } from '@/lib/db/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,18 +94,10 @@ export async function POST(
       release_date: string | null;
       tags: string | string[];
     }>('SELECT release_date, tags FROM catalog_releases WHERE id = $1', [releaseId]);
-    let tags: string[] = [];
-    if (release?.tags) {
-      if (Array.isArray(release.tags)) {
-        tags = release.tags;
-      } else {
-        try { tags = JSON.parse(release.tags); } catch { tags = []; }
-      }
-    }
     return NextResponse.json({
       tracks: cached,
       releaseDate: release?.release_date ?? null,
-      tags,
+      tags: release?.tags ? safeParseTags(release.tags) : [],
       fromCache: true,
     });
   }

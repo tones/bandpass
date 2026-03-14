@@ -62,7 +62,7 @@ def analyze(url: str) -> dict:
             "timing": timing,
             "file": tmp_path,
         }
-    except:
+    except Exception:
         os.unlink(tmp_path)
         raise
 

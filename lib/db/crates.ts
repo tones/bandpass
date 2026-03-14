@@ -1,8 +1,10 @@
 import { query, queryOne, execute } from './index';
 import { rowToFeedItem } from './queries';
+import { safeParseTags } from './utils';
 import type { FeedItemRow } from './queries';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
-import type { CatalogTrack, CatalogRelease } from './catalog';
+import type { CatalogTrack, CatalogRelease, CatalogTrackRow } from './catalog';
+import { rowToTrack } from './catalog';
 
 export interface Crate {
   id: number;
@@ -203,12 +205,7 @@ export async function getCrateReleaseItems(crateId: number, fanId: number): Prom
 
   if (releaseIds.length > 0) {
     const placeholders = releaseIds.map((_, i) => `$${i + 1}`).join(',');
-    const trackRows = await query<{
-      id: number; release_id: number; track_num: number; title: string;
-      duration: number; stream_url: string | null; track_url: string | null;
-      bpm: number | null; musical_key: string | null; key_camelot: string | null;
-      audio_storage_key: string | null;
-    }>(`
+    const trackRows = await query<CatalogTrackRow>(`
       SELECT id, release_id, track_num, title, duration, stream_url, track_url,
              bpm, musical_key, key_camelot, audio_storage_key
       FROM catalog_tracks
@@ -217,44 +214,24 @@ export async function getCrateReleaseItems(crateId: number, fanId: number): Prom
     `, releaseIds);
 
     for (const t of trackRows) {
-      (trackMap[t.release_id] ??= []).push({
-        id: t.id,
-        releaseId: t.release_id,
-        trackNum: t.track_num,
-        title: t.title,
-        duration: t.duration,
-        streamUrl: t.stream_url,
-        trackUrl: t.track_url,
-        bpm: t.bpm,
-        musicalKey: t.musical_key,
-        keyCamelot: t.key_camelot,
-        audioStorageKey: t.audio_storage_key,
-      });
+      (trackMap[t.release_id] ??= []).push(rowToTrack(t));
     }
   }
 
-  return rows.map((r) => {
-    let tags: string[] = [];
-    if (Array.isArray(r.tags)) {
-      tags = r.tags;
-    } else {
-      try { tags = JSON.parse(r.tags || '[]'); } catch { /* ignore */ }
-    }
-    return {
-      crateItemId: r.feed_item_id,
-      releaseId: r.release_id,
-      releaseTitle: r.title,
-      releaseUrl: r.url,
-      releaseType: r.release_type as 'album' | 'track',
-      imageUrl: r.image_url,
-      bandName: r.band_name,
-      bandUrl: r.band_url,
-      bandSlug: r.band_slug,
-      tags,
-      releaseDate: r.release_date,
-      tracks: trackMap[r.release_id] ?? [],
-    };
-  });
+  return rows.map((r) => ({
+    crateItemId: r.feed_item_id,
+    releaseId: r.release_id,
+    releaseTitle: r.title,
+    releaseUrl: r.url,
+    releaseType: r.release_type as 'album' | 'track',
+    imageUrl: r.image_url,
+    bandName: r.band_name,
+    bandUrl: r.band_url,
+    bandSlug: r.band_slug,
+    tags: safeParseTags(r.tags),
+    releaseDate: r.release_date,
+    tracks: trackMap[r.release_id] ?? [],
+  }));
 }
 
 export async function addToCrate(crateId: number, fanId: number, feedItemId: string): Promise<void> {
@@ -354,12 +331,6 @@ function rowToWishlistItem(r: {
   bpm?: number | null;
   musical_key?: string | null;
 }): WishlistItem {
-  let tags: string[] = [];
-  if (Array.isArray(r.tags)) {
-    tags = r.tags;
-  } else {
-    try { tags = JSON.parse(r.tags || '[]'); } catch { tags = []; }
-  }
   return {
     id: r.id,
     tralbumId: r.tralbum_id,
@@ -374,7 +345,7 @@ function rowToWishlistItem(r: {
     streamUrl: r.stream_url,
     alsoCollectedCount: r.also_collected_count,
     isPreorder: r.is_preorder,
-    tags,
+    tags: safeParseTags(r.tags),
     bpm: r.bpm ?? null,
     musicalKey: r.musical_key ?? null,
   };
@@ -443,12 +414,6 @@ export async function getWishlistAlbumTracks(itemUrls: string[]): Promise<Record
   const result: Record<string, WishlistAlbumData> = {};
   for (const r of rows) {
     if (!result[r.release_url]) {
-      let tags: string[] = [];
-      if (Array.isArray(r.release_tags)) {
-        tags = r.release_tags;
-      } else {
-        try { tags = JSON.parse(r.release_tags || '[]'); } catch { tags = []; }
-      }
       result[r.release_url] = {
         release: {
           id: r.release_id,
@@ -461,24 +426,24 @@ export async function getWishlistAlbumTracks(itemUrls: string[]): Promise<Record
           releaseType: r.release_type as 'album' | 'track',
           scrapedAt: r.scraped_at,
           releaseDate: r.release_date,
-          tags,
+          tags: safeParseTags(r.release_tags),
         },
         tracks: [],
       };
     }
-    result[r.release_url].tracks.push({
+    result[r.release_url].tracks.push(rowToTrack({
       id: r.track_id,
-      releaseId: r.release_id,
-      trackNum: r.track_num,
+      release_id: r.release_id,
+      track_num: r.track_num,
       title: r.track_title,
       duration: r.duration,
-      streamUrl: r.stream_url,
-      trackUrl: r.track_url,
-      bpm: r.bpm ?? null,
-      musicalKey: r.musical_key ?? null,
-      keyCamelot: r.key_camelot ?? null,
-      audioStorageKey: r.audio_storage_key ?? null,
-    });
+      stream_url: r.stream_url,
+      track_url: r.track_url,
+      bpm: r.bpm,
+      musical_key: r.musical_key,
+      key_camelot: r.key_camelot,
+      audio_storage_key: r.audio_storage_key,
+    }));
   }
   return result;
 }

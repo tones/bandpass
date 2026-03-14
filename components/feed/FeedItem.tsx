@@ -10,6 +10,17 @@ import { TrackList } from '@/components/TrackList';
 import { TagPill } from '@/components/TagPill';
 import { BpmKeyBadge } from '@/components/BpmKeyBadge';
 
+export interface AlbumTrackContext {
+  tracks: CatalogTrack[];
+  playingTrackUrl: string | null;
+  isPlayerPlaying: boolean;
+  itemCrateMap: Record<string, number[]>;
+  onPlayTrack: (track: CatalogTrack) => void;
+  onToggleCrate: (itemId: string) => void;
+  onAddToCrate: (itemId: string, crateId: number) => void;
+  onRemoveFromCrate: (itemId: string, crateId: number) => void;
+}
+
 interface FeedItemCardProps {
   item: FeedItem;
   isInCrate: boolean;
@@ -22,14 +33,7 @@ interface FeedItemCardProps {
   onAddToCrate?: (crateId: number) => void;
   onRemoveFromCrate?: (crateId: number) => void;
   variant?: 'feed' | 'crate';
-  albumTracks?: CatalogTrack[];
-  playingTrackUrl?: string | null;
-  isPlayerPlaying?: boolean;
-  itemCrateMap?: Record<string, number[]>;
-  onPlayAlbumTrack?: (track: CatalogTrack) => void;
-  onToggleTrackCrate?: (itemId: string) => void;
-  onAddTrackToCrate?: (itemId: string, crateId: number) => void;
-  onRemoveTrackFromCrate?: (itemId: string, crateId: number) => void;
+  albumTrackContext?: AlbumTrackContext;
 }
 
 const STORY_BADGES: Record<string, { label: string; className: string }> = {
@@ -77,14 +81,7 @@ export function FeedItemCard({
   onAddToCrate,
   onRemoveFromCrate,
   variant = 'feed',
-  albumTracks,
-  playingTrackUrl,
-  isPlayerPlaying: isPlayerPlayingProp,
-  itemCrateMap = {},
-  onPlayAlbumTrack,
-  onToggleTrackCrate,
-  onAddTrackToCrate,
-  onRemoveTrackFromCrate,
+  albumTrackContext,
 }: FeedItemCardProps) {
   const isCrate = variant === 'crate';
 
@@ -95,7 +92,14 @@ export function FeedItemCard({
       : signal.fan.name
     : null;
 
+  const albumTracks = albumTrackContext?.tracks;
   const hasAlbumTracks = albumTracks && albumTracks.length > 1;
+
+  const priceDisplay = item.price ? (() => {
+    const { amount, currency } = item.price;
+    const usdAmount = currency === 'USD' ? amount : convertToUsd(amount, currency, exchangeRates);
+    return usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency);
+  })() : null;
 
   return (
     <div>
@@ -150,25 +154,13 @@ export function FeedItemCard({
               <span className="text-zinc-600">
                 {' · '}{item.album.title}
                 {item.track && ` (${formatDuration(item.track.duration)})`}
-                {item.price && (() => {
-                  const { amount, currency } = item.price;
-                  const isUsd = currency === 'USD';
-                  const usdAmount = isUsd ? amount : convertToUsd(amount, currency, exchangeRates);
-                  const display = usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency);
-                  return ` · ${display}`;
-                })()}
+                {priceDisplay && ` · ${priceDisplay}`}
               </span>
             )}
             {hasAlbumTracks && (
               <span className="text-zinc-600">
                 {' · '}{albumTracks.length} tracks
-                {item.price && (() => {
-                  const { amount, currency } = item.price;
-                  const isUsd = currency === 'USD';
-                  const usdAmount = isUsd ? amount : convertToUsd(amount, currency, exchangeRates);
-                  const display = usdAmount != null ? formatPrice(usdAmount, 'USD') : formatPrice(amount, currency);
-                  return ` · ${display}`;
-                })()}
+                {priceDisplay && ` · ${priceDisplay}`}
               </span>
             )}
           </div>
@@ -197,19 +189,19 @@ export function FeedItemCard({
         />
       </div>
 
-      {hasAlbumTracks && onPlayAlbumTrack && onToggleTrackCrate && onAddTrackToCrate && onRemoveTrackFromCrate && (
+      {hasAlbumTracks && albumTrackContext && (
         <div className="ml-6 border-l border-zinc-800/50 pl-2">
           <TrackList
             tracks={albumTracks}
-            playingTrackUrl={playingTrackUrl ?? null}
-            isPlayerPlaying={isPlayerPlayingProp ?? false}
+            playingTrackUrl={albumTrackContext.playingTrackUrl}
+            isPlayerPlaying={albumTrackContext.isPlayerPlaying}
             fallbackUrl={item.album.url}
             crates={crates ?? []}
-            itemCrateMap={itemCrateMap}
-            onPlayTrack={onPlayAlbumTrack}
-            onToggleCrate={onToggleTrackCrate}
-            onAddToCrate={onAddTrackToCrate}
-            onRemoveFromCrate={onRemoveTrackFromCrate}
+            itemCrateMap={albumTrackContext.itemCrateMap}
+            onPlayTrack={albumTrackContext.onPlayTrack}
+            onToggleCrate={albumTrackContext.onToggleCrate}
+            onAddToCrate={albumTrackContext.onAddToCrate}
+            onRemoveFromCrate={albumTrackContext.onRemoveFromCrate}
           />
         </div>
       )}
