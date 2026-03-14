@@ -81,7 +81,11 @@ export async function GET() {
 
   const userSyncJob = await getActiveJob('user_sync', fanId);
   const enrichmentJob = await getActiveJob('enrichment') ?? await getLatestJob('enrichment');
-  const audioJob = await getActiveJob('audio_analysis') ?? await getLatestJob('audio_analysis');
+  const activeAudioJob = await getActiveJob('audio_analysis');
+  const audioJob = activeAudioJob ?? await getLatestJob('audio_analysis');
+  const isTransientAudioFailure = !activeAudioJob
+    && audioJob?.error === 'Server restarted'
+    && audioAnalysisPending > 0;
 
   const isUserSyncing = !!userSyncJob;
 
@@ -91,6 +95,11 @@ export async function GET() {
 
   const isEnriching = enrichmentJob?.status === 'running';
   const isAnalyzingAudio = audioJob?.status === 'running';
+
+  const HEARTBEAT_STALE_MS = 90_000;
+  const workerOnline = activeAudioJob?.lastHeartbeat
+    ? (Date.now() - new Date(activeAudioJob.lastHeartbeat).getTime()) < HEARTBEAT_STALE_MS
+    : false;
 
   const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
   if (needsSync && !isUserSyncing && session.identityCookie) {
@@ -126,9 +135,10 @@ export async function GET() {
       : audioAnalysisPending,
     audioAnalysisDone,
     audioErrors: audioJob?.progressErrors ?? 0,
-    audioJobError: audioJob?.error ?? null,
-    audioJobStatus: audioJob?.status ?? null,
+    audioJobError: isTransientAudioFailure ? null : (audioJob?.error ?? null),
+    audioJobStatus: isTransientAudioFailure ? null : (audioJob?.status ?? null),
     audioAnalysisEnabled: process.env.ENABLE_AUDIO_ANALYSIS === 'true',
+    workerOnline,
   });
 }
 

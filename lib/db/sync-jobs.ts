@@ -15,6 +15,7 @@ export interface SyncJob {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  lastHeartbeat: string | null;
 }
 
 interface SyncJobRow {
@@ -29,6 +30,7 @@ interface SyncJobRow {
   error: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  last_heartbeat: Date | string | null;
 }
 
 function toISOString(val: Date | string): string {
@@ -48,6 +50,7 @@ function rowToJob(row: SyncJobRow): SyncJob {
     error: row.error,
     createdAt: toISOString(row.created_at),
     updatedAt: toISOString(row.updated_at),
+    lastHeartbeat: row.last_heartbeat ? toISOString(row.last_heartbeat) : null,
   };
 }
 
@@ -125,6 +128,13 @@ export async function hasActiveUserSync(fanId: number): Promise<boolean> {
 export async function requestJobCancel(jobId: number): Promise<void> {
   await execute(
     'UPDATE sync_jobs SET cancel_requested = true, updated_at = NOW() WHERE id = $1',
+    [jobId],
+  );
+}
+
+export async function updateHeartbeat(jobId: number): Promise<void> {
+  await execute(
+    'UPDATE sync_jobs SET last_heartbeat = NOW() WHERE id = $1',
     [jobId],
   );
 }

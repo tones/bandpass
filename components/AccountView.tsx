@@ -100,7 +100,9 @@ export function AccountView({
   const audioJobError = state?.audioJobError ?? null;
   const audioJobStatus = state?.audioJobStatus ?? null;
   const audioAnalysisEnabled = state?.audioAnalysisEnabled ?? false;
+  const workerOnline = state?.workerOnline ?? false;
   const audioFailed = !isAnalyzingAudio && audioJobStatus === 'failed' && !!audioJobError;
+  const workerOffline = isAnalyzingAudio && !workerOnline;
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
@@ -171,6 +173,11 @@ export function AccountView({
               <span className="inline-flex items-center gap-1.5 text-red-400">
                 <span className="inline-block h-2 w-2 rounded-full bg-red-400" />
                 Failed: {audioJobError}
+              </span>
+            ) : workerOffline ? (
+              <span className="inline-flex items-center gap-1.5 text-zinc-400">
+                <span className="inline-block h-2 w-2 rounded-full bg-zinc-500" />
+                Worker offline &middot; will resume automatically
               </span>
             ) : (
               <StatusBadge

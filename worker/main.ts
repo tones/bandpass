@@ -16,6 +16,7 @@ import {
   getActiveJob,
   incrementJobErrors,
   cleanupStaleJobs,
+  updateHeartbeat,
 } from '../lib/db/sync-jobs';
 import { getAudioAnalysisPendingCount } from '../lib/db/sync';
 import { fetchAlbumTracks, publicFetcher } from '../lib/bandcamp/scraper';
@@ -254,10 +255,33 @@ async function processReleases() {
 
   const jobId = await createJob('audio_analysis');
   let done = 0;
+  let errors = 0;
   let consecutiveFailures = 0;
   let cancelled = false;
+  const startedAt = Date.now();
+
+  const heartbeatInterval = setInterval(async () => {
+    try {
+      await updateHeartbeat(jobId);
+    } catch (err) {
+      console.error('Heartbeat update failed:', err);
+    }
+  }, 30_000);
+
+  const progressInterval = setInterval(async () => {
+    const elapsed = (Date.now() - startedAt) / 1000;
+    const rate = done > 0 ? (elapsed / done).toFixed(1) : '?';
+    const currentPending = await getAudioAnalysisPendingCount().catch(() => null);
+    const remaining = currentPending ?? '?';
+    const eta = done > 0 && typeof currentPending === 'number'
+      ? `${Math.round((currentPending * elapsed) / done / 60)}min`
+      : '?';
+    console.log(`[progress] done=${done} errors=${errors} remaining=${remaining} rate=${rate}s/track eta=${eta}`);
+  }, 60_000);
 
   try {
+    await updateHeartbeat(jobId);
+
     const releases = await getReleasesNeedingStreamRefresh();
     await updateJobProgress(jobId, 0, totalPending, 'analyzing');
     console.log(`Audio analysis: ${releases.length} releases, ${totalPending} tracks pending (concurrency: ${CONCURRENCY})`);
@@ -322,6 +346,7 @@ async function processReleases() {
                 await updateJobProgress(jobId, done, done + currentPending, 'analyzing');
               } else {
                 consecutiveFailures++;
+                errors++;
               }
             })
             .catch(() => {
@@ -349,6 +374,9 @@ async function processReleases() {
   } catch (err) {
     console.error('Audio analysis error:', err);
     await failJob(jobId, err instanceof Error ? err.message : String(err));
+  } finally {
+    clearInterval(heartbeatInterval);
+    clearInterval(progressInterval);
   }
 }
 
@@ -370,7 +398,8 @@ async function main() {
   await cleanupStaleJobs(['audio_analysis']);
 
   s3Enabled = isS3Configured();
-  console.log(`Audio worker starting... (S3 storage: ${s3Enabled ? 'enabled' : 'disabled'}, concurrency: ${CONCURRENCY})`);
+  const pendingAtStart = await getAudioAnalysisPendingCount();
+  console.log(`Audio worker starting (S3: ${s3Enabled ? 'on' : 'off'}, concurrency: ${CONCURRENCY}, pending: ${pendingAtStart})`);
 
   pool = new AnalyzerPool(CONCURRENCY);
   await pool.start();

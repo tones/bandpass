@@ -25,6 +25,10 @@ primary_region = 'sjc'
   cpus = 1
   processes = ["web"]
 
+[[restart]]
+  policy = "always"
+  processes = ["worker"]
+
 [[vm]]
   memory = '8gb'
   cpu_kind = 'performance'

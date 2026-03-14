@@ -25,6 +25,7 @@ export interface SyncState {
   audioJobError?: string | null;
   audioJobStatus?: string | null;
   audioAnalysisEnabled?: boolean;
+  workerOnline?: boolean;
 }
 
 interface UseSyncPollingOptions {
@@ -53,7 +54,8 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
   const isActive = useCallback((s: SyncState) => {
     const jobRunning = s.isSyncing || s.isDeepSyncing || s.isCollectionSyncing || s.isWishlistSyncing || s.isEnriching || s.isAnalyzingAudio;
     const enrichmentQueued = (s.enrichmentPendingCount ?? 0) > 0 && !s.isEnriching;
-    return jobRunning || enrichmentQueued;
+    const audioQueued = s.audioAnalysisEnabled && (s.audioAnalysisPending ?? 0) > 0 && !s.isAnalyzingAudio;
+    return jobRunning || enrichmentQueued || audioQueued;
   }, []);
 
   useEffect(() => {
