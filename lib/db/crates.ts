@@ -113,8 +113,19 @@ export async function ensureDefaultCrate(fanId: number): Promise<number> {
 
 export async function getCrateItems(crateId: number, fanId: number): Promise<FeedItem[]> {
   const rows = await query<FeedItemRow>(`
-    SELECT fi.* FROM crate_items ci
+    SELECT fi.id, fi.fan_id, fi.story_type, fi.date,
+           fi.album_id, fi.album_title, fi.album_url, fi.album_image_url,
+           fi.artist_id, fi.artist_name, fi.artist_url,
+           fi.track_title, fi.track_duration, fi.track_stream_url,
+           CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE fi.tags END AS tags,
+           fi.price_amount, fi.price_currency,
+           fi.fan_name, fi.fan_username, fi.also_collected_count,
+           COALESCE(ct.bpm, fi.bpm) AS bpm,
+           COALESCE(ct.musical_key, fi.musical_key) AS musical_key
+    FROM crate_items ci
     JOIN feed_items fi ON fi.id = ci.feed_item_id AND fi.fan_id = $1
+    LEFT JOIN catalog_releases cr ON cr.id = fi.release_id
+    LEFT JOIN catalog_tracks ct ON ct.id = fi.track_id
     WHERE ci.crate_id = $2
     ORDER BY ci.added_at DESC
   `, [fanId, crateId]);
@@ -303,10 +314,12 @@ export async function getCrateWishlistItems(crateId: number, fanId: number): Pro
   }>(`
     SELECT wi.id, wi.tralbum_id, wi.tralbum_type, wi.title, wi.artist_name, wi.artist_url,
            wi.image_url, wi.item_url, wi.featured_track_title, wi.featured_track_duration,
-           wi.stream_url, wi.also_collected_count, wi.is_preorder, wi.tags,
+           wi.stream_url, wi.also_collected_count, wi.is_preorder,
+           CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE wi.tags END AS tags,
            wi.bpm, wi.musical_key
     FROM crate_items ci
     JOIN wishlist_items wi ON wi.id = ci.feed_item_id AND wi.fan_id = $1
+    LEFT JOIN catalog_releases cr ON cr.id = wi.release_id
     WHERE ci.crate_id = $2
     ORDER BY ci.added_at DESC
   `, [fanId, crateId]);
@@ -353,11 +366,15 @@ function rowToWishlistItem(r: {
 
 export async function getWishlistItems(fanId: number): Promise<WishlistItem[]> {
   const rows = await query<Parameters<typeof rowToWishlistItem>[0]>(`
-    SELECT id, tralbum_id, tralbum_type, title, artist_name, artist_url,
-           image_url, item_url, featured_track_title, featured_track_duration,
-           stream_url, also_collected_count, is_preorder, tags, bpm, musical_key
-    FROM wishlist_items WHERE fan_id = $1
-    ORDER BY synced_at DESC
+    SELECT wi.id, wi.tralbum_id, wi.tralbum_type, wi.title, wi.artist_name, wi.artist_url,
+           wi.image_url, wi.item_url, wi.featured_track_title, wi.featured_track_duration,
+           wi.stream_url, wi.also_collected_count, wi.is_preorder,
+           CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE wi.tags END AS tags,
+           wi.bpm, wi.musical_key
+    FROM wishlist_items wi
+    LEFT JOIN catalog_releases cr ON cr.id = wi.release_id
+    WHERE wi.fan_id = $1
+    ORDER BY wi.synced_at DESC
   `, [fanId]);
   return rows.map(rowToWishlistItem);
 }

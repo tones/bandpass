@@ -35,6 +35,7 @@ const INSERT_ITEM = `
     track_title, track_duration, track_stream_url,
     tags, price_amount, price_currency,
     fan_name, fan_username, also_collected_count,
+    bandcamp_track_id,
     release_id, track_id
   ) VALUES (
     $1, $2, $3, $4,
@@ -43,10 +44,9 @@ const INSERT_ITEM = `
     $12, $13, $14,
     $15::jsonb, $16, $17,
     $18, $19, $20,
-    (SELECT id FROM catalog_releases WHERE url = $7 LIMIT 1),
-    (SELECT ct.id FROM catalog_tracks ct
-     JOIN catalog_releases cr ON ct.release_id = cr.id
-     WHERE cr.url = $7 AND ct.stream_url = $14 LIMIT 1)
+    $21,
+    (SELECT id FROM catalog_releases WHERE bandcamp_id = $5 LIMIT 1),
+    (SELECT id FROM catalog_tracks WHERE bandcamp_track_id = $21 LIMIT 1)
   )
   ON CONFLICT(id, fan_id) DO UPDATE SET
     story_type = excluded.story_type,
@@ -67,6 +67,7 @@ const INSERT_ITEM = `
     fan_name = excluded.fan_name,
     fan_username = excluded.fan_username,
     also_collected_count = excluded.also_collected_count,
+    bandcamp_track_id = COALESCE(excluded.bandcamp_track_id, feed_items.bandcamp_track_id),
     release_id = COALESCE(excluded.release_id, feed_items.release_id),
     track_id = COALESCE(excluded.track_id, feed_items.track_id)
 `;
@@ -95,6 +96,7 @@ async function insertItems(fanId: number, items: FeedItem[]) {
         item.socialSignal?.fan?.name ?? null,
         item.socialSignal?.fan?.username ?? null,
         item.socialSignal?.alsoCollectedCount ?? 0,
+        item.track?.bandcampTrackId ?? null,
       ]);
     }
   });
@@ -454,7 +456,7 @@ const UPSERT_WISHLIST_ITEM = `
     also_collected_count, is_preorder, tags,
     release_id
   ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb,
-    (SELECT id FROM catalog_releases WHERE url = $9 LIMIT 1))
+    (SELECT id FROM catalog_releases WHERE bandcamp_id = $3 LIMIT 1))
   ON CONFLICT(id, fan_id) DO UPDATE SET
     tralbum_id = excluded.tralbum_id,
     tralbum_type = excluded.tralbum_type,
@@ -667,6 +669,7 @@ export async function processEnrichmentQueue(
         slug,
         album.title,
         album.imageUrl,
+        album.bandcampId,
       );
       await cacheAlbumTracks(
         releaseId,
@@ -676,6 +679,7 @@ export async function processEnrichmentQueue(
           duration: t.duration,
           streamUrl: t.streamUrl,
           trackUrl: t.trackUrl,
+          bandcampTrackId: t.bandcampTrackId,
         })),
         album.releaseDate,
         album.tags,
@@ -689,8 +693,10 @@ export async function processEnrichmentQueue(
       await execute(`
         UPDATE feed_items fi SET track_id = ct.id
         FROM catalog_tracks ct
-        WHERE ct.release_id = $1 AND fi.track_stream_url = ct.stream_url
+        WHERE ct.bandcamp_track_id = fi.bandcamp_track_id
+          AND ct.release_id = $1
           AND fi.release_id = $1 AND fi.track_id IS NULL
+          AND fi.bandcamp_track_id IS NOT NULL
       `, [releaseId]);
 
       await execute("UPDATE enrichment_queue SET status = 'done', processed_at = NOW() WHERE album_url = $1", [album_url]);

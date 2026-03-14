@@ -301,6 +301,7 @@ describe('scraper', () => {
         duration: 240.5,
         streamUrl: 'https://stream.example.com/track1.mp3',
         trackUrl: 'https://testband.bandcamp.com/track/first-track',
+        bandcampTrackId: null,
       });
     });
 

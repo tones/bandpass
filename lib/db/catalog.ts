@@ -201,6 +201,7 @@ export async function cacheAlbumTracks(
     duration: number;
     streamUrl: string | null;
     trackUrl: string | null;
+    bandcampTrackId?: number | null;
   }>,
   releaseDate?: string | null,
   tags?: string[],
@@ -209,9 +210,9 @@ export async function cacheAlbumTracks(
     await client.query('DELETE FROM catalog_tracks WHERE release_id = $1', [releaseId]);
     for (const t of tracks) {
       await client.query(
-        `INSERT INTO catalog_tracks (release_id, track_num, title, duration, stream_url, track_url)
-        VALUES ($1, $2, $3, $4, $5, $6)`,
-        [releaseId, t.trackNum, t.title, t.duration, t.streamUrl, t.trackUrl],
+        `INSERT INTO catalog_tracks (release_id, track_num, title, duration, stream_url, track_url, bandcamp_track_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [releaseId, t.trackNum, t.title, t.duration, t.streamUrl, t.trackUrl, t.bandcampTrackId ?? null],
       );
     }
     if (releaseDate !== undefined || tags !== undefined) {
@@ -235,15 +236,21 @@ export async function ensureCatalogRelease(
   bandSlug: string,
   title: string,
   imageUrl: string,
+  bandcampId?: number | null,
 ): Promise<number> {
   const existing = await queryOne<{ id: number }>('SELECT id FROM catalog_releases WHERE url = $1', [url]);
-  if (existing) return existing.id;
+  if (existing) {
+    if (bandcampId != null) {
+      await execute('UPDATE catalog_releases SET bandcamp_id = $1 WHERE id = $2 AND bandcamp_id IS NULL', [bandcampId, existing.id]);
+    }
+    return existing.id;
+  }
 
   const result = await query<{ id: number }>(`
-    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source)
-    VALUES ($1, $2, $3, $4, $5, $6, 'album', 'enrichment')
+    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source, bandcamp_id)
+    VALUES ($1, $2, $3, $4, $5, $6, 'album', 'enrichment', $7)
     RETURNING id
-  `, [bandSlug, bandName, `https://${bandSlug}.bandcamp.com`, title, url, imageUrl]);
+  `, [bandSlug, bandName, `https://${bandSlug}.bandcamp.com`, title, url, imageUrl, bandcampId ?? null]);
   return result[0].id;
 }
 

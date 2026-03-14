@@ -34,6 +34,7 @@ export interface AlbumTrack {
   duration: number;
   streamUrl: string | null;
   trackUrl: string | null;
+  bandcampTrackId: number | null;
 }
 
 export interface AlbumDetail {
@@ -43,6 +44,7 @@ export interface AlbumDetail {
   releaseDate: string | null;
   tags: string[];
   tracks: AlbumTrack[];
+  bandcampId: number | null;
 }
 
 function extractJsonAttr(html: string, attrName: string): unknown | null {
@@ -247,6 +249,7 @@ export async function fetchAlbumTracks(
   const html = await fetchHtml(albumUrl);
 
   const tralbum = extractJsonAttr(html, 'data-tralbum') as {
+    id?: number;
     current?: { title?: string; artist?: string; art_id?: number; release_date?: string; publish_date?: string };
     album_release_date?: string;
     trackinfo?: Array<{
@@ -255,6 +258,7 @@ export async function fetchAlbumTracks(
       duration: number;
       file?: Record<string, string>;
       title_link?: string;
+      track_id?: number;
     }>;
     artist?: string;
     art_id?: number;
@@ -276,6 +280,7 @@ export async function fetchAlbumTracks(
     trackUrl: t.title_link
       ? (t.title_link.startsWith('http') ? t.title_link : `${baseUrl}${t.title_link}`)
       : null,
+    bandcampTrackId: t.track_id ?? null,
   }));
 
   const releaseDate = tralbum.current?.release_date
@@ -292,6 +297,7 @@ export async function fetchAlbumTracks(
     releaseDate,
     tags,
     tracks,
+    bandcampId: tralbum.id ?? null,
   };
 }
 

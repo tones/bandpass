@@ -22,6 +22,7 @@ export interface FeedItem {
     duration: number;
     streamUrl: string | null;
     catalogTrackId?: number;
+    bandcampTrackId?: number | null;
   } | null;
   tags: string[];
   bpm: number | null;

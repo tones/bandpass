@@ -105,19 +105,40 @@ export async function getFeedItems(fanId: number, filters: FeedFilters = {}): Pr
     paramIndex++;
   }
 
+  const selectCols = `
+    fi.id, fi.fan_id, fi.story_type, fi.date,
+    fi.album_id, fi.album_title, fi.album_url, fi.album_image_url,
+    fi.artist_id, fi.artist_name, fi.artist_url,
+    fi.track_title, fi.track_duration, fi.track_stream_url,
+    CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE fi.tags END AS tags,
+    fi.price_amount, fi.price_currency,
+    fi.fan_name, fi.fan_username, fi.also_collected_count,
+    COALESCE(ct.bpm, fi.bpm) AS bpm,
+    COALESCE(ct.musical_key, fi.musical_key) AS musical_key`;
+
+  const joins = `
+    FROM feed_items fi
+    LEFT JOIN catalog_releases cr ON cr.id = fi.release_id
+    LEFT JOIN catalog_tracks ct ON ct.id = fi.track_id`;
+
   let sql: string;
   if (filters.tag) {
     conditions.push(`t.value = $${paramIndex}`);
     params.push(filters.tag);
     sql = `
-      SELECT DISTINCT fi.* FROM feed_items fi, jsonb_array_elements_text(fi.tags) AS t(value)
+      SELECT DISTINCT ${selectCols}
+      ${joins},
+      jsonb_array_elements_text(
+        CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE fi.tags END
+      ) AS t(value)
       WHERE ${conditions.join(' AND ')}
       ORDER BY fi.date DESC
       LIMIT 500
     `;
   } else {
     sql = `
-      SELECT fi.* FROM feed_items fi
+      SELECT ${selectCols}
+      ${joins}
       WHERE ${conditions.join(' AND ')}
       ORDER BY fi.date DESC
       LIMIT 500
@@ -137,7 +158,11 @@ export async function getTagCounts(fanId: number): Promise<TagCount[]> {
   const rows = await query<{ name: string; count: number }>(
     `
     SELECT t.value AS name, COUNT(*) AS count
-    FROM feed_items fi, jsonb_array_elements_text(fi.tags) AS t(value)
+    FROM feed_items fi
+    LEFT JOIN catalog_releases cr ON cr.id = fi.release_id,
+    jsonb_array_elements_text(
+      CASE WHEN cr.tags IS NOT NULL AND cr.tags != '[]'::jsonb THEN cr.tags ELSE fi.tags END
+    ) AS t(value)
     WHERE fi.fan_id = $1
     GROUP BY t.value
     HAVING COUNT(*) >= 5

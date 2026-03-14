@@ -287,7 +287,8 @@ async function fetchAlbumTracks(fetchHtml, albumUrl) {
     title: t.title,
     duration: t.duration,
     streamUrl: t.file?.["mp3-128"] ?? null,
-    trackUrl: t.title_link ? t.title_link.startsWith("http") ? t.title_link : `${baseUrl}${t.title_link}` : null
+    trackUrl: t.title_link ? t.title_link.startsWith("http") ? t.title_link : `${baseUrl}${t.title_link}` : null,
+    bandcampTrackId: t.track_id ?? null
   }));
   const releaseDate = tralbum.current?.release_date ?? tralbum.album_release_date ?? tralbum.current?.publish_date ?? null;
   const tags = parseTags(html);
@@ -297,7 +298,8 @@ async function fetchAlbumTracks(fetchHtml, albumUrl) {
     imageUrl: artId ? artIdToUrl(artId) : "",
     releaseDate,
     tags,
-    tracks
+    tracks,
+    bandcampId: tralbum.id ?? null
   };
 }
 

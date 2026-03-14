@@ -114,6 +114,7 @@ export async function POST(
         duration: t.duration,
         streamUrl: t.streamUrl,
         trackUrl: t.trackUrl,
+        bandcampTrackId: t.bandcampTrackId,
       })),
       album.releaseDate,
       album.tags,

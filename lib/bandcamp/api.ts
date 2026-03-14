@@ -177,6 +177,7 @@ export class BandcampAPI {
             title: trackTitle,
             duration: trackDuration ?? 0,
             streamUrl,
+            bandcampTrackId: item.featured_track ?? null,
           }
         : null,
       tags: [],
@@ -222,6 +223,7 @@ export class BandcampAPI {
             title: story.featured_track_title,
             duration: story.featured_track_duration,
             streamUrl,
+            bandcampTrackId: story.featured_track ?? null,
           }
         : null,
       tags: story.tags?.filter((t) => !t.isloc).map((t) => t.norm_name) ?? [],

@@ -29,6 +29,9 @@ export function createTestDb(): Database.Database {
       also_collected_count INTEGER NOT NULL DEFAULT 0,
       bpm REAL,
       musical_key TEXT,
+      release_id INTEGER,
+      track_id INTEGER,
+      bandcamp_track_id INTEGER,
       PRIMARY KEY (id, fan_id)
     );
 
@@ -82,6 +85,7 @@ export function createTestDb(): Database.Database {
       tags TEXT NOT NULL DEFAULT '[]',
       bpm REAL,
       musical_key TEXT,
+      release_id INTEGER,
       synced_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (id, fan_id)
     );
@@ -105,7 +109,8 @@ export function createTestDb(): Database.Database {
       scraped_at TEXT NOT NULL DEFAULT (datetime('now')),
       release_date TEXT,
       tags TEXT DEFAULT '[]',
-      source TEXT NOT NULL DEFAULT 'discography'
+      source TEXT NOT NULL DEFAULT 'discography',
+      bandcamp_id INTEGER
     );
 
     CREATE INDEX idx_catalog_band ON catalog_releases(band_slug);
@@ -122,6 +127,7 @@ export function createTestDb(): Database.Database {
       musical_key TEXT,
       key_camelot TEXT,
       bpm_status TEXT,
+      bandcamp_track_id INTEGER,
       FOREIGN KEY (release_id) REFERENCES catalog_releases(id) ON DELETE CASCADE
     );
   `);
