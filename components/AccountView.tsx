@@ -161,7 +161,7 @@ export function AccountView({
               pendingLabel={enrichmentPendingCount !== null && enrichmentPendingCount > 0 ? `${enrichmentPendingCount.toLocaleString()} items remaining` : 'Pending'}
             />
           </Row>
-          <Row label="BPM / Key detection">
+          <Row label="Audio enrichment">
             {!audioAnalysisEnabled ? (
               <span className="inline-flex items-center gap-1.5 text-zinc-500">
                 <span className="inline-block h-2 w-2 rounded-full bg-zinc-600" />
@@ -176,7 +176,7 @@ export function AccountView({
               <StatusBadge
                 done={!isAnalyzingAudio && audioAnalysisPending === 0 && enrichmentPendingCount === 0 && collectionSynced}
                 active={isAnalyzingAudio}
-                doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks analyzed` : 'Complete'}
+                doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks enriched` : 'Complete'}
                 activeLabel={
                   stopping
                     ? 'Stopping...'
