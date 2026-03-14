@@ -498,6 +498,12 @@ async function main() {
     console.error("DATABASE_URL not set");
     process.exit(1);
   }
+  if (process.env.ENABLE_AUDIO_ANALYSIS !== "true") {
+    console.log("Audio worker disabled (ENABLE_AUDIO_ANALYSIS != true). Idling.");
+    await new Promise(() => {
+    });
+    return;
+  }
   console.log("Audio worker starting...");
   await cleanupStaleJobs(["audio_analysis"]);
   await getEssentia();
