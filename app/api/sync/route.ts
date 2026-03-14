@@ -128,7 +128,7 @@ export async function GET() {
     audioErrors: audioJob?.progressErrors ?? 0,
     audioJobError: audioJob?.error ?? null,
     audioJobStatus: audioJob?.status ?? null,
-    audioAnalysisEnabled: true,
+    audioAnalysisEnabled: process.env.ENABLE_AUDIO_ANALYSIS === 'true',
   });
 }
 

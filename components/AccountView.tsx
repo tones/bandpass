@@ -99,6 +99,7 @@ export function AccountView({
   const audioErrors = state?.audioErrors ?? 0;
   const audioJobError = state?.audioJobError ?? null;
   const audioJobStatus = state?.audioJobStatus ?? null;
+  const audioAnalysisEnabled = state?.audioAnalysisEnabled ?? false;
   const audioFailed = !isAnalyzingAudio && audioJobStatus === 'failed' && !!audioJobError;
 
   return (
@@ -161,7 +162,12 @@ export function AccountView({
             />
           </Row>
           <Row label="BPM / Key detection">
-            {audioFailed ? (
+            {!audioAnalysisEnabled ? (
+              <span className="inline-flex items-center gap-1.5 text-zinc-500">
+                <span className="inline-block h-2 w-2 rounded-full bg-zinc-600" />
+                Disabled on this server
+              </span>
+            ) : audioFailed ? (
               <span className="inline-flex items-center gap-1.5 text-red-400">
                 <span className="inline-block h-2 w-2 rounded-full bg-red-400" />
                 Failed: {audioJobError}
