@@ -1,0 +1,22 @@
+---
+description: Formatting rules for chat messages to avoid rendering issues in Cursor
+alwaysApply: true
+---
+
+# Chat Formatting
+
+Cursor's chat renders markdown with LaTeX support, which means certain characters get misinterpreted.
+
+## Avoid bare dollar signs
+
+Do not use `$` for currency in chat messages. Cursor interprets `$62` or `$124/mo` as LaTeX math delimiters, making text unreadable.
+
+- Bad: $62/mo, $124/mo
+- Good: 62/mo, USD 62, 62 dollars
+
+## Avoid tildes
+
+Do not use `~` for approximation. Cursor may render it as a LaTeX operator.
+
+- Bad: ~460 MB
+- Good: about 460 MB, roughly 460 MB

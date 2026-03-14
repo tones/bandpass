@@ -39,6 +39,10 @@ class EssentiaProcess {
     reject: (e: Error) => void;
   } | null = null;
 
+  constructor(public readonly id: number = 0) {}
+
+  get tag() { return `[analyzer-${this.id}]`; }
+
   async ensure(): Promise<void> {
     if (this.proc && this.proc.exitCode === null) return;
     await this.start();
@@ -46,7 +50,7 @@ class EssentiaProcess {
 
   private start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      console.log('Spawning Python Essentia analyzer...');
+      console.log(`${this.tag} Spawning Python Essentia analyzer...`);
       this.proc = spawn('python3', ['worker/analyze.py'], {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
@@ -70,27 +74,27 @@ class EssentiaProcess {
       stderrRl.on('line', (line) => {
         if (line.includes('essentia-analyzer ready')) {
           resolved = true;
-          console.log('Python Essentia analyzer ready');
+          console.log(`${this.tag} Python Essentia analyzer ready`);
           resolve();
         } else {
-          console.log(`  [python] ${line}`);
+          console.log(`  ${this.tag} [python] ${line}`);
         }
       });
 
       this.proc.on('exit', (code) => {
-        console.log(`Python analyzer exited with code ${code}`);
+        console.log(`${this.tag} Python analyzer exited with code ${code}`);
         if (!resolved) {
           resolved = true;
-          reject(new Error(`Analyzer process exited before ready (code ${code})`));
+          reject(new Error(`Analyzer ${this.id} exited before ready (code ${code})`));
         }
         if (this.pending) {
-          this.pending.reject(new Error(`Analyzer process exited (code ${code})`));
+          this.pending.reject(new Error(`Analyzer ${this.id} exited (code ${code})`));
           this.pending = null;
         }
       });
 
       this.proc.on('error', (err) => {
-        console.error('Failed to spawn Python analyzer:', err.message);
+        console.error(`${this.tag} Failed to spawn Python analyzer:`, err.message);
         if (!resolved) {
           resolved = true;
           reject(err);
@@ -100,7 +104,7 @@ class EssentiaProcess {
       setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          reject(new Error('Python analyzer did not start within 10s'));
+          reject(new Error(`Analyzer ${this.id} did not start within 10s`));
         }
       }, 10_000);
     });
@@ -118,7 +122,7 @@ class EssentiaProcess {
       },
     );
 
-    console.log(`  [timing] ${raw.timing}`);
+    console.log(`  ${this.tag} [timing] ${raw.timing}`);
 
     return {
       bpm: normalizeBpm(raw.bpm),
@@ -136,7 +140,43 @@ class EssentiaProcess {
   }
 }
 
-const analyzer = new EssentiaProcess();
+class AnalyzerPool {
+  private pool: EssentiaProcess[] = [];
+  private available: EssentiaProcess[] = [];
+  private waiters: ((p: EssentiaProcess) => void)[] = [];
+
+  constructor(private size: number) {}
+
+  async start() {
+    console.log(`Starting analyzer pool with ${this.size} processes...`);
+    for (let i = 0; i < this.size; i++) {
+      const p = new EssentiaProcess(i);
+      await p.ensure();
+      this.pool.push(p);
+      this.available.push(p);
+    }
+    console.log(`Analyzer pool ready (${this.size} processes)`);
+  }
+
+  acquire(): Promise<EssentiaProcess> {
+    const p = this.available.pop();
+    if (p) return Promise.resolve(p);
+    return new Promise((resolve) => this.waiters.push(resolve));
+  }
+
+  release(p: EssentiaProcess) {
+    const waiter = this.waiters.shift();
+    if (waiter) waiter(p);
+    else this.available.push(p);
+  }
+
+  killAll() {
+    this.pool.forEach((p) => p.kill());
+  }
+}
+
+const CONCURRENCY = Math.max(1, parseInt(process.env.ANALYZER_CONCURRENCY ?? '2', 10));
+let pool: AnalyzerPool;
 let s3Enabled = false;
 
 async function saveAudioResult(
@@ -171,6 +211,41 @@ async function isJobCancelled(jobId: number): Promise<boolean> {
   return row?.cancel_requested === true;
 }
 
+async function analyzeTrack(
+  analyzer: EssentiaProcess,
+  track: { id: number; stream_url: string },
+  jobId: number,
+): Promise<boolean> {
+  try {
+    console.log(`  ${analyzer.tag} Track ${track.id}: analyzing...`);
+    const result = await analyzer.analyze(track.stream_url);
+
+    let storageKey: string | undefined;
+    if (s3Enabled && result.tempFile) {
+      try {
+        storageKey = await uploadTrackFromFile(track.id, result.tempFile);
+        console.log(`  ${analyzer.tag} Track ${track.id}: uploaded to S3 (${storageKey})`);
+      } catch (uploadErr) {
+        console.error(`  ${analyzer.tag} Track ${track.id}: S3 upload failed, continuing without storage:`, uploadErr);
+      }
+    }
+
+    if (result.tempFile) {
+      try { fs.unlinkSync(result.tempFile); } catch {}
+    }
+
+    await saveAudioResult(track.id, track.stream_url, result, storageKey);
+    console.log(`  ${analyzer.tag} Track ${track.id}: bpm=${result.bpm} key=${result.musicalKey}`);
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  ${analyzer.tag} Track ${track.id} failed: ${msg}`);
+    await markAudioFailed(track.id);
+    await incrementJobErrors(jobId);
+    return false;
+  }
+}
+
 async function processReleases() {
   const totalPending = await getAudioAnalysisPendingCount();
   if (totalPending === 0) return;
@@ -180,13 +255,16 @@ async function processReleases() {
   const jobId = await createJob('audio_analysis');
   let done = 0;
   let consecutiveFailures = 0;
+  let cancelled = false;
 
   try {
     const releases = await getReleasesNeedingStreamRefresh();
     await updateJobProgress(jobId, 0, totalPending, 'analyzing');
-    console.log(`Audio analysis: ${releases.length} releases, ${totalPending} tracks pending`);
+    console.log(`Audio analysis: ${releases.length} releases, ${totalPending} tracks pending (concurrency: ${CONCURRENCY})`);
 
     for (let ri = 0; ri < releases.length; ri++) {
+      if (cancelled) break;
+
       if (await isJobCancelled(jobId)) {
         console.log('Audio analysis cancelled by user');
         await failJob(jobId, 'Cancelled by user');
@@ -213,54 +291,54 @@ async function processReleases() {
       await markNoStreamTracks(release.releaseId);
       const tracks = await getPendingTracksForRelease(release.releaseId);
 
+      const inflight: Promise<void>[] = [];
+
       for (const track of tracks) {
+        if (cancelled) break;
+
         if (await isJobCancelled(jobId)) {
-          console.log('Audio analysis cancelled by user');
-          await failJob(jobId, 'Cancelled by user');
-          return;
+          console.log('Audio analysis cancelled by user, waiting for in-flight tracks...');
+          cancelled = true;
+          break;
         }
 
-        try {
-          console.log(`  Track ${track.id}: analyzing...`);
-          const result = await analyzer.analyze(track.stream_url);
-
-          let storageKey: string | undefined;
-          if (s3Enabled && result.tempFile) {
-            try {
-              storageKey = await uploadTrackFromFile(track.id, result.tempFile);
-              console.log(`  Track ${track.id}: uploaded to S3 (${storageKey})`);
-            } catch (uploadErr) {
-              console.error(`  Track ${track.id}: S3 upload failed, continuing without storage:`, uploadErr);
-            }
-          }
-
-          if (result.tempFile) {
-            try { fs.unlinkSync(result.tempFile); } catch {}
-          }
-
-          await saveAudioResult(track.id, track.stream_url, result, storageKey);
-          console.log(`  Track ${track.id}: bpm=${result.bpm} key=${result.musicalKey}`);
-          consecutiveFailures = 0;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`  Track ${track.id} failed: ${msg}`);
-          await markAudioFailed(track.id);
-          await incrementJobErrors(jobId);
-          consecutiveFailures++;
-
-          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            console.error(`Aborting: ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
-            await failJob(jobId, `${MAX_CONSECUTIVE_FAILURES} consecutive track failures`);
-            return;
-          }
-
-          continue;
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          console.error(`Aborting: ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
+          cancelled = true;
+          break;
         }
 
-        done++;
-        const currentPending = await getAudioAnalysisPendingCount();
-        await updateJobProgress(jobId, done, done + currentPending, 'analyzing');
+        const analyzer = await pool.acquire();
         await sleep(TRACK_DELAY_MS);
+
+        inflight.push(
+          analyzeTrack(analyzer, track, jobId)
+            .then(async (success) => {
+              pool.release(analyzer);
+              if (success) {
+                consecutiveFailures = 0;
+                done++;
+                const currentPending = await getAudioAnalysisPendingCount();
+                await updateJobProgress(jobId, done, done + currentPending, 'analyzing');
+              } else {
+                consecutiveFailures++;
+              }
+            })
+            .catch(() => {
+              pool.release(analyzer);
+            }),
+        );
+      }
+
+      await Promise.allSettled(inflight);
+
+      if (cancelled) {
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          await failJob(jobId, `${MAX_CONSECUTIVE_FAILURES} consecutive track failures`);
+        } else {
+          await failJob(jobId, 'Cancelled by user');
+        }
+        return;
       }
 
       await sleep(RELEASE_DELAY_MS);
@@ -292,7 +370,10 @@ async function main() {
   await cleanupStaleJobs(['audio_analysis']);
 
   s3Enabled = isS3Configured();
-  console.log(`Audio worker starting... (S3 storage: ${s3Enabled ? 'enabled' : 'disabled'})`);
+  console.log(`Audio worker starting... (S3 storage: ${s3Enabled ? 'enabled' : 'disabled'}, concurrency: ${CONCURRENCY})`);
+
+  pool = new AnalyzerPool(CONCURRENCY);
+  await pool.start();
 
   while (true) {
     try {

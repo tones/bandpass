@@ -5,6 +5,7 @@ primary_region = 'sjc'
 
 [env]
   ENABLE_AUDIO_ANALYSIS = "true"
+  ANALYZER_CONCURRENCY = "4"
 
 [processes]
   web = "node server.js"
@@ -25,7 +26,7 @@ primary_region = 'sjc'
   processes = ["web"]
 
 [[vm]]
-  memory = '2gb'
-  cpu_kind = 'shared'
-  cpus = 2
+  memory = '8gb'
+  cpu_kind = 'performance'
+  cpus = 4
   processes = ["worker"]
