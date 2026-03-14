@@ -318,25 +318,6 @@ async function setCollectionSynced(fanId: number) {
   );
 }
 
-async function enrichFeedItems(fanId: number) {
-  await execute(`
-    UPDATE feed_items SET tags = (
-      SELECT f2.tags FROM feed_items f2
-      WHERE f2.fan_id = feed_items.fan_id
-        AND f2.album_id = feed_items.album_id
-        AND f2.story_type != 'my_purchase'
-        AND f2.tags != '[]'::jsonb
-      LIMIT 1
-    )
-    WHERE fan_id = $1
-      AND story_type = 'my_purchase'
-      AND tags = '[]'::jsonb
-      AND album_id IN (
-        SELECT DISTINCT f3.album_id FROM feed_items f3
-        WHERE f3.fan_id = $2 AND f3.story_type != 'my_purchase' AND f3.tags != '[]'::jsonb
-      )
-  `, [fanId, fanId]);
-}
 
 const COLLECTION_PAGE_DELAY_MS = 500;
 
@@ -376,7 +357,6 @@ export async function syncCollection(api: BandcampAPI, fanId: number): Promise<n
       lastToken = page.lastToken;
     }
 
-    await enrichFeedItems(fanId);
     await setCollectionSynced(fanId);
   } finally {
     await setSyncing(fanId, false);
@@ -425,8 +405,6 @@ export async function syncCollectionIncremental(api: BandcampAPI, fanId: number)
       if (!page.hasMore) break;
       lastToken = page.lastToken;
     }
-
-    if (totalNew > 0) await enrichFeedItems(fanId);
 
     const countRow = await queryOne<{ c: string }>('SELECT COUNT(*) AS c FROM feed_items WHERE fan_id = $1', [fanId]);
     const dbTotal = parseInt(countRow!.c, 10);
@@ -660,8 +638,6 @@ export async function processEnrichmentQueue(
   for (const { album_url } of pending) {
     try {
       const album = await withRetry(() => fetchAlbumTracks(publicFetcher, album_url));
-      const tagsJson = JSON.stringify(album.tags ?? []);
-
       const slug = extractSlug(new URL(album_url).origin);
       const releaseId = await ensureCatalogRelease(
         album_url,
@@ -684,9 +660,6 @@ export async function processEnrichmentQueue(
         album.releaseDate,
         album.tags,
       );
-
-      await execute("UPDATE feed_items SET tags = $1::jsonb WHERE album_url = $2 AND tags = '[]'::jsonb", [tagsJson, album_url]);
-      await execute("UPDATE wishlist_items SET tags = $1::jsonb WHERE item_url = $2 AND tags = '[]'::jsonb", [tagsJson, album_url]);
 
       await execute("UPDATE feed_items SET release_id = $1 WHERE album_url = $2 AND release_id IS NULL", [releaseId, album_url]);
       await execute("UPDATE wishlist_items SET release_id = $1 WHERE item_url = $2 AND release_id IS NULL", [releaseId, album_url]);
