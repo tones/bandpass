@@ -34,14 +34,19 @@ const INSERT_ITEM = `
     artist_id, artist_name, artist_url,
     track_title, track_duration, track_stream_url,
     tags, price_amount, price_currency,
-    fan_name, fan_username, also_collected_count
+    fan_name, fan_username, also_collected_count,
+    release_id, track_id
   ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7, $8,
     $9, $10, $11,
     $12, $13, $14,
     $15::jsonb, $16, $17,
-    $18, $19, $20
+    $18, $19, $20,
+    (SELECT id FROM catalog_releases WHERE url = $7 LIMIT 1),
+    (SELECT ct.id FROM catalog_tracks ct
+     JOIN catalog_releases cr ON ct.release_id = cr.id
+     WHERE cr.url = $7 AND ct.stream_url = $14 LIMIT 1)
   )
   ON CONFLICT(id, fan_id) DO UPDATE SET
     story_type = excluded.story_type,
@@ -61,7 +66,9 @@ const INSERT_ITEM = `
     price_currency = excluded.price_currency,
     fan_name = excluded.fan_name,
     fan_username = excluded.fan_username,
-    also_collected_count = excluded.also_collected_count
+    also_collected_count = excluded.also_collected_count,
+    release_id = COALESCE(excluded.release_id, feed_items.release_id),
+    track_id = COALESCE(excluded.track_id, feed_items.track_id)
 `;
 
 async function insertItems(fanId: number, items: FeedItem[]) {
@@ -444,8 +451,10 @@ const UPSERT_WISHLIST_ITEM = `
     id, fan_id, tralbum_id, tralbum_type, title,
     artist_name, artist_url, image_url, item_url,
     featured_track_title, featured_track_duration, stream_url,
-    also_collected_count, is_preorder, tags
-  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
+    also_collected_count, is_preorder, tags,
+    release_id
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb,
+    (SELECT id FROM catalog_releases WHERE url = $9 LIMIT 1))
   ON CONFLICT(id, fan_id) DO UPDATE SET
     tralbum_id = excluded.tralbum_id,
     tralbum_type = excluded.tralbum_type,
@@ -460,7 +469,8 @@ const UPSERT_WISHLIST_ITEM = `
     also_collected_count = excluded.also_collected_count,
     is_preorder = excluded.is_preorder,
     synced_at = NOW(),
-    tags = CASE WHEN wishlist_items.tags != '[]'::jsonb THEN wishlist_items.tags ELSE excluded.tags END
+    tags = CASE WHEN wishlist_items.tags != '[]'::jsonb THEN wishlist_items.tags ELSE excluded.tags END,
+    release_id = COALESCE(excluded.release_id, wishlist_items.release_id)
 `;
 
 async function insertWishlistItems(fanId: number, items: WishlistItem[]) {
@@ -673,6 +683,16 @@ export async function processEnrichmentQueue(
 
       await execute("UPDATE feed_items SET tags = $1::jsonb WHERE album_url = $2 AND tags = '[]'::jsonb", [tagsJson, album_url]);
       await execute("UPDATE wishlist_items SET tags = $1::jsonb WHERE item_url = $2 AND tags = '[]'::jsonb", [tagsJson, album_url]);
+
+      await execute("UPDATE feed_items SET release_id = $1 WHERE album_url = $2 AND release_id IS NULL", [releaseId, album_url]);
+      await execute("UPDATE wishlist_items SET release_id = $1 WHERE item_url = $2 AND release_id IS NULL", [releaseId, album_url]);
+      await execute(`
+        UPDATE feed_items fi SET track_id = ct.id
+        FROM catalog_tracks ct
+        WHERE ct.release_id = $1 AND fi.track_stream_url = ct.stream_url
+          AND fi.release_id = $1 AND fi.track_id IS NULL
+      `, [releaseId]);
+
       await execute("UPDATE enrichment_queue SET status = 'done', processed_at = NOW() WHERE album_url = $1", [album_url]);
     } catch (err) {
       console.error(`Enrichment failed for ${album_url}:`, err);
