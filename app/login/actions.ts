@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { execute } from '@/lib/db';
 
 export async function loginWithCookie(
   _prevState: { error: string | null },
@@ -34,6 +35,14 @@ export async function loginWithCookie(
     session.fanId = data.fan_id;
     session.username = data.collection_summary?.username ?? undefined;
     await session.save();
+
+    if (session.fanId && session.username) {
+      await execute(
+        `INSERT INTO sync_state (fan_id, username) VALUES ($1, $2)
+         ON CONFLICT (fan_id) DO UPDATE SET username = $2`,
+        [session.fanId, session.username],
+      );
+    }
   } catch {
     return { error: 'Could not reach Bandcamp. Please try again.' };
   }

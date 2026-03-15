@@ -8,9 +8,10 @@ type NavTab = 'timeline' | 'music' | 'crates';
 
 interface AppHeaderProps {
   username?: string | null;
+  isAdmin?: boolean;
 }
 
-export function AppHeader({ username }: AppHeaderProps) {
+export function AppHeader({ username, isAdmin }: AppHeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { lastMusicPath, lastCratesPath, lastTimelinePath } = useNavigation();
@@ -41,6 +42,14 @@ export function AppHeader({ username }: AppHeaderProps) {
           Bandpass
         </Link>
         <div className="flex items-center gap-3">
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="text-sm text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              Admin
+            </Link>
+          )}
           {username ? (
             <Link
               href="/account"
