@@ -4,10 +4,10 @@
  * embedded data-tralbum JSON and page HTML. Used by the enrichment
  * pipeline and the artist discography endpoint.
  */
-export type HtmlFetcher = (url: string) => Promise<string>;
+export type HtmlFetcher = (url: string, signal?: AbortSignal) => Promise<string>;
 
-export const publicFetcher: HtmlFetcher = async (url: string) => {
-  const res = await fetch(url);
+export const publicFetcher: HtmlFetcher = async (url: string, signal?: AbortSignal) => {
+  const res = await fetch(url, signal ? { signal } : undefined);
   if (!res.ok) throw new Error(`Fetch error: ${res.status}`);
   return res.text();
 };

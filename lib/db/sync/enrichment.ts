@@ -11,9 +11,10 @@ import { withRetry } from './helpers';
 
 export async function enqueueForEnrichment(fanId: number): Promise<number> {
   return await transaction(async (client) => {
-    const { rows: purchases } = await client.query(
+    const { rows: feedRows } = await client.query(
       `SELECT DISTINCT album_url FROM feed_items
-       WHERE fan_id = $1 AND tags = '[]'::jsonb AND album_url != ''`,
+       WHERE fan_id = $1 AND album_url != ''
+         AND NOT EXISTS (SELECT 1 FROM enrichment_queue eq WHERE eq.album_url = feed_items.album_url)`,
       [fanId],
     );
 
@@ -25,7 +26,7 @@ export async function enqueueForEnrichment(fanId: number): Promise<number> {
 
     let enqueued = 0;
 
-    for (const row of purchases) {
+    for (const row of feedRows) {
       const result = await client.query(
         'INSERT INTO enrichment_queue (album_url) VALUES ($1) ON CONFLICT DO NOTHING',
         [row.album_url],
@@ -41,14 +42,19 @@ export async function enqueueForEnrichment(fanId: number): Promise<number> {
       if (result.rowCount && result.rowCount > 0) enqueued++;
     }
 
+    await client.query(
+      `UPDATE enrichment_queue SET status = 'pending', processed_at = NULL
+       WHERE status = 'failed' AND retry_count < 3`,
+    );
+
     return enqueued;
   });
 }
 
 export async function getEnrichmentPendingCount(fanId: number): Promise<number> {
-  const purchases = await queryOne<{ c: string }>(`
+  const feed = await queryOne<{ c: string }>(`
     SELECT COUNT(*) AS c FROM feed_items fi
-    WHERE fi.fan_id = $1 AND fi.tags = '[]'::jsonb
+    WHERE fi.fan_id = $1
       AND fi.album_url != ''
       AND NOT EXISTS (SELECT 1 FROM enrichment_queue eq WHERE eq.album_url = fi.album_url)
   `, [fanId]);
@@ -58,10 +64,18 @@ export async function getEnrichmentPendingCount(fanId: number): Promise<number> 
       AND wi.item_url != ''
       AND NOT EXISTS (SELECT 1 FROM enrichment_queue eq WHERE eq.album_url = wi.item_url)
   `, [fanId]);
-  return parseInt(purchases!.c, 10) + parseInt(wishlist!.c, 10);
+  return parseInt(feed!.c, 10) + parseInt(wishlist!.c, 10);
 }
 
 const ENRICHMENT_DELAY_MS = 1000;
+const MAX_BACKOFF_MS = 30_000;
+const BACKOFF_THRESHOLD = 5;
+const MAX_CONSECUTIVE_FAILURES = 20;
+const FETCH_TIMEOUT_MS = 30_000;
+
+function timedFetcher(url: string): Promise<string> {
+  return publicFetcher(url, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+}
 
 export async function processEnrichmentQueue(
   onProgress?: (processed: number, remaining: number) => void,
@@ -73,10 +87,16 @@ export async function processEnrichmentQueue(
   if (pending.length === 0) return 0;
 
   let processed = 0;
+  let consecutiveFailures = 0;
 
   for (const { album_url } of pending) {
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      console.error(`Aborting enrichment batch after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
+      break;
+    }
+
     try {
-      const album = await withRetry(() => fetchAlbumTracks(publicFetcher, album_url));
+      const album = await withRetry(() => fetchAlbumTracks(timedFetcher, album_url));
       const slug = extractSlug(new URL(album_url).origin);
       const releaseId = await ensureCatalogRelease(
         album_url,
@@ -112,16 +132,28 @@ export async function processEnrichmentQueue(
       `, [releaseId]);
 
       await execute("UPDATE enrichment_queue SET status = 'done', processed_at = NOW() WHERE album_url = $1", [album_url]);
+      consecutiveFailures = 0;
     } catch (err) {
-      console.error(`Enrichment failed for ${album_url}:`, err);
-      await execute("UPDATE enrichment_queue SET status = 'failed', processed_at = NOW() WHERE album_url = $1", [album_url]);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Enrichment failed for ${album_url}:`, message);
+      await execute(
+        `UPDATE enrichment_queue SET status = 'failed', processed_at = NOW(),
+         retry_count = retry_count + 1, last_error = $2
+         WHERE album_url = $1`,
+        [album_url, message.slice(0, 500)],
+      );
+      consecutiveFailures++;
     }
 
     processed++;
     onProgress?.(processed, pending.length - processed);
 
     if (processed < pending.length) {
-      await sleep(ENRICHMENT_DELAY_MS);
+      let delay = ENRICHMENT_DELAY_MS;
+      if (consecutiveFailures >= BACKOFF_THRESHOLD) {
+        delay = Math.min(ENRICHMENT_DELAY_MS * Math.pow(2, consecutiveFailures - BACKOFF_THRESHOLD), MAX_BACKOFF_MS);
+      }
+      await sleep(delay);
     }
   }
 
