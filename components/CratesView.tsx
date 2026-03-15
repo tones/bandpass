@@ -378,6 +378,7 @@ export function CratesView({
                   userCrates={userCrates}
                   bpm={item.bpm}
                   musicalKey={item.musicalKey}
+                  bpmStatus={item.bpmStatus}
                   onPlay={() => handlePlayCatalog(item)}
                   onToggleCrate={() => handleToggleCrate(tk, ref)}
                   onAddToCrate={(crateId) => handleAddToCrate(tk, ref, crateId)}

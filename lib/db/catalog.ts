@@ -40,6 +40,7 @@ export interface CatalogTrack {
   musicalKey: string | null;
   keyCamelot: string | null;
   audioStorageKey: string | null;
+  bpmStatus: string | null;
 }
 
 const STALE_HOURS = 24;
@@ -165,19 +166,7 @@ export async function cacheDiscography(
 }
 
 export async function getCachedAlbumTracks(releaseId: number): Promise<CatalogTrack[] | null> {
-  const rows = await query<{
-    id: number;
-    release_id: number;
-    track_num: number;
-    title: string;
-    duration: number;
-    stream_url: string | null;
-    track_url: string | null;
-    bpm: number | null;
-    musical_key: string | null;
-    key_camelot: string | null;
-    audio_storage_key: string | null;
-  }>(`
+  const rows = await query<CatalogTrackRow>(`
     SELECT * FROM catalog_tracks WHERE release_id = $1 ORDER BY track_num
   `, [releaseId]);
 
@@ -197,6 +186,7 @@ export interface CatalogTrackRow {
   musical_key: string | null;
   key_camelot: string | null;
   audio_storage_key: string | null;
+  bpm_status: string | null;
 }
 
 export function rowToTrack(row: CatalogTrackRow): CatalogTrack {
@@ -212,6 +202,7 @@ export function rowToTrack(row: CatalogTrackRow): CatalogTrack {
     musicalKey: row.musical_key ?? null,
     keyCamelot: row.key_camelot ?? null,
     audioStorageKey: row.audio_storage_key ?? null,
+    bpmStatus: row.bpm_status ?? null,
   };
 }
 

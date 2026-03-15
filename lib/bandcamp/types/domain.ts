@@ -28,6 +28,7 @@ export interface FeedItem {
   tags: string[];
   bpm: number | null;
   musicalKey: string | null;
+  bpmStatus: string | null;
   price: { amount: number; currency: string } | null;
   socialSignal: {
     fan: { name: string; username: string } | null;

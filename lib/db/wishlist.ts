@@ -107,13 +107,15 @@ export async function getWishlistAlbumTracks(itemUrls: string[]): Promise<Record
     musical_key: string | null;
     key_camelot: string | null;
     audio_storage_key: string | null;
+    bpm_status: string | null;
   }>(`
     SELECT cr.id as release_id, cr.band_slug, cr.band_name, cr.band_url,
            cr.title as release_title, cr.url as release_url, cr.image_url,
            cr.release_type, cr.scraped_at, cr.release_date, cr.tags as release_tags,
            ct.id as track_id, ct.track_num, ct.title as track_title,
            ct.duration, ct.stream_url, ct.track_url,
-           ct.bpm, ct.musical_key, ct.key_camelot, ct.audio_storage_key
+           ct.bpm, ct.musical_key, ct.key_camelot, ct.audio_storage_key,
+           ct.bpm_status
     FROM catalog_releases cr
     JOIN catalog_tracks ct ON ct.release_id = cr.id
     WHERE cr.url IN (${placeholders})
@@ -152,6 +154,7 @@ export async function getWishlistAlbumTracks(itemUrls: string[]): Promise<Record
       musical_key: r.musical_key,
       key_camelot: r.key_camelot,
       audio_storage_key: r.audio_storage_key,
+      bpm_status: r.bpm_status,
     }));
   }
   return result;

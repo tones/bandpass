@@ -109,10 +109,15 @@ export async function POST(
       release_date: string | null;
       tags: string | string[];
     }>('SELECT release_date, tags FROM catalog_releases WHERE id = $1', [releaseId]);
+    const eqRow = await queryOne<{ status: string }>(
+      'SELECT status FROM enrichment_queue WHERE album_url = $1',
+      [albumUrl],
+    );
     return NextResponse.json({
       tracks: cached,
       releaseDate: release?.release_date ?? null,
       tags: release?.tags ? safeParseTags(release.tags) : [],
+      enrichmentStatus: eqRow?.status ?? null,
       fromCache: true,
     });
   }
@@ -135,7 +140,7 @@ export async function POST(
       album.tags,
     );
 
-    return NextResponse.json({ tracks, releaseDate: album.releaseDate, tags: album.tags, fromCache: false });
+    return NextResponse.json({ tracks, releaseDate: album.releaseDate, tags: album.tags, enrichmentStatus: 'done', fromCache: false });
   } catch (err) {
     console.error('Album tracks fetch error:', err);
     return NextResponse.json(

@@ -42,6 +42,7 @@ export interface FeedItemRow {
   also_collected_count: number;
   bpm: number | null;
   musical_key: string | null;
+  bpm_status: string | null;
 }
 
 import { safeParseTags } from './utils';
@@ -74,6 +75,7 @@ export function rowToFeedItem(row: FeedItemRow): FeedItem {
     tags: safeParseTags(row.tags),
     bpm: row.bpm ?? null,
     musicalKey: row.musical_key ?? null,
+    bpmStatus: row.bpm_status ?? null,
     price:
       row.price_amount != null && row.price_currency
         ? { amount: row.price_amount, currency: row.price_currency }
@@ -123,7 +125,8 @@ export async function getFeedItems(fanId: number, filters: FeedFilters = {}): Pr
     fi.price_amount, fi.price_currency,
     fi.fan_name, fi.fan_username, fi.also_collected_count,
     COALESCE(ct.bpm, fi.bpm) AS bpm,
-    COALESCE(ct.musical_key, fi.musical_key) AS musical_key`;
+    COALESCE(ct.musical_key, fi.musical_key) AS musical_key,
+    ct.bpm_status`;
 
   const joins = `
     FROM feed_items fi
@@ -264,7 +267,7 @@ export async function getAlbumTracksForFeedItems(
     SELECT cr.url AS album_url,
            ct.id, ct.release_id, ct.track_num, ct.title, ct.duration,
            ct.stream_url, ct.track_url, ct.bpm, ct.musical_key,
-           ct.key_camelot, ct.audio_storage_key
+           ct.key_camelot, ct.audio_storage_key, ct.bpm_status
     FROM catalog_releases cr
     JOIN catalog_tracks ct ON ct.release_id = cr.id
     WHERE cr.url = ANY($1)

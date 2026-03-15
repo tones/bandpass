@@ -37,6 +37,10 @@ interface TagsCache {
   [releaseId: number]: string[];
 }
 
+interface EnrichmentStatusCache {
+  [releaseId: number]: string | null;
+}
+
 export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateItemIds = [], initialCrates = [], initialItemCrateMap = {}, loggedIn = false }: CatalogViewProps) {
   const { playingTrackUrl, isPlaying, play, setPlaylist } = usePlayer();
   const { lastMusicPath } = useNavigation();
@@ -46,6 +50,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
   const [trackCache, setTrackCache] = useState<TrackCache>({});
   const [releaseDates, setReleaseDates] = useState<ReleaseDateCache>({});
   const [tagsCache, setTagsCache] = useState<TagsCache>({});
+  const [enrichmentStatus, setEnrichmentStatus] = useState<EnrichmentStatusCache>({});
   const [loading, setLoading] = useState<Set<number>>(new Set());
   const fetchedRef = useRef(false);
 
@@ -69,6 +74,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
         if (data.tags?.length) {
           setTagsCache((prev) => ({ ...prev, [release.id]: data.tags }));
         }
+        setEnrichmentStatus((prev) => ({ ...prev, [release.id]: data.enrichmentStatus ?? null }));
       } catch (err) {
         console.error('Failed to load tracks:', err);
       } finally {
@@ -151,6 +157,7 @@ export function CatalogView({ slug, bandName, bandUrl, releases, initialCrateIte
             release={release}
             releaseDate={releaseDates[release.id] ?? release.releaseDate ?? null}
             tags={tagsCache[release.id] ?? release.tags ?? []}
+            enrichmentStatus={enrichmentStatus[release.id] ?? undefined}
             isLoading={loading.has(release.id)}
             tracks={trackCache[release.id]}
             playingTrackUrl={playingTrackUrl}
@@ -181,6 +188,7 @@ interface ReleaseCardProps {
   release: CatalogRelease;
   releaseDate: string | null;
   tags: string[];
+  enrichmentStatus?: string | null;
   isLoading: boolean;
   tracks?: CatalogTrack[];
   playingTrackUrl: string | null;
@@ -199,6 +207,7 @@ function ReleaseCard({
   release,
   releaseDate,
   tags,
+  enrichmentStatus,
   isLoading,
   tracks,
   playingTrackUrl,
@@ -235,13 +244,22 @@ function ReleaseCard({
             {release.releaseType === 'track' ? 'Single' : 'Album'}
             {releaseDate && <> · {formatReleaseDate(releaseDate)}</>}
           </div>
-          {tags.length > 0 && (
+          {tags.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
               {tags.map((tag) => (
                 <TagPill key={tag} tag={tag} />
               ))}
             </div>
-          )}
+          ) : enrichmentStatus === 'pending' ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              <span
+                className="cursor-default rounded bg-zinc-800/60 px-1.5 py-0.5 text-xs text-zinc-500"
+                title="Tags will appear after catalog enrichment"
+              >
+                ···
+              </span>
+            </div>
+          ) : null}
         </div>
         {loggedIn && (
           <TrackActions
@@ -291,6 +309,13 @@ function ReleaseCard({
             onAddToCrate={onAddItemToCrate}
             onRemoveFromCrate={onRemoveItemFromCrate}
           />
+        ) : tracks !== undefined && tracks.length === 0 && enrichmentStatus === 'pending' ? (
+          <div
+            className="px-4 py-4 text-center text-sm text-zinc-600"
+            title="Track listing, tags, and artwork will appear after catalog enrichment"
+          >
+            Enriching...
+          </div>
         ) : tracks !== undefined ? (
           <div className="px-4 py-4 text-center text-sm text-zinc-500">
             No tracks found

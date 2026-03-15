@@ -43,6 +43,7 @@ export interface CrateCatalogItem {
   bandUrl: string;
   bpm: number | null;
   musicalKey: string | null;
+  bpmStatus: string | null;
 }
 
 export interface CrateReleaseItem {
@@ -145,11 +146,12 @@ export async function getCrateCatalogItems(crateId: number, fanId: number): Prom
     band_url: string;
     bpm: number | null;
     musical_key: string | null;
+    bpm_status: string | null;
   }>(`
     SELECT ct.id as track_id, ct.title as track_title,
            ct.duration, ct.stream_url, ct.track_url, cr.title as release_title,
            cr.url as release_url, cr.image_url, cr.band_name, cr.band_url,
-           ct.bpm, ct.musical_key
+           ct.bpm, ct.musical_key, ct.bpm_status
     FROM crate_items ci
     JOIN catalog_tracks ct ON ct.id = ci.track_id
     JOIN catalog_releases cr ON cr.id = ct.release_id
@@ -170,6 +172,7 @@ export async function getCrateCatalogItems(crateId: number, fanId: number): Prom
     bandUrl: r.band_url,
     bpm: r.bpm ?? null,
     musicalKey: r.musical_key ?? null,
+    bpmStatus: r.bpm_status ?? null,
   }));
 }
 
@@ -203,7 +206,7 @@ export async function getCrateReleaseItems(crateId: number, fanId: number): Prom
     const placeholders = releaseIds.map((_, i) => `$${i + 1}`).join(',');
     const trackRows = await query<CatalogTrackRow>(`
       SELECT id, release_id, track_num, title, duration, stream_url, track_url,
-             bpm, musical_key, key_camelot, audio_storage_key
+             bpm, musical_key, key_camelot, audio_storage_key, bpm_status
       FROM catalog_tracks
       WHERE release_id IN (${placeholders})
       ORDER BY release_id, track_num

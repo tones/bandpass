@@ -44,6 +44,7 @@ function makeFeedRow(overrides: Partial<FeedItemRow> = {}): FeedItemRow {
     also_collected_count: 0,
     bpm: 120,
     musical_key: 'C minor',
+    bpm_status: null,
     ...overrides,
   };
 }
@@ -265,9 +266,9 @@ describe('queries', () => {
 
     it('groups tracks by album URL and filters singles', async () => {
       vi.mocked(query).mockResolvedValue([
-        { album_url: 'https://a.bandcamp.com/album/x', id: 1, release_id: 10, track_num: 1, title: 'T1', duration: 200, stream_url: null, track_url: null, bpm: null, musical_key: null, key_camelot: null, audio_storage_key: null },
-        { album_url: 'https://a.bandcamp.com/album/x', id: 2, release_id: 10, track_num: 2, title: 'T2', duration: 180, stream_url: null, track_url: null, bpm: null, musical_key: null, key_camelot: null, audio_storage_key: null },
-        { album_url: 'https://b.bandcamp.com/album/y', id: 3, release_id: 20, track_num: 1, title: 'S1', duration: 300, stream_url: null, track_url: null, bpm: null, musical_key: null, key_camelot: null, audio_storage_key: null },
+        { album_url: 'https://a.bandcamp.com/album/x', id: 1, release_id: 10, track_num: 1, title: 'T1', duration: 200, stream_url: null, track_url: null, bpm: null, musical_key: null, key_camelot: null, audio_storage_key: null, bpm_status: null },
+        { album_url: 'https://a.bandcamp.com/album/x', id: 2, release_id: 10, track_num: 2, title: 'T2', duration: 180, stream_url: null, track_url: null, bpm: null, musical_key: null, key_camelot: null, audio_storage_key: null, bpm_status: null },
+        { album_url: 'https://b.bandcamp.com/album/y', id: 3, release_id: 20, track_num: 1, title: 'S1', duration: 300, stream_url: null, track_url: null, bpm: null, musical_key: null, key_camelot: null, audio_storage_key: null, bpm_status: null },
       ]);
 
       const result = await getAlbumTracksForFeedItems(['https://a.bandcamp.com/album/x', 'https://b.bandcamp.com/album/y']);

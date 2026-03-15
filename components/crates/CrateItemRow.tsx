@@ -15,6 +15,7 @@ export interface CrateItemRowProps {
   tags?: string[];
   bpm?: number | null;
   musicalKey?: string | null;
+  bpmStatus?: string | null;
   onPlay: () => void;
   onToggleCrate: () => void;
   onAddToCrate: (crateId: number) => void;
@@ -33,6 +34,7 @@ export function CrateItemRow({
   tags,
   bpm,
   musicalKey,
+  bpmStatus,
   onPlay,
   onToggleCrate,
   onAddToCrate,
@@ -64,12 +66,12 @@ export function CrateItemRow({
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium">{title}</div>
         <div className="truncate text-sm text-zinc-400">{subtitle}</div>
-        {(tags?.length || bpm || musicalKey) && (
+        {(tags?.length || bpm || musicalKey || bpmStatus === null) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
             {tags && [...new Set(tags)].sort().slice(0, 4).map((tag) => (
               <TagPill key={tag} tag={tag} />
             ))}
-            <BpmKeyBadge bpm={bpm} musicalKey={musicalKey} />
+            <BpmKeyBadge bpm={bpm} musicalKey={musicalKey} bpmStatus={bpmStatus} />
           </div>
         )}
       </div>

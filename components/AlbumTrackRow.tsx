@@ -49,7 +49,7 @@ export function AlbumTrackRow({
       <span className="shrink-0 text-xs tabular-nums text-zinc-600">
         {track.duration > 0 ? formatDuration(track.duration) : ''}
       </span>
-      <BpmKeyBadge bpm={track.bpm} musicalKey={track.musicalKey} />
+      <BpmKeyBadge bpm={track.bpm} musicalKey={track.musicalKey} bpmStatus={track.bpmStatus} />
       <TrackActions
         isPlaying={isActive}
         hasStream={!!track.streamUrl}

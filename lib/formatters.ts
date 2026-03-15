@@ -50,6 +50,7 @@ export function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRele
     tags: [],
     bpm: track.bpm,
     musicalKey: track.musicalKey,
+    bpmStatus: track.bpmStatus,
     price: null,
     socialSignal: { fan: null, alsoCollectedCount: 0 },
   };
@@ -82,6 +83,7 @@ export function catalogItemToFeedItem(item: CrateCatalogItem): FeedItem {
     tags: [],
     bpm: item.bpm ?? null,
     musicalKey: item.musicalKey ?? null,
+    bpmStatus: item.bpmStatus ?? null,
     price: null,
     socialSignal: { fan: null, alsoCollectedCount: 0 },
   };
@@ -102,6 +104,7 @@ export function wishlistItemToFeedItem(item: WishlistItem): FeedItem {
     tags: [],
     bpm: item.bpm ?? null,
     musicalKey: item.musicalKey ?? null,
+    bpmStatus: null,
     price: null,
     socialSignal: { fan: null, alsoCollectedCount: item.alsoCollectedCount },
   };

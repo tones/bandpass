@@ -46,6 +46,7 @@ describe('catalog', () => {
         musical_key: 'A minor',
         key_camelot: '8A',
         audio_storage_key: 's3://bucket/key',
+        bpm_status: 'done',
       };
       const track = rowToTrack(row);
       expect(track).toEqual({
@@ -60,6 +61,7 @@ describe('catalog', () => {
         musicalKey: 'A minor',
         keyCamelot: '8A',
         audioStorageKey: 's3://bucket/key',
+        bpmStatus: 'done',
       });
     });
 
@@ -67,7 +69,7 @@ describe('catalog', () => {
       const row: CatalogTrackRow = {
         id: 1, release_id: 10, track_num: 1, title: 'T', duration: 100,
         stream_url: null, track_url: null, bpm: null, musical_key: null,
-        key_camelot: null, audio_storage_key: null,
+        key_camelot: null, audio_storage_key: null, bpm_status: null,
       };
       const track = rowToTrack(row);
       expect(track.streamUrl).toBeNull();
