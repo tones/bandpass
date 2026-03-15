@@ -4,7 +4,6 @@ import { getIdentityCookie, getSession } from '@/lib/session';
 import { getExchangeRates } from '@/lib/currency';
 import { getCrates, getCrateItems, getCrateCatalogItems, getCrateReleaseItems, getCrateWishlistItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap, getWishlistAlbumTracks } from '@/lib/db/crates';
 import { CratesView } from '@/components/CratesView';
-import { AppHeader } from '@/components/AppHeader';
 
 interface CrateDetailPageProps {
   params: Promise<{ id: string }>;
@@ -23,7 +22,6 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
   const cookie = await getIdentityCookie();
   const session = await getSession();
   const fanId = session.fanId;
-  const username = session.username ?? null;
 
   if (!cookie || !fanId) {
     redirect('/crates');
@@ -58,8 +56,7 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
   const initialAlbumTracks = await getWishlistAlbumTracks(albumItemUrls);
 
   return (
-    <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
-      <AppHeader username={username} />
+    <main className="flex h-screen flex-col">
       <CratesView
         crates={crates}
         initialCrateId={targetCrate?.id ?? null}

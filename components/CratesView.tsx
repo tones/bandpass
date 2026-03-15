@@ -26,7 +26,7 @@ import {
   getCratesAction,
   getItemCrateMultiMapAction,
   refreshWishlistAction,
-} from '@/app/crates/actions';
+} from '@/app/(app)/crates/actions';
 
 interface CratesViewProps {
   crates: Crate[];

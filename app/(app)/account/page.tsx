@@ -4,14 +4,12 @@ import { getSession } from '@/lib/session';
 import { getSyncState } from '@/lib/db/sync';
 import { getItemCount, getItemCountByType } from '@/lib/db/queries';
 import { getWishlistItemCount } from '@/lib/db/crates';
-import { AppHeader } from '@/components/AppHeader';
 import { AccountView } from '@/components/AccountView';
 
 export const metadata: Metadata = { title: 'Account' };
 
 export default async function AccountPage() {
   const session = await getSession();
-  const username = session.username ?? null;
 
   if (!session.fanId || !session.identityCookie) {
     redirect('/login');
@@ -23,11 +21,12 @@ export default async function AccountPage() {
   const purchaseItems = await getItemCountByType(fanId, 'my_purchase');
   const wishlistItemCount = await getWishlistItemCount(fanId);
 
+  const username = session.username ?? 'Unknown';
+
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader username={username} />
+    <main className="min-h-screen">
       <AccountView
-        username={username ?? 'Unknown'}
+        username={username}
         totalItems={totalItems}
         purchaseItems={purchaseItems}
         lastSyncAt={syncState?.lastSyncAt ?? null}

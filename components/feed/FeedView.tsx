@@ -11,7 +11,7 @@ import { DateHeader } from './DateHeader';
 import { FilterBar } from './FilterBar';
 import type { FeedFilter } from './FilterBar';
 import { SyncStatus } from '@/components/SyncStatus';
-import { queryFeed } from '@/app/timeline/actions';
+import { queryFeed } from '@/app/(app)/timeline/actions';
 import { useCrateActions } from '@/hooks/useCrateActions';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { useNavigation } from '@/contexts/NavigationContext';

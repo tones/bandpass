@@ -14,7 +14,7 @@ import {
   toggleDefaultCrate,
   addToCrateAction,
   removeFromCrateAction,
-} from '@/app/crates/actions';
+} from '@/app/(app)/crates/actions';
 
 interface WaveformPlayerProps {
   item: FeedItem;

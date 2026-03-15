@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/crates/actions';
+import { toggleDefaultCrate, addToCrateAction, removeFromCrateAction } from '@/app/(app)/crates/actions';
 import type { CrateInfo } from '@/components/TrackActions';
 
 interface UseCrateActionsOptions {

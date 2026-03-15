@@ -7,7 +7,6 @@ import { getFeedItems, getTagCounts, getFriendCounts, getItemCount, getAlbumTrac
 import { getSyncState } from '@/lib/db/sync';
 import { getAllCrateItemIds, getCrates, getItemCrateMultiMap } from '@/lib/db/crates';
 import { FeedView } from '@/components/feed/FeedView';
-import { AppHeader } from '@/components/AppHeader';
 
 export const metadata: Metadata = { title: 'Timeline' };
 
@@ -19,12 +18,10 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   const { tag: initialTag, type: initialType, friend: initialFriend } = await searchParams;
   const cookie = await getIdentityCookie();
   const session = await getSession();
-  const username = session.username ?? null;
 
   if (!cookie) {
     return (
-      <main className="min-h-screen bg-zinc-950 text-zinc-100">
-        <AppHeader username={username} />
+      <main className="min-h-screen">
         <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
           <p className="text-lg text-zinc-400">Log in to see your Bandcamp feed</p>
           <a
@@ -67,8 +64,7 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   const albumTracksMap = albumUrls.length > 0 ? await getAlbumTracksForFeedItems(albumUrls) : {};
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader username={username} />
+    <main className="min-h-screen">
       <FeedView
         initialItems={items}
         initialTotalItems={totalItems}

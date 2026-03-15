@@ -5,7 +5,6 @@ import { fetchDiscography, artIdToUrl, publicFetcher } from '@/lib/bandcamp/scra
 import { getCachedDiscography, cacheDiscography } from '@/lib/db/catalog';
 import { getAllCrateItemIds, getCrates, getItemCrateMultiMap } from '@/lib/db/crates';
 import { CatalogView } from '@/components/music/CatalogView';
-import { AppHeader } from '@/components/AppHeader';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +30,6 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
   const cookie = await getIdentityCookie();
   const session = await getSession();
   const fanId = session.fanId;
-  const username = session.username;
 
   const { slug } = await params;
   const bandUrl = slugToBandUrl(slug);
@@ -71,8 +69,7 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
   const itemCrateMap = fanId ? await getItemCrateMultiMap(fanId) : {};
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader username={username} />
+    <main className="min-h-screen">
       <CatalogView
         slug={slug}
         bandName={bandName}

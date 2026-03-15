@@ -1,12 +1,10 @@
 import type { Metadata } from 'next';
-import { AppHeader } from '@/components/AppHeader';
 
 export const metadata: Metadata = { title: 'Privacy Policy' };
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader />
+    <main className="min-h-screen">
       <div className="mx-auto max-w-xl px-6 py-12">
         <h1 className="mb-2 text-2xl font-semibold tracking-tight">Privacy Policy</h1>
         <p className="mb-8 text-sm text-zinc-500">Last updated: March 2026</p>
