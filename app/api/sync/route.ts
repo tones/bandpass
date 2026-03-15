@@ -5,7 +5,7 @@ import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncC
 import { createJob, updateJobProgress, completeJob, failJob, hasActiveUserSync, getActiveJob, getLatestJob } from '@/lib/db/sync-jobs';
 import { getItemCount } from '@/lib/db/queries';
 import { execute } from '@/lib/db';
-import { ensureWorkersStarted, nudgeWorkers } from '@/lib/sync/workers';
+import { ensureWorkersStarted } from '@/lib/sync/workers';
 import { requestJobCancel } from '@/lib/db/sync-jobs';
 
 export const dynamic = 'force-dynamic';
@@ -55,7 +55,6 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
     await updateJobProgress(jobId, 4, 4);
 
     await enqueueForEnrichment(fanId);
-    nudgeWorkers();
 
     await completeJob(jobId);
   } catch (err) {
@@ -115,7 +114,7 @@ export async function GET() {
     );
   }
 
-  ensureWorkersStarted(session.identityCookie);
+  ensureWorkersStarted();
 
   return NextResponse.json({
     fanId,
@@ -181,7 +180,7 @@ export async function POST() {
     console.error('POST-triggered sync error:', err),
   );
 
-  ensureWorkersStarted(session.identityCookie);
+  ensureWorkersStarted();
 
   return NextResponse.json({
     status: isInitial ? 'initial_sync_started' : 'incremental_sync_started',

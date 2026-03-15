@@ -1,10 +1,11 @@
 /**
- * Audio enrichment worker: a standalone Node process (Fly.io "worker" group)
- * that polls for catalog tracks needing BPM/key analysis. For each release,
- * it refreshes stream URLs, spawns a pool of Python Essentia processes
- * (ANALYZER_CONCURRENCY), optionally uploads audio to S3, and writes results
- * back to catalog_tracks. Progress is tracked via sync_jobs with periodic
- * heartbeats. Gracefully shuts down on SIGTERM/SIGINT.
+ * Background worker: a standalone Node process (Fly.io "worker" group)
+ * that runs two loops concurrently:
+ *   1. Catalog enrichment -- scrapes album pages for tags/tracks/metadata
+ *   2. Audio analysis -- extracts BPM/key via Python Essentia
+ *
+ * Both loops poll the database, track progress via sync_jobs with periodic
+ * heartbeats, and shut down gracefully on SIGTERM/SIGINT.
  */
 import http from 'http';
 import { spawn, ChildProcess } from 'child_process';
@@ -27,16 +28,71 @@ import {
   cleanupStaleJobs,
   updateHeartbeat,
 } from '../lib/db/sync-jobs';
-import { getAudioAnalysisPendingCount } from '../lib/db/sync';
+import { getAudioAnalysisPendingCount, processEnrichmentQueue } from '../lib/db/sync';
 import { fetchAlbumTracks, publicFetcher } from '../lib/bandcamp/scraper';
 import { normalizeBpm, toCamelot, formatKey } from '../lib/audio/camelot';
 import { isS3Configured, uploadTrackFromFile } from '../lib/s3';
 import { sleep } from '../lib/db/utils';
 
+let shuttingDown = false;
+
 const POLL_INTERVAL_MS = 30_000;
 const TRACK_DELAY_MS = 750;
 const RELEASE_DELAY_MS = 1_000;
 const MAX_CONSECUTIVE_FAILURES = 20;
+
+// ---------------------------------------------------------------------------
+// Catalog enrichment loop
+// ---------------------------------------------------------------------------
+
+async function catalogEnrichmentLoop() {
+  console.log('Catalog enrichment loop started');
+
+  while (!shuttingDown) {
+    try {
+      const row = await queryOne<{ c: string }>(
+        "SELECT COUNT(*) as c FROM enrichment_queue WHERE status = 'pending'",
+      );
+      const pendingCount = parseInt(row?.c ?? '0', 10);
+
+      if (pendingCount > 0 && !(await getActiveJob('enrichment'))) {
+        const jobId = await createJob('enrichment');
+
+        const heartbeatInterval = setInterval(async () => {
+          try { await updateHeartbeat(jobId); } catch (err) {
+            console.error('Catalog enrichment heartbeat failed:', err);
+          }
+        }, 30_000);
+
+        try {
+          await updateHeartbeat(jobId);
+          await updateJobProgress(jobId, 0, pendingCount);
+          await processEnrichmentQueue((processed, remaining) => {
+            updateJobProgress(jobId, processed, processed + remaining);
+          });
+          await completeJob(jobId);
+        } catch (err) {
+          console.error('Catalog enrichment error:', err);
+          await failJob(jobId, err instanceof Error ? err.message : String(err));
+        } finally {
+          clearInterval(heartbeatInterval);
+        }
+      }
+    } catch (err) {
+      console.error('Catalog enrichment loop error:', err);
+    }
+
+    if (!shuttingDown) {
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+
+  console.log('Catalog enrichment loop stopped');
+}
+
+// ---------------------------------------------------------------------------
+// Audio analysis
+// ---------------------------------------------------------------------------
 
 class EssentiaProcess {
   private proc: ChildProcess | null = null;
@@ -400,6 +456,38 @@ function startHealthServer() {
   });
 }
 
+async function audioAnalysisLoop() {
+  if (process.env.ENABLE_AUDIO_ANALYSIS !== 'true') {
+    await execute(
+      "UPDATE sync_jobs SET status = 'done', error = NULL, updated_at = NOW() WHERE status = 'running' AND job_type = 'audio_analysis'",
+    );
+    console.log('Audio analysis disabled (ENABLE_AUDIO_ANALYSIS != true). Loop idle.');
+    while (!shuttingDown) await sleep(60_000);
+    return;
+  }
+
+  s3Enabled = isS3Configured();
+  const pendingAtStart = await getAudioAnalysisPendingCount();
+  console.log(`Audio analysis starting (S3: ${s3Enabled ? 'on' : 'off'}, concurrency: ${CONCURRENCY}, pending: ${pendingAtStart})`);
+
+  pool = new AnalyzerPool(CONCURRENCY);
+  await pool.start();
+
+  while (!shuttingDown) {
+    try {
+      await processReleases();
+    } catch (err) {
+      console.error('Audio analysis loop error:', err);
+    }
+
+    if (!shuttingDown) {
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+
+  console.log('Audio analysis loop stopped');
+}
+
 async function main() {
   startHealthServer();
 
@@ -408,33 +496,13 @@ async function main() {
     process.exit(1);
   }
 
-  if (process.env.ENABLE_AUDIO_ANALYSIS !== 'true') {
-    await execute(
-      "UPDATE sync_jobs SET status = 'done', error = NULL, updated_at = NOW() WHERE status = 'running' AND job_type = 'audio_analysis'",
-    );
-    console.log('Audio worker disabled (ENABLE_AUDIO_ANALYSIS != true). Idling.');
-    setInterval(() => {}, 60_000);
-    return;
-  }
+  await cleanupStaleJobs(['enrichment', 'audio_analysis']);
 
-  await cleanupStaleJobs(['audio_analysis']);
-
-  s3Enabled = isS3Configured();
-  const pendingAtStart = await getAudioAnalysisPendingCount();
-  console.log(`Audio worker starting (S3: ${s3Enabled ? 'on' : 'off'}, concurrency: ${CONCURRENCY}, pending: ${pendingAtStart})`);
-
-  pool = new AnalyzerPool(CONCURRENCY);
-  await pool.start();
-
-  while (true) {
-    try {
-      await processReleases();
-    } catch (err) {
-      console.error('Worker loop error:', err);
-    }
-
-    await sleep(POLL_INTERVAL_MS);
-  }
+  console.log('Worker starting...');
+  await Promise.all([
+    catalogEnrichmentLoop(),
+    audioAnalysisLoop(),
+  ]);
 }
 
 main().catch((err) => {
@@ -444,8 +512,9 @@ main().catch((err) => {
 
 function handleShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`);
+  shuttingDown = true;
   if (pool) pool.killAll();
-  process.exit(0);
+  setTimeout(() => process.exit(0), 5_000);
 }
 
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));

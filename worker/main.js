@@ -125,6 +125,75 @@ function sleep(ms) {
 }
 
 // lib/db/catalog.ts
+function normalizeDate(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toISOString().slice(0, 10);
+}
+async function getCachedAlbumTracks(releaseId) {
+  const rows = await query(`
+    SELECT * FROM catalog_tracks WHERE release_id = $1 ORDER BY track_num
+  `, [releaseId]);
+  if (rows.length === 0) return null;
+  return rows.map(rowToTrack);
+}
+function rowToTrack(row) {
+  return {
+    id: row.id,
+    releaseId: row.release_id,
+    trackNum: row.track_num,
+    title: row.title,
+    duration: row.duration,
+    streamUrl: row.stream_url,
+    trackUrl: row.track_url,
+    bpm: row.bpm ?? null,
+    musicalKey: row.musical_key ?? null,
+    keyCamelot: row.key_camelot ?? null,
+    audioStorageKey: row.audio_storage_key ?? null
+  };
+}
+async function cacheAlbumTracks(releaseId, tracks, releaseDate, tags) {
+  await transaction(async (client2) => {
+    await client2.query("DELETE FROM catalog_tracks WHERE release_id = $1", [releaseId]);
+    for (const t of tracks) {
+      await client2.query(
+        `INSERT INTO catalog_tracks (release_id, track_num, title, duration, stream_url, track_url, bandcamp_track_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [releaseId, t.trackNum, t.title, t.duration, t.streamUrl, t.trackUrl, t.bandcampTrackId ?? null]
+      );
+    }
+    if (releaseDate !== void 0 || tags !== void 0) {
+      const normalizedDate = releaseDate ? normalizeDate(releaseDate) : null;
+      await client2.query(
+        `UPDATE catalog_releases
+        SET release_date = COALESCE($1, release_date),
+            tags = COALESCE($2::jsonb, tags)
+        WHERE id = $3`,
+        [normalizedDate, tags ? JSON.stringify(tags) : null, releaseId]
+      );
+    }
+  });
+  return await getCachedAlbumTracks(releaseId) ?? [];
+}
+async function ensureCatalogRelease(url, bandName, bandSlug, title, imageUrl, bandcampId) {
+  const byUrl = await queryOne("SELECT id FROM catalog_releases WHERE url = $1", [url]);
+  if (byUrl) {
+    if (bandcampId != null) {
+      await execute("UPDATE catalog_releases SET bandcamp_id = $1 WHERE id = $2 AND bandcamp_id IS NULL", [bandcampId, byUrl.id]);
+    }
+    return byUrl.id;
+  }
+  if (bandcampId != null) {
+    const byBcId = await queryOne("SELECT id FROM catalog_releases WHERE bandcamp_id = $1", [bandcampId]);
+    if (byBcId) return byBcId.id;
+  }
+  const result = await query(`
+    INSERT INTO catalog_releases (band_slug, band_name, band_url, title, url, image_url, release_type, source, bandcamp_id)
+    VALUES ($1, $2, $3, $4, $5, $6, 'album', 'enrichment', $7)
+    RETURNING id
+  `, [bandSlug, bandName, `https://${bandSlug}.bandcamp.com`, title, url, imageUrl, bandcampId ?? null]);
+  return result[0].id;
+}
 async function getReleasesNeedingStreamRefresh() {
   const rows = await query(`
     SELECT DISTINCT cr.id AS release_id, cr.url AS release_url
@@ -251,12 +320,30 @@ async function cleanupStaleJobs(jobTypes) {
   }
 }
 
+// lib/db/sync/helpers.ts
+var MAX_RETRIES = 3;
+var INITIAL_BACKOFF_MS = 5e3;
+async function withRetry(fn) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const is429 = err instanceof Error && err.message.includes("429");
+      if (!is429 || attempt === MAX_RETRIES) throw err;
+      const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+      console.warn(`Rate limited (429), backing off ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await sleep(backoff);
+    }
+  }
+  throw new Error("Unreachable");
+}
+
 // lib/db/sync/feed.ts
 var SIX_MONTHS_SECONDS = 180 * 24 * 60 * 60;
 
 // lib/bandcamp/scraper.ts
-var publicFetcher = async (url) => {
-  const res = await fetch(url);
+var publicFetcher = async (url, signal) => {
+  const res = await fetch(url, signal ? { signal } : void 0);
   if (!res.ok) throw new Error(`Fetch error: ${res.status}`);
   return res.text();
 };
@@ -311,6 +398,99 @@ async function fetchAlbumTracks(fetchHtml, albumUrl) {
     tracks,
     bandcampId: tralbum.id ?? null
   };
+}
+function extractSlug(artistUrl) {
+  try {
+    const url = new URL(artistUrl);
+    const host = url.hostname;
+    if (host.endsWith(".bandcamp.com")) {
+      return host.replace(".bandcamp.com", "");
+    }
+    return host;
+  } catch {
+    return artistUrl;
+  }
+}
+
+// lib/db/sync/enrichment.ts
+var ENRICHMENT_DELAY_MS = 1e3;
+var MAX_BACKOFF_MS = 3e4;
+var BACKOFF_THRESHOLD = 5;
+var MAX_CONSECUTIVE_FAILURES = 20;
+var FETCH_TIMEOUT_MS = 3e4;
+function timedFetcher(url) {
+  return publicFetcher(url, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+}
+async function processEnrichmentQueue(onProgress) {
+  const pending = await query(
+    "SELECT album_url FROM enrichment_queue WHERE status = 'pending' ORDER BY created_at ASC"
+  );
+  if (pending.length === 0) return 0;
+  let processed = 0;
+  let consecutiveFailures = 0;
+  for (const { album_url } of pending) {
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      console.error(`Aborting enrichment batch after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
+      break;
+    }
+    try {
+      const album = await withRetry(() => fetchAlbumTracks(timedFetcher, album_url));
+      const slug = extractSlug(new URL(album_url).origin);
+      const releaseId = await ensureCatalogRelease(
+        album_url,
+        album.artist,
+        slug,
+        album.title,
+        album.imageUrl,
+        album.bandcampId
+      );
+      await cacheAlbumTracks(
+        releaseId,
+        album.tracks.map((t) => ({
+          trackNum: t.trackNum,
+          title: t.title,
+          duration: t.duration,
+          streamUrl: t.streamUrl,
+          trackUrl: t.trackUrl,
+          bandcampTrackId: t.bandcampTrackId
+        })),
+        album.releaseDate,
+        album.tags
+      );
+      await execute("UPDATE feed_items SET release_id = $1 WHERE album_url = $2 AND release_id IS NULL", [releaseId, album_url]);
+      await execute("UPDATE wishlist_items SET release_id = $1 WHERE item_url = $2 AND release_id IS NULL", [releaseId, album_url]);
+      await execute(`
+        UPDATE feed_items fi SET track_id = ct.id
+        FROM catalog_tracks ct
+        WHERE ct.bandcamp_track_id = fi.bandcamp_track_id
+          AND ct.release_id = $1
+          AND fi.release_id = $1 AND fi.track_id IS NULL
+          AND fi.bandcamp_track_id IS NOT NULL
+      `, [releaseId]);
+      await execute("UPDATE enrichment_queue SET status = 'done', processed_at = NOW() WHERE album_url = $1", [album_url]);
+      consecutiveFailures = 0;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Enrichment failed for ${album_url}:`, message);
+      await execute(
+        `UPDATE enrichment_queue SET status = 'failed', processed_at = NOW(),
+         retry_count = retry_count + 1, last_error = $2
+         WHERE album_url = $1`,
+        [album_url, message.slice(0, 500)]
+      );
+      consecutiveFailures++;
+    }
+    processed++;
+    onProgress?.(processed, pending.length - processed);
+    if (processed < pending.length) {
+      let delay = ENRICHMENT_DELAY_MS;
+      if (consecutiveFailures >= BACKOFF_THRESHOLD) {
+        delay = Math.min(ENRICHMENT_DELAY_MS * Math.pow(2, consecutiveFailures - BACKOFF_THRESHOLD), MAX_BACKOFF_MS);
+      }
+      await sleep(delay);
+    }
+  }
+  return processed;
 }
 
 // lib/db/sync/audio.ts
@@ -406,10 +586,51 @@ async function uploadTrackFromFile(trackId, filePath) {
 }
 
 // worker/main.ts
+var shuttingDown = false;
 var POLL_INTERVAL_MS = 3e4;
 var TRACK_DELAY_MS = 750;
 var RELEASE_DELAY_MS = 1e3;
-var MAX_CONSECUTIVE_FAILURES = 20;
+var MAX_CONSECUTIVE_FAILURES2 = 20;
+async function catalogEnrichmentLoop() {
+  console.log("Catalog enrichment loop started");
+  while (!shuttingDown) {
+    try {
+      const row = await queryOne(
+        "SELECT COUNT(*) as c FROM enrichment_queue WHERE status = 'pending'"
+      );
+      const pendingCount = parseInt(row?.c ?? "0", 10);
+      if (pendingCount > 0 && !await getActiveJob("enrichment")) {
+        const jobId = await createJob("enrichment");
+        const heartbeatInterval = setInterval(async () => {
+          try {
+            await updateHeartbeat(jobId);
+          } catch (err) {
+            console.error("Catalog enrichment heartbeat failed:", err);
+          }
+        }, 3e4);
+        try {
+          await updateHeartbeat(jobId);
+          await updateJobProgress(jobId, 0, pendingCount);
+          await processEnrichmentQueue((processed, remaining) => {
+            updateJobProgress(jobId, processed, processed + remaining);
+          });
+          await completeJob(jobId);
+        } catch (err) {
+          console.error("Catalog enrichment error:", err);
+          await failJob(jobId, err instanceof Error ? err.message : String(err));
+        } finally {
+          clearInterval(heartbeatInterval);
+        }
+      }
+    } catch (err) {
+      console.error("Catalog enrichment loop error:", err);
+    }
+    if (!shuttingDown) {
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+  console.log("Catalog enrichment loop stopped");
+}
 var EssentiaProcess = class {
   constructor(id = 0) {
     this.id = id;
@@ -653,8 +874,8 @@ async function processReleases() {
           cancelled = true;
           break;
         }
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          console.error(`Aborting: ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES2) {
+          console.error(`Aborting: ${MAX_CONSECUTIVE_FAILURES2} consecutive failures`);
           cancelled = true;
           break;
         }
@@ -681,8 +902,8 @@ async function processReleases() {
       }
       await Promise.allSettled(inflight);
       if (cancelled) {
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          await failJob(jobId, `${MAX_CONSECUTIVE_FAILURES} consecutive track failures`);
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES2) {
+          await failJob(jobId, `${MAX_CONSECUTIVE_FAILURES2} consecutive track failures`);
         } else {
           await failJob(jobId, "Cancelled by user");
         }
@@ -710,35 +931,44 @@ function startHealthServer() {
     console.log(`Health check server listening on port ${HEALTH_PORT}`);
   });
 }
+async function audioAnalysisLoop() {
+  if (process.env.ENABLE_AUDIO_ANALYSIS !== "true") {
+    await execute(
+      "UPDATE sync_jobs SET status = 'done', error = NULL, updated_at = NOW() WHERE status = 'running' AND job_type = 'audio_analysis'"
+    );
+    console.log("Audio analysis disabled (ENABLE_AUDIO_ANALYSIS != true). Loop idle.");
+    while (!shuttingDown) await sleep(6e4);
+    return;
+  }
+  s3Enabled = isS3Configured();
+  const pendingAtStart = await getAudioAnalysisPendingCount();
+  console.log(`Audio analysis starting (S3: ${s3Enabled ? "on" : "off"}, concurrency: ${CONCURRENCY}, pending: ${pendingAtStart})`);
+  pool2 = new AnalyzerPool(CONCURRENCY);
+  await pool2.start();
+  while (!shuttingDown) {
+    try {
+      await processReleases();
+    } catch (err) {
+      console.error("Audio analysis loop error:", err);
+    }
+    if (!shuttingDown) {
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+  console.log("Audio analysis loop stopped");
+}
 async function main() {
   startHealthServer();
   if (!process.env.DATABASE_URL) {
     console.error("DATABASE_URL not set");
     process.exit(1);
   }
-  if (process.env.ENABLE_AUDIO_ANALYSIS !== "true") {
-    await execute(
-      "UPDATE sync_jobs SET status = 'done', error = NULL, updated_at = NOW() WHERE status = 'running' AND job_type = 'audio_analysis'"
-    );
-    console.log("Audio worker disabled (ENABLE_AUDIO_ANALYSIS != true). Idling.");
-    setInterval(() => {
-    }, 6e4);
-    return;
-  }
-  await cleanupStaleJobs(["audio_analysis"]);
-  s3Enabled = isS3Configured();
-  const pendingAtStart = await getAudioAnalysisPendingCount();
-  console.log(`Audio worker starting (S3: ${s3Enabled ? "on" : "off"}, concurrency: ${CONCURRENCY}, pending: ${pendingAtStart})`);
-  pool2 = new AnalyzerPool(CONCURRENCY);
-  await pool2.start();
-  while (true) {
-    try {
-      await processReleases();
-    } catch (err) {
-      console.error("Worker loop error:", err);
-    }
-    await sleep(POLL_INTERVAL_MS);
-  }
+  await cleanupStaleJobs(["enrichment", "audio_analysis"]);
+  console.log("Worker starting...");
+  await Promise.all([
+    catalogEnrichmentLoop(),
+    audioAnalysisLoop()
+  ]);
 }
 main().catch((err) => {
   console.error("Worker fatal:", err);
@@ -746,8 +976,9 @@ main().catch((err) => {
 });
 function handleShutdown(signal) {
   console.log(`Received ${signal}, shutting down gracefully...`);
+  shuttingDown = true;
   if (pool2) pool2.killAll();
-  process.exit(0);
+  setTimeout(() => process.exit(0), 5e3);
 }
 process.on("SIGTERM", () => handleShutdown("SIGTERM"));
 process.on("SIGINT", () => handleShutdown("SIGINT"));
