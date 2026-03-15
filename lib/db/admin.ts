@@ -1,4 +1,6 @@
 import { query, queryOne } from './index';
+import { getActiveJob, getLatestJob } from './sync-jobs';
+import { getAudioAnalysisPendingCount, getAudioAnalysisDoneCount, getGlobalEnrichmentPendingCount } from './sync';
 
 export interface AdminUser {
   fanId: number;
@@ -112,45 +114,70 @@ export async function getAllUsersWithStats(): Promise<AdminUser[]> {
 }
 
 export interface AdminGlobalStats {
-  enrichmentPending: number;
-  enrichmentDone: number;
-  enrichmentTotal: number;
   totalCatalogReleases: number;
   totalCatalogTracks: number;
+  isEnriching: boolean;
+  enrichedCount: number;
+  enrichmentPendingCount: number;
+  isAnalyzingAudio: boolean;
   audioAnalyzed: number;
-  audioPending: number;
-  audioTotal: number;
+  audioAnalysisPending: number;
+  audioAnalysisDone: number;
+  audioErrors: number;
+  audioJobError: string | null;
+  audioJobStatus: string | null;
+  audioAnalysisEnabled: boolean;
+  workerOnline: boolean;
 }
 
 export async function getGlobalStats(): Promise<AdminGlobalStats> {
-  const row = await queryOne<{
-    enrichment_pending: string;
-    enrichment_total: string;
-    enrichment_done: string;
+  const countsRow = await queryOne<{
     total_catalog_releases: string;
     total_catalog_tracks: string;
-    audio_analyzed: string;
-    audio_pending: string;
-    audio_total: string;
   }>(`
     SELECT
-      (SELECT COUNT(*) FROM enrichment_queue WHERE status = 'pending') AS enrichment_pending,
-      (SELECT COUNT(*) FROM enrichment_queue WHERE status IN ('done', 'pending', 'failed')) AS enrichment_total,
-      (SELECT COUNT(*) FROM enrichment_queue WHERE status = 'done') AS enrichment_done,
       (SELECT COUNT(*) FROM catalog_releases) AS total_catalog_releases,
-      (SELECT COUNT(*) FROM catalog_tracks) AS total_catalog_tracks,
-      (SELECT COUNT(*) FROM catalog_tracks WHERE bpm IS NOT NULL) AS audio_analyzed,
-      (SELECT COUNT(*) FROM catalog_tracks WHERE bpm IS NULL AND stream_url IS NOT NULL) AS audio_pending,
-      (SELECT COUNT(*) FROM catalog_tracks WHERE stream_url IS NOT NULL) AS audio_total
+      (SELECT COUNT(*) FROM catalog_tracks) AS total_catalog_tracks
   `);
+
+  const enrichmentJob = await getActiveJob('enrichment') ?? await getLatestJob('enrichment');
+  const activeAudioJob = await getActiveJob('audio_analysis');
+  const audioJob = activeAudioJob ?? await getLatestJob('audio_analysis');
+
+  const enrichmentPendingCount = await getGlobalEnrichmentPendingCount();
+  const audioAnalysisPending = await getAudioAnalysisPendingCount();
+  const audioAnalysisDone = await getAudioAnalysisDoneCount();
+
+  const isEnriching = enrichmentJob?.status === 'running';
+  const isAnalyzingAudio = audioJob?.status === 'running';
+
+  const isTransientAudioFailure = !activeAudioJob
+    && audioJob?.error === 'Server restarted'
+    && audioAnalysisPending > 0;
+
+  const HEARTBEAT_STALE_MS = 90_000;
+  const workerOnline = activeAudioJob?.lastHeartbeat
+    ? (Date.now() - new Date(activeAudioJob.lastHeartbeat).getTime()) < HEARTBEAT_STALE_MS
+    : false;
+
   return {
-    enrichmentPending: parseInt(row?.enrichment_pending ?? '0', 10),
-    enrichmentDone: parseInt(row?.enrichment_done ?? '0', 10),
-    enrichmentTotal: parseInt(row?.enrichment_total ?? '0', 10),
-    totalCatalogReleases: parseInt(row?.total_catalog_releases ?? '0', 10),
-    totalCatalogTracks: parseInt(row?.total_catalog_tracks ?? '0', 10),
-    audioAnalyzed: parseInt(row?.audio_analyzed ?? '0', 10),
-    audioPending: parseInt(row?.audio_pending ?? '0', 10),
-    audioTotal: parseInt(row?.audio_total ?? '0', 10),
+    totalCatalogReleases: parseInt(countsRow?.total_catalog_releases ?? '0', 10),
+    totalCatalogTracks: parseInt(countsRow?.total_catalog_tracks ?? '0', 10),
+    isEnriching,
+    enrichedCount: enrichmentJob?.progressDone ?? 0,
+    enrichmentPendingCount: isEnriching
+      ? (enrichmentJob?.progressTotal ?? 0) - (enrichmentJob?.progressDone ?? 0)
+      : enrichmentPendingCount,
+    isAnalyzingAudio,
+    audioAnalyzed: audioJob?.progressDone ?? 0,
+    audioAnalysisPending: isAnalyzingAudio
+      ? (audioJob?.progressTotal ?? 0) - (audioJob?.progressDone ?? 0)
+      : audioAnalysisPending,
+    audioAnalysisDone,
+    audioErrors: audioJob?.progressErrors ?? 0,
+    audioJobError: isTransientAudioFailure ? null : (audioJob?.error ?? null),
+    audioJobStatus: isTransientAudioFailure ? null : (audioJob?.status ?? null),
+    audioAnalysisEnabled: process.env.ENABLE_AUDIO_ANALYSIS === 'true',
+    workerOnline,
   };
 }

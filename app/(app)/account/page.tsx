@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { getSyncState } from '@/lib/db/sync';
-import { getItemCount, getItemCountByType } from '@/lib/db/queries';
+import { getFeedTypeCounts, getCrateCount } from '@/lib/db/queries';
 import { getWishlistItemCount } from '@/lib/db/crates';
 import { AccountView } from '@/components/AccountView';
 
@@ -16,10 +16,12 @@ export default async function AccountPage() {
   }
 
   const fanId = session.fanId;
-  const syncState = await getSyncState(fanId);
-  const totalItems = await getItemCount(fanId);
-  const purchaseItems = await getItemCountByType(fanId, 'my_purchase');
-  const wishlistItemCount = await getWishlistItemCount(fanId);
+  const [syncState, feedCounts, crateCount, wishlistItemCount] = await Promise.all([
+    getSyncState(fanId),
+    getFeedTypeCounts(fanId),
+    getCrateCount(fanId),
+    getWishlistItemCount(fanId),
+  ]);
 
   const username = session.username ?? 'Unknown';
 
@@ -27,8 +29,12 @@ export default async function AccountPage() {
     <main className="min-h-screen">
       <AccountView
         username={username}
-        totalItems={totalItems}
-        purchaseItems={purchaseItems}
+        totalItems={feedCounts.total}
+        newReleases={feedCounts.newReleases}
+        friendPurchases={feedCounts.friendPurchases}
+        myPurchases={feedCounts.myPurchases}
+        crateCount={crateCount}
+        purchaseItems={feedCounts.myPurchases}
         lastSyncAt={syncState?.lastSyncAt ?? null}
         deepSyncComplete={syncState?.deepSyncComplete ?? false}
         collectionSynced={syncState?.collectionSynced ?? false}

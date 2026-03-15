@@ -30,7 +30,7 @@ vi.mock('../../utils', () => ({
 import { query, queryOne, execute } from '../../index';
 import { fetchAlbumTracks } from '@/lib/bandcamp/scraper';
 import { ensureCatalogRelease, cacheAlbumTracks } from '../../catalog';
-import { enqueueForEnrichment, getEnrichmentPendingCount, processEnrichmentQueue } from '../enrichment';
+import { enqueueForEnrichment, getEnrichmentPendingCount, getGlobalEnrichmentPendingCount, processEnrichmentQueue } from '../enrichment';
 
 describe('enrichment', () => {
   beforeEach(() => {
@@ -110,6 +110,19 @@ describe('enrichment', () => {
       const feedCall = vi.mocked(queryOne).mock.calls[0][0] as string;
       expect(feedCall).not.toContain('tags');
       expect(feedCall).toContain('NOT EXISTS');
+    });
+  });
+
+  describe('getGlobalEnrichmentPendingCount', () => {
+    it('returns count of pending items in enrichment_queue', async () => {
+      vi.mocked(queryOne).mockResolvedValue({ c: '42' });
+
+      const count = await getGlobalEnrichmentPendingCount();
+      expect(count).toBe(42);
+
+      const sql = vi.mocked(queryOne).mock.calls[0][0] as string;
+      expect(sql).toContain('enrichment_queue');
+      expect(sql).toContain("'pending'");
     });
   });
 

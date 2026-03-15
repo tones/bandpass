@@ -3,10 +3,18 @@
 import { useState } from 'react';
 import { logout } from '@/app/logout/actions';
 import { useSyncPolling } from '@/hooks/useSyncPolling';
+import { formatDate } from '@/components/panes/shared';
+import { UserItemCounts } from '@/components/panes/UserItemCounts';
+import { UserSyncStatus } from '@/components/panes/UserSyncStatus';
+import { GlobalSyncStatus } from '@/components/panes/GlobalSyncStatus';
 
 interface AccountViewProps {
   username: string;
   totalItems: number;
+  newReleases: number;
+  friendPurchases: number;
+  myPurchases: number;
+  crateCount: number;
   purchaseItems: number;
   lastSyncAt: string | null;
   deepSyncComplete: boolean;
@@ -16,35 +24,13 @@ interface AccountViewProps {
   oldestStoryDate: number | null;
 }
 
-function formatDate(dateStr: string): string {
-  const normalized = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
-  const d = new Date(normalized);
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  });
-}
-
-function formatOldestDate(timestamp: number): string {
-  const d = new Date(timestamp * 1000);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function buildAudioActiveLabel(done: number, errors: number, pending: number | null): string {
-  const parts: string[] = [];
-  if (done > 0) parts.push(`${done.toLocaleString()} done`);
-  if (errors > 0) parts.push(`${errors.toLocaleString()} errors`);
-  if (pending) parts.push(`${pending.toLocaleString()} remaining`);
-  return parts.length > 0 ? `Analyzing... (${parts.join(', ')})` : 'Analyzing...';
-}
-
 export function AccountView({
   username,
   totalItems: initialTotal,
+  newReleases: initialNewReleases,
+  friendPurchases: initialFriendPurchases,
+  myPurchases: initialMyPurchases,
+  crateCount,
   purchaseItems: initialPurchaseItems,
   lastSyncAt: initialLastSync,
   deepSyncComplete: initialDeepComplete,
@@ -101,16 +87,16 @@ export function AccountView({
   const audioJobStatus = state?.audioJobStatus ?? null;
   const audioAnalysisEnabled = state?.audioAnalysisEnabled ?? false;
   const workerOnline = state?.workerOnline ?? false;
-  const audioFailed = !isAnalyzingAudio && audioJobStatus === 'failed' && !!audioJobError;
-  const workerOffline = isAnalyzingAudio && !workerOnline;
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="text-2xl font-semibold text-zinc-100">Account</h1>
 
       <div className="mt-8 space-y-6">
-        <Section title="Profile">
-          <Row label="Username">
+        <div className="rounded-lg border border-zinc-800 p-4">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-600">Profile</h2>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-zinc-500">Username</span>
             <a
               href={`https://bandcamp.com/${username}`}
               target="_blank"
@@ -119,84 +105,55 @@ export function AccountView({
             >
               {username}
             </a>
-          </Row>
-        </Section>
+          </div>
+        </div>
 
-        <Section title="Your Sync Status">
-          <Row label="Last synced">
-            {lastSyncAt ? formatDate(lastSyncAt) : 'Never'}
-          </Row>
-          <Row label="Total items">{totalItems.toLocaleString()}</Row>
-          <Row label="Feed history">
-            <StatusBadge
-              done={deepSyncComplete}
-              active={isDeepSyncing}
-              doneLabel={oldestDate ? `Complete · back to ${formatOldestDate(oldestDate)}` : 'Complete'}
-              activeLabel={oldestDate ? `Syncing · back to ${formatOldestDate(oldestDate)}` : 'Syncing...'}
-              pendingLabel="Pending"
-            />
-          </Row>
-          <Row label="Purchases">
-            <StatusBadge
-              done={collectionSynced}
-              active={isCollectionSyncing}
-              doneLabel={`${initialPurchaseItems.toLocaleString()} items`}
-              activeLabel="Syncing..."
-              pendingLabel="Pending"
-            />
-          </Row>
-          <Row label="Wishlist">
-            <StatusBadge
-              done={wishlistSynced}
-              active={isWishlistSyncing}
-              doneLabel={`${initialWishlistCount.toLocaleString()} items`}
-              activeLabel="Syncing..."
-              pendingLabel="Pending"
-            />
-          </Row>
-        </Section>
+        <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
+          <UserItemCounts
+            totalFeedItems={totalItems}
+            newReleases={initialNewReleases}
+            friendPurchases={initialFriendPurchases}
+            myPurchases={initialMyPurchases}
+            crateCount={crateCount}
+            wishlistCount={initialWishlistCount}
+          />
+        </div>
 
-        <Section title="Global Sync Status">
-          <Row label="Catalog enrichment">
-            <StatusBadge
-              done={!isEnriching && enrichmentPendingCount === 0 && wishlistSynced && collectionSynced}
-              active={isEnriching}
-              doneLabel="Complete"
-              activeLabel={enrichedCount > 0 ? `Enriching... (${enrichedCount} done${enrichmentPendingCount ? `, ${enrichmentPendingCount.toLocaleString()} remaining` : ''})` : enrichmentPendingCount ? `Enriching... (${enrichmentPendingCount.toLocaleString()} remaining)` : 'Enriching...'}
-              pendingLabel={enrichmentPendingCount !== null && enrichmentPendingCount > 0 ? `${enrichmentPendingCount.toLocaleString()} items remaining` : 'Pending'}
-            />
-          </Row>
-          <Row label="Audio enrichment">
-            {!audioAnalysisEnabled ? (
-              <span className="inline-flex items-center gap-1.5 text-zinc-500">
-                <span className="inline-block h-2 w-2 rounded-full bg-zinc-600" />
-                Disabled on this server
-              </span>
-            ) : audioFailed ? (
-              <span className="inline-flex items-center gap-1.5 text-red-400">
-                <span className="inline-block h-2 w-2 rounded-full bg-red-400" />
-                Failed: {audioJobError}
-              </span>
-            ) : workerOffline ? (
-              <span className="inline-flex items-center gap-1.5 text-zinc-400">
-                <span className="inline-block h-2 w-2 rounded-full bg-zinc-500" />
-                Worker offline &middot; will resume automatically
-              </span>
-            ) : (
-              <StatusBadge
-                done={!isAnalyzingAudio && audioAnalysisPending === 0 && enrichmentPendingCount === 0 && collectionSynced}
-                active={isAnalyzingAudio}
-                doneLabel={audioAnalysisDone > 0 ? `${audioAnalysisDone.toLocaleString()} tracks enriched` : 'Complete'}
-                activeLabel={
-                  stopping
-                    ? 'Stopping...'
-                    : buildAudioActiveLabel(audioAnalyzed, audioErrors, audioAnalysisPending)
-                }
-                pendingLabel={audioAnalysisPending !== null && audioAnalysisPending > 0 ? `${audioAnalysisPending.toLocaleString()} tracks remaining` : 'Pending'}
-              />
-            )}
-          </Row>
-        </Section>
+        <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
+          <UserSyncStatus
+            lastSyncAt={lastSyncAt}
+            totalItems={totalItems}
+            deepSyncComplete={deepSyncComplete}
+            isDeepSyncing={isDeepSyncing}
+            oldestStoryDate={oldestDate}
+            collectionSynced={collectionSynced}
+            isCollectionSyncing={isCollectionSyncing}
+            purchaseCount={initialPurchaseItems}
+            wishlistSynced={wishlistSynced}
+            isWishlistSyncing={isWishlistSyncing}
+            wishlistCount={initialWishlistCount}
+          />
+        </div>
+
+        <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
+          <GlobalSyncStatus
+            isEnriching={isEnriching}
+            enrichedCount={enrichedCount}
+            enrichmentPendingCount={enrichmentPendingCount}
+            collectionSynced={collectionSynced}
+            wishlistSynced={wishlistSynced}
+            isAnalyzingAudio={isAnalyzingAudio}
+            audioAnalyzed={audioAnalyzed}
+            audioAnalysisPending={audioAnalysisPending}
+            audioAnalysisDone={audioAnalysisDone}
+            audioErrors={audioErrors}
+            audioJobError={audioJobError}
+            audioJobStatus={audioJobStatus}
+            audioAnalysisEnabled={audioAnalysisEnabled}
+            workerOnline={workerOnline}
+            stopping={stopping}
+          />
+        </div>
 
         <div className="flex gap-3 border-t border-zinc-800 pt-6">
           <button
@@ -226,60 +183,5 @@ export function AccountView({
         </div>
       </div>
     </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-zinc-800 p-4">
-      <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">{title}</h2>
-      <div className="space-y-2">{children}</div>
-    </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-zinc-500">{label}</span>
-      <span className="text-zinc-200">{children}</span>
-    </div>
-  );
-}
-
-function StatusBadge({
-  done,
-  active,
-  doneLabel,
-  activeLabel,
-  pendingLabel,
-}: {
-  done: boolean;
-  active: boolean;
-  doneLabel: string;
-  activeLabel: string;
-  pendingLabel: string;
-}) {
-  if (active) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-amber-400">
-        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" />
-        {activeLabel}
-      </span>
-    );
-  }
-  if (done) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-emerald-400">
-        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-        {doneLabel}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 text-zinc-500">
-      <span className="inline-block h-2 w-2 rounded-full bg-zinc-600" />
-      {pendingLabel}
-    </span>
   );
 }

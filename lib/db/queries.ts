@@ -218,6 +218,43 @@ export async function getItemCountByType(fanId: number, storyType: string): Prom
   return row ? parseInt(row.c, 10) : 0;
 }
 
+export interface FeedTypeCounts {
+  total: number;
+  newReleases: number;
+  friendPurchases: number;
+  myPurchases: number;
+}
+
+export async function getFeedTypeCounts(fanId: number): Promise<FeedTypeCounts> {
+  const row = await queryOne<{
+    total: string;
+    new_releases: string;
+    friend_purchases: string;
+    my_purchases: string;
+  }>(`
+    SELECT
+      COUNT(*) AS total,
+      COUNT(*) FILTER (WHERE story_type = 'new_release') AS new_releases,
+      COUNT(*) FILTER (WHERE story_type = 'friend_purchase') AS friend_purchases,
+      COUNT(*) FILTER (WHERE story_type = 'my_purchase') AS my_purchases
+    FROM feed_items WHERE fan_id = $1
+  `, [fanId]);
+  return {
+    total: parseInt(row?.total ?? '0', 10),
+    newReleases: parseInt(row?.new_releases ?? '0', 10),
+    friendPurchases: parseInt(row?.friend_purchases ?? '0', 10),
+    myPurchases: parseInt(row?.my_purchases ?? '0', 10),
+  };
+}
+
+export async function getCrateCount(fanId: number): Promise<number> {
+  const row = await queryOne<{ c: string }>(
+    'SELECT COUNT(*) AS c FROM crates WHERE fan_id = $1',
+    [fanId],
+  );
+  return row ? parseInt(row.c, 10) : 0;
+}
+
 export async function getAlbumTracksForFeedItems(
   albumUrls: string[],
 ): Promise<Record<string, CatalogTrack[]>> {

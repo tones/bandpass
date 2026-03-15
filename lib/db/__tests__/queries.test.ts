@@ -13,6 +13,8 @@ import {
   getFriendCounts,
   getItemCount,
   getItemCountByType,
+  getFeedTypeCounts,
+  getCrateCount,
   getAlbumTracksForFeedItems,
 } from '../queries';
 import type { FeedItemRow } from '../queries';
@@ -211,6 +213,46 @@ describe('queries', () => {
       const count = await getItemCountByType(1, 'friend_purchase');
       expect(count).toBe(5);
       expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('story_type = $2'), [1, 'friend_purchase']);
+    });
+  });
+
+  describe('getFeedTypeCounts', () => {
+    it('returns parsed type breakdowns', async () => {
+      vi.mocked(queryOne).mockResolvedValue({
+        total: '100',
+        new_releases: '60',
+        friend_purchases: '30',
+        my_purchases: '10',
+      });
+
+      const result = await getFeedTypeCounts(1);
+      expect(result).toEqual({
+        total: 100,
+        newReleases: 60,
+        friendPurchases: 30,
+        myPurchases: 10,
+      });
+      expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('FILTER'), [1]);
+    });
+
+    it('returns zeros when no row', async () => {
+      vi.mocked(queryOne).mockResolvedValue(null);
+      const result = await getFeedTypeCounts(1);
+      expect(result).toEqual({ total: 0, newReleases: 0, friendPurchases: 0, myPurchases: 0 });
+    });
+  });
+
+  describe('getCrateCount', () => {
+    it('returns parsed count', async () => {
+      vi.mocked(queryOne).mockResolvedValue({ c: '7' });
+      const count = await getCrateCount(1);
+      expect(count).toBe(7);
+      expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('crates'), [1]);
+    });
+
+    it('returns 0 when no row', async () => {
+      vi.mocked(queryOne).mockResolvedValue(null);
+      expect(await getCrateCount(1)).toBe(0);
     });
   });
 
