@@ -17,6 +17,7 @@ export interface AdminUser {
   crateCount: number;
   wishlistCount: number;
   activeJobType: string | null;
+  hasCookie: boolean;
 }
 
 interface AdminUserRow {
@@ -36,6 +37,7 @@ interface AdminUserRow {
   crate_count: string;
   wishlist_count: string;
   active_job_type: string | null;
+  has_cookie: boolean;
 }
 
 function rowToAdminUser(row: AdminUserRow): AdminUser {
@@ -56,6 +58,7 @@ function rowToAdminUser(row: AdminUserRow): AdminUser {
     crateCount: parseInt(row.crate_count, 10),
     wishlistCount: parseInt(row.wishlist_count, 10),
     activeJobType: row.active_job_type,
+    hasCookie: row.has_cookie,
   };
 }
 
@@ -71,6 +74,7 @@ export async function getAllUsersWithStats(): Promise<AdminUser[]> {
       s.wishlist_synced,
       s.oldest_story_date,
       s.newest_story_date,
+      (s.identity_cookie IS NOT NULL) AS has_cookie,
       fi.total_feed_items,
       fi.new_releases,
       fi.friend_purchases,

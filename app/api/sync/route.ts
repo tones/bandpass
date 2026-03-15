@@ -4,6 +4,7 @@ import { BandcampAPI } from '@/lib/bandcamp/api';
 import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, getEnrichmentPendingCount, getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from '@/lib/db/sync';
 import { createJob, updateJobProgress, completeJob, failJob, hasActiveUserSync, getActiveJob, getLatestJob } from '@/lib/db/sync-jobs';
 import { getItemCount } from '@/lib/db/queries';
+import { execute } from '@/lib/db';
 import { ensureWorkersStarted, nudgeWorkers } from '@/lib/sync/workers';
 import { requestJobCancel } from '@/lib/db/sync-jobs';
 
@@ -70,6 +71,12 @@ export async function GET() {
   }
 
   const fanId = session.fanId;
+
+  execute(
+    `UPDATE sync_state SET identity_cookie = $2 WHERE fan_id = $1`,
+    [fanId, session.identityCookie],
+  ).catch((err) => console.error('Failed to persist identity cookie:', err));
+
   const state = await getSyncState(fanId);
   const totalItems = await getItemCount(fanId);
 

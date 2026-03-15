@@ -60,11 +60,16 @@ function UserCard({ user }: { user: AdminUser }) {
           <h2 className="text-base font-medium text-zinc-100">{displayName}</h2>
           <p className="text-xs text-zinc-500">ID: {user.fanId}</p>
         </div>
-        {actuallySyncing && (
-          <span className="rounded-full bg-amber-400/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
-            Syncing
+        <div className="flex items-center gap-2">
+          {actuallySyncing && (
+            <span className="rounded-full bg-amber-400/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
+              Syncing
+            </span>
+          )}
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${user.hasCookie ? 'bg-emerald-400/10 text-emerald-400' : 'bg-zinc-700/50 text-zinc-500'}`}>
+            {user.hasCookie ? 'Cookie stored' : 'No cookie'}
           </span>
-        )}
+        </div>
       </div>
 
       <div className="space-y-3">

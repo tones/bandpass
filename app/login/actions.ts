@@ -38,9 +38,9 @@ export async function loginWithCookie(
 
     if (session.fanId && session.username) {
       await execute(
-        `INSERT INTO sync_state (fan_id, username) VALUES ($1, $2)
-         ON CONFLICT (fan_id) DO UPDATE SET username = $2`,
-        [session.fanId, session.username],
+        `INSERT INTO sync_state (fan_id, username, identity_cookie) VALUES ($1, $2, $3)
+         ON CONFLICT (fan_id) DO UPDATE SET username = $2, identity_cookie = $3`,
+        [session.fanId, session.username, trimmed],
       );
     }
   } catch {
