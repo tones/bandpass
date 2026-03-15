@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getIdentityCookie, getSession } from '@/lib/session';
 import { getExchangeRates } from '@/lib/currency';
-import { getCrates, getCrateItems, getCrateCatalogItems, getCrateReleaseItems, getCrateWishlistItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap, getWishlistAlbumTracks } from '@/lib/db/crates';
+import { getCrates, getCrateCatalogItems, getCrateReleaseItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap, getWishlistAlbumTracks } from '@/lib/db/crates';
 import { CratesView } from '@/components/CratesView';
 
 interface CrateDetailPageProps {
@@ -39,14 +39,9 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
   }
 
   const isWishlist = targetCrate?.source === 'bandcamp_wishlist';
-  const initialItems = targetCrate && !isWishlist ? await getCrateItems(targetCrate.id, fanId) : [];
   const initialCatalogItems = targetCrate && !isWishlist ? await getCrateCatalogItems(targetCrate.id, fanId) : [];
   const initialReleaseItems = targetCrate && !isWishlist ? await getCrateReleaseItems(targetCrate.id, fanId) : [];
-  const initialWishlistItems = targetCrate
-    ? isWishlist
-      ? await getWishlistItems(fanId)
-      : await getCrateWishlistItems(targetCrate.id, fanId)
-    : [];
+  const initialWishlistItems = isWishlist ? await getWishlistItems(fanId) : [];
   const exchangeRates = await getExchangeRates();
   const initialItemCrateMap = await getItemCrateMultiMap(fanId);
 
@@ -60,7 +55,6 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
       <CratesView
         crates={crates}
         initialCrateId={targetCrate?.id ?? null}
-        initialItems={initialItems}
         initialCatalogItems={initialCatalogItems}
         initialReleaseItems={initialReleaseItems}
         initialWishlistItems={initialWishlistItems}

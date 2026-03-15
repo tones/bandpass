@@ -21,6 +21,7 @@ export interface FeedFilters {
 export interface FeedItemRow {
   id: string;
   fan_id: number;
+  release_id: number | null;
   story_type: string;
   date: Date | string;
   album_id: number;
@@ -49,6 +50,7 @@ export { safeParseTags };
 export function rowToFeedItem(row: FeedItemRow): FeedItem {
   return {
     id: row.id,
+    releaseId: row.release_id ?? undefined,
     storyType: row.story_type as StoryType,
     date: new Date(row.date),
     album: {
@@ -113,7 +115,7 @@ export async function getFeedItems(fanId: number, filters: FeedFilters = {}): Pr
   }
 
   const selectCols = `
-    fi.id, fi.fan_id, fi.story_type, fi.date,
+    fi.id, fi.fan_id, fi.release_id, fi.story_type, fi.date,
     fi.album_id, fi.album_title, fi.album_url, fi.album_image_url,
     fi.artist_id, fi.artist_name, fi.artist_url,
     fi.track_title, fi.track_duration, fi.track_stream_url,

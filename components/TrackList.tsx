@@ -1,10 +1,8 @@
 import type { CatalogTrack } from '@/lib/db/catalog';
+import type { CrateItemRef } from '@/lib/crate-utils';
+import { trackKey } from '@/lib/crate-utils';
 import { AlbumTrackRow } from './AlbumTrackRow';
 import type { CrateInfo } from './TrackActions';
-
-function catalogTrackCrateId(trackId: number): string {
-  return `catalog-track-${trackId}`;
-}
 
 interface TrackListProps {
   tracks: CatalogTrack[];
@@ -15,12 +13,10 @@ interface TrackListProps {
   itemCrateMap: Record<string, number[]>;
   showCrate?: boolean;
   onPlayTrack: (track: CatalogTrack) => void;
-  onToggleCrate: (itemId: string) => void;
-  onAddToCrate: (itemId: string, crateId: number) => void;
-  onRemoveFromCrate: (itemId: string, crateId: number) => void;
+  onToggleCrate: (key: string, ref: CrateItemRef) => void;
+  onAddToCrate: (key: string, ref: CrateItemRef, crateId: number) => void;
+  onRemoveFromCrate: (key: string, ref: CrateItemRef, crateId: number) => void;
 }
-
-export { catalogTrackCrateId };
 
 export function TrackList({
   tracks,
@@ -38,7 +34,8 @@ export function TrackList({
   return (
     <>
       {tracks.map((track) => {
-        const cid = catalogTrackCrateId(track.id);
+        const tk = trackKey(track.id);
+        const ref: CrateItemRef = { trackId: track.id };
         return (
           <AlbumTrackRow
             key={track.id}
@@ -46,12 +43,12 @@ export function TrackList({
             isActive={playingTrackUrl === track.streamUrl && track.streamUrl != null && isPlayerPlaying}
             fallbackUrl={fallbackUrl}
             crates={crates}
-            crateIds={itemCrateMap[cid]}
+            crateIds={itemCrateMap[tk]}
             showCrate={showCrate}
             onPlay={() => onPlayTrack(track)}
-            onToggleCrate={() => onToggleCrate(cid)}
-            onAddToCrate={(crateId) => onAddToCrate(cid, crateId)}
-            onRemoveFromCrate={(crateId) => onRemoveFromCrate(cid, crateId)}
+            onToggleCrate={() => onToggleCrate(tk, ref)}
+            onAddToCrate={(crateId) => onAddToCrate(tk, ref, crateId)}
+            onRemoveFromCrate={(crateId) => onRemoveFromCrate(tk, ref, crateId)}
           />
         );
       })}

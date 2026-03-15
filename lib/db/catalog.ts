@@ -260,12 +260,17 @@ export async function ensureCatalogRelease(
   imageUrl: string,
   bandcampId?: number | null,
 ): Promise<number> {
-  const existing = await queryOne<{ id: number }>('SELECT id FROM catalog_releases WHERE url = $1', [url]);
-  if (existing) {
+  const byUrl = await queryOne<{ id: number }>('SELECT id FROM catalog_releases WHERE url = $1', [url]);
+  if (byUrl) {
     if (bandcampId != null) {
-      await execute('UPDATE catalog_releases SET bandcamp_id = $1 WHERE id = $2 AND bandcamp_id IS NULL', [bandcampId, existing.id]);
+      await execute('UPDATE catalog_releases SET bandcamp_id = $1 WHERE id = $2 AND bandcamp_id IS NULL', [bandcampId, byUrl.id]);
     }
-    return existing.id;
+    return byUrl.id;
+  }
+
+  if (bandcampId != null) {
+    const byBcId = await queryOne<{ id: number }>('SELECT id FROM catalog_releases WHERE bandcamp_id = $1', [bandcampId]);
+    if (byBcId) return byBcId.id;
   }
 
   const result = await query<{ id: number }>(`

@@ -21,6 +21,7 @@ function makeFeedRow(overrides: Partial<FeedItemRow> = {}): FeedItemRow {
   return {
     id: 'item-1',
     fan_id: 1,
+    release_id: null,
     story_type: 'new_release',
     date: '2025-01-15T12:00:00Z',
     album_id: 100,

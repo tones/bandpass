@@ -47,43 +47,13 @@ function rowToWishlistItem(r: {
   };
 }
 
-export async function getCrateWishlistItems(crateId: number, fanId: number): Promise<WishlistItem[]> {
-  const owns = await queryOne<{ exists: number }>(
-    'SELECT 1 as exists FROM crates WHERE id = $1 AND fan_id = $2',
-    [crateId, fanId],
-  );
-  if (!owns) return [];
-
-  const rows = await query<{
-    id: string;
-    tralbum_id: number;
-    tralbum_type: string;
-    title: string;
-    artist_name: string;
-    artist_url: string;
-    image_url: string;
-    item_url: string;
-    featured_track_title: string | null;
-    featured_track_duration: number | null;
-    stream_url: string | null;
-    also_collected_count: number;
-    is_preorder: boolean;
-    tags: string | string[];
-    bpm: number | null;
-    musical_key: string | null;
-  }>(`
-    SELECT wi.id, wi.tralbum_id, wi.tralbum_type, wi.title, wi.artist_name, wi.artist_url,
-           wi.image_url, wi.item_url, wi.featured_track_title, wi.featured_track_duration,
-           wi.stream_url, wi.also_collected_count, wi.is_preorder,
-           ${tagsWithFallback('cr', 'wi')} AS tags,
-           wi.bpm, wi.musical_key
-    FROM crate_items ci
-    JOIN wishlist_items wi ON wi.id = ci.feed_item_id AND wi.fan_id = $1
-    LEFT JOIN catalog_releases cr ON cr.id = wi.release_id
-    WHERE ci.crate_id = $2
-    ORDER BY ci.added_at DESC
-  `, [fanId, crateId]);
-  return rows.map(rowToWishlistItem);
+/**
+ * After migration 011, wishlist items in user crates are stored as
+ * release_id references and appear via getCrateReleaseItems instead.
+ * This function is kept for API compatibility but always returns [].
+ */
+export async function getCrateWishlistItems(_crateId: number, _fanId: number): Promise<WishlistItem[]> {
+  return [];
 }
 
 export async function getWishlistItems(fanId: number): Promise<WishlistItem[]> {

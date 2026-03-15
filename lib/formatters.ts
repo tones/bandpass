@@ -36,10 +36,12 @@ export function proxyUrl(url: string, catalogTrackId?: number): string {
 import type { CatalogTrack, CatalogRelease } from '@/lib/db/catalog';
 import type { FeedItem, WishlistItem } from '@/lib/bandcamp/types/domain';
 import type { CrateCatalogItem, CrateReleaseItem } from '@/lib/db/crates';
+import { trackKey } from '@/lib/crate-utils';
 
 export function catalogTrackToFeedItem(track: CatalogTrack, release: CatalogRelease): FeedItem {
   return {
-    id: `catalog-track-${track.id}`,
+    id: trackKey(track.id),
+    releaseId: release.id,
     storyType: 'new_release',
     date: new Date(),
     album: { id: release.id, title: release.title, url: release.url, imageUrl: release.imageUrl },
@@ -71,12 +73,12 @@ export function feedItemToPseudoRelease(item: FeedItem): CatalogRelease {
 
 export function catalogItemToFeedItem(item: CrateCatalogItem): FeedItem {
   return {
-    id: item.crateItemId,
+    id: trackKey(item.trackId),
     storyType: 'new_release',
     date: new Date(),
     album: { id: 0, title: item.releaseTitle, url: item.releaseUrl, imageUrl: item.imageUrl },
     artist: { id: 0, name: item.bandName, url: item.bandUrl },
-    track: { title: item.trackTitle, duration: item.trackDuration, streamUrl: item.streamUrl },
+    track: { title: item.trackTitle, duration: item.trackDuration, streamUrl: item.streamUrl, catalogTrackId: item.trackId },
     tags: [],
     bpm: item.bpm ?? null,
     musicalKey: item.musicalKey ?? null,

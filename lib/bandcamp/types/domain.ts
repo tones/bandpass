@@ -4,6 +4,7 @@ export type StoryType = 'new_release' | 'friend_purchase' | 'my_purchase';
 
 export interface FeedItem {
   id: string;
+  releaseId?: number;
   storyType: StoryType;
   date: Date;
   album: {

@@ -1,4 +1,5 @@
 import type { CatalogTrack } from '@/lib/db/catalog';
+import type { CrateItemRef } from '@/lib/crate-utils';
 import { getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import { TrackActions } from './TrackActions';
 import type { CrateInfo } from './TrackActions';
@@ -26,9 +27,9 @@ interface AlbumCardProps {
   onToggleCrate: () => void;
   onAddToCrate: (crateId: number) => void;
   onRemoveFromCrate: (crateId: number) => void;
-  onToggleTrackCrate: (itemId: string) => void;
-  onAddTrackToCrate: (itemId: string, crateId: number) => void;
-  onRemoveTrackFromCrate: (itemId: string, crateId: number) => void;
+  onToggleTrackCrate: (key: string, ref: CrateItemRef) => void;
+  onAddTrackToCrate: (key: string, ref: CrateItemRef, crateId: number) => void;
+  onRemoveTrackFromCrate: (key: string, ref: CrateItemRef, crateId: number) => void;
 }
 
 export function AlbumCard({

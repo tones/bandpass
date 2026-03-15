@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { FeedItem } from '@/lib/bandcamp';
 import type { CatalogTrack } from '@/lib/db/catalog';
+import type { CrateItemRef } from '@/lib/crate-utils';
 import { extractSlug, getDomainIfDifferent } from '@/lib/bandcamp/scraper';
 import { convertToUsd } from '@/lib/currency';
 import { formatDuration, formatPrice } from '@/lib/formatters';
@@ -16,9 +17,9 @@ export interface AlbumTrackContext {
   isPlayerPlaying: boolean;
   itemCrateMap: Record<string, number[]>;
   onPlayTrack: (track: CatalogTrack) => void;
-  onToggleCrate: (itemId: string) => void;
-  onAddToCrate: (itemId: string, crateId: number) => void;
-  onRemoveFromCrate: (itemId: string, crateId: number) => void;
+  onToggleCrate: (key: string, ref: CrateItemRef) => void;
+  onAddToCrate: (key: string, ref: CrateItemRef, crateId: number) => void;
+  onRemoveFromCrate: (key: string, ref: CrateItemRef, crateId: number) => void;
 }
 
 interface FeedItemCardProps {

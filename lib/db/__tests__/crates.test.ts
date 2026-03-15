@@ -17,8 +17,8 @@ import {
   removeFromCrate,
   getItemCrates,
   clearCrate,
-  catalogTrackCrateItemId,
-  catalogReleaseCrateItemId,
+  releaseKey,
+  trackKey,
   getWishlistItemCount,
   getAllCrateItemIds,
 } from '../crates';
@@ -57,8 +57,8 @@ describe('crates', () => {
   describe('createCrate', () => {
     it('inserts and returns new crate id', async () => {
       vi.mocked(queryOne)
-        .mockResolvedValueOnce({ c: '3' })   // count check
-        .mockResolvedValueOnce({ id: 42 });   // INSERT RETURNING
+        .mockResolvedValueOnce({ c: '3' })
+        .mockResolvedValueOnce({ id: 42 });
 
       const id = await createCrate(10, 'New Crate');
 
@@ -129,8 +129,8 @@ describe('crates', () => {
 
     it('creates crate when none exists', async () => {
       vi.mocked(queryOne)
-        .mockResolvedValueOnce(null)          // SELECT returns nothing
-        .mockResolvedValueOnce({ id: 99 });   // INSERT RETURNING
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 99 });
 
       const id = await ensureCrateBySource(10, 'user', 'My Crate');
       expect(id).toBe(99);
@@ -139,34 +139,43 @@ describe('crates', () => {
   });
 
   describe('addToCrate', () => {
-    it('inserts crate item after ownership check', async () => {
-      vi.mocked(queryOne).mockResolvedValue({ exists: 1 }); // ownership
-      await addToCrate(5, 10, 'item-abc');
+    it('inserts release crate item after ownership check', async () => {
+      vi.mocked(queryOne).mockResolvedValue({ exists: 1 });
+      await addToCrate(5, 10, { releaseId: 42 });
       expect(execute).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO crate_items'),
-        [5, 'item-abc'],
+        [5, 42],
+      );
+    });
+
+    it('inserts track crate item after ownership check', async () => {
+      vi.mocked(queryOne).mockResolvedValue({ exists: 1 });
+      await addToCrate(5, 10, { trackId: 99 });
+      expect(execute).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO crate_items'),
+        [5, 99],
       );
     });
 
     it('throws when not owned', async () => {
       vi.mocked(queryOne).mockResolvedValue(null);
-      await expect(addToCrate(5, 99, 'item-abc')).rejects.toThrow('Crate not found');
+      await expect(addToCrate(5, 99, { releaseId: 1 })).rejects.toThrow('Crate not found');
     });
   });
 
   describe('removeFromCrate', () => {
     it('deletes crate item after ownership check', async () => {
       vi.mocked(queryOne).mockResolvedValue({ exists: 1 });
-      await removeFromCrate(5, 10, 'item-abc');
+      await removeFromCrate(5, 10, { releaseId: 42 });
       expect(execute).toHaveBeenCalledWith(
         expect.stringContaining('DELETE FROM crate_items'),
-        [5, 'item-abc'],
+        [5, 42],
       );
     });
 
     it('throws when not owned', async () => {
       vi.mocked(queryOne).mockResolvedValue(null);
-      await expect(removeFromCrate(5, 99, 'item-abc')).rejects.toThrow('Crate not found');
+      await expect(removeFromCrate(5, 99, { releaseId: 1 })).rejects.toThrow('Crate not found');
     });
   });
 
@@ -187,20 +196,26 @@ describe('crates', () => {
   });
 
   describe('getItemCrates', () => {
-    it('returns crate ids for a feed item', async () => {
+    it('returns crate ids for a release', async () => {
       vi.mocked(query).mockResolvedValue([{ crate_id: 1 }, { crate_id: 3 }]);
-      const ids = await getItemCrates(10, 'item-abc');
+      const ids = await getItemCrates(10, { releaseId: 42 });
       expect(ids).toEqual([1, 3]);
+    });
+
+    it('returns crate ids for a track', async () => {
+      vi.mocked(query).mockResolvedValue([{ crate_id: 2 }]);
+      const ids = await getItemCrates(10, { trackId: 99 });
+      expect(ids).toEqual([2]);
     });
   });
 
-  describe('catalogTrackCrateItemId / catalogReleaseCrateItemId', () => {
-    it('formats track crate item id', () => {
-      expect(catalogTrackCrateItemId(42)).toBe('catalog-track-42');
+  describe('releaseKey / trackKey', () => {
+    it('formats release key', () => {
+      expect(releaseKey(7)).toBe('release:7');
     });
 
-    it('formats release crate item id', () => {
-      expect(catalogReleaseCrateItemId(7)).toBe('catalog-release-7');
+    it('formats track key', () => {
+      expect(trackKey(42)).toBe('track:42');
     });
   });
 
@@ -213,14 +228,14 @@ describe('crates', () => {
   });
 
   describe('getAllCrateItemIds', () => {
-    it('returns a Set of feed item ids', async () => {
+    it('returns a Set of crate item keys', async () => {
       vi.mocked(query).mockResolvedValue([
-        { feed_item_id: 'a' },
-        { feed_item_id: 'b' },
-        { feed_item_id: 'c' },
+        { item_key: 'release:1' },
+        { item_key: 'track:2' },
+        { item_key: 'release:3' },
       ]);
       const ids = await getAllCrateItemIds(10);
-      expect(ids).toEqual(new Set(['a', 'b', 'c']));
+      expect(ids).toEqual(new Set(['release:1', 'track:2', 'release:3']));
     });
   });
 });

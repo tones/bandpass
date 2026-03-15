@@ -2,6 +2,8 @@
 
 import { useCallback, useRef, useEffect, useMemo, useState } from 'react';
 import type { CatalogRelease, CatalogTrack } from '@/lib/db/catalog';
+import type { CrateItemRef } from '@/lib/crate-utils';
+import { releaseKey } from '@/lib/crate-utils';
 import { catalogTrackToFeedItem } from '@/lib/formatters';
 import { useCrateActions } from '@/hooks/useCrateActions';
 import { TrackActions } from '@/components/TrackActions';
@@ -11,10 +13,6 @@ import Link from 'next/link';
 import { TagPill } from '@/components/TagPill';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { useNavigation } from '@/contexts/NavigationContext';
-
-function catalogReleaseCrateId(releaseId: number): string {
-  return `catalog-release-${releaseId}`;
-}
 
 interface CatalogViewProps {
   slug: string;
@@ -192,9 +190,9 @@ interface ReleaseCardProps {
   crates: CrateInfo[];
   loggedIn: boolean;
   onPlayTrack: (track: CatalogTrack) => void;
-  onToggleItem: (itemId: string) => void;
-  onAddItemToCrate: (itemId: string, crateId: number) => void;
-  onRemoveItemFromCrate: (itemId: string, crateId: number) => void;
+  onToggleItem: (key: string, ref: CrateItemRef) => void;
+  onAddItemToCrate: (key: string, ref: CrateItemRef, crateId: number) => void;
+  onRemoveItemFromCrate: (key: string, ref: CrateItemRef, crateId: number) => void;
 }
 
 function ReleaseCard({
@@ -214,8 +212,9 @@ function ReleaseCard({
   onAddItemToCrate,
   onRemoveItemFromCrate,
 }: ReleaseCardProps) {
-  const releaseCrateId = catalogReleaseCrateId(release.id);
-  const releaseInCrate = crateItemIds.has(releaseCrateId);
+  const rk = releaseKey(release.id);
+  const ref: CrateItemRef = { releaseId: release.id };
+  const releaseInCrate = crateItemIds.has(rk);
   return (
     <div className="rounded-lg border border-zinc-800">
       <div className="flex items-center gap-4 px-4 py-3">
@@ -251,13 +250,13 @@ function ReleaseCard({
             isInCrate={releaseInCrate}
             bandcampUrl={release.url}
             onPlay={() => {}}
-            onToggleCrate={() => onToggleItem(releaseCrateId)}
+            onToggleCrate={() => onToggleItem(rk, ref)}
             showPlayButton={false}
             showCrate={true}
             crates={crates}
-            itemCrateIds={itemCrateMap[releaseCrateId]}
-            onAddToCrate={(crateId) => onAddItemToCrate(releaseCrateId, crateId)}
-            onRemoveFromCrate={(crateId) => onRemoveItemFromCrate(releaseCrateId, crateId)}
+            itemCrateIds={itemCrateMap[rk]}
+            onAddToCrate={(crateId) => onAddItemToCrate(rk, ref, crateId)}
+            onRemoveFromCrate={(crateId) => onRemoveItemFromCrate(rk, ref, crateId)}
           />
         )}
         {!loggedIn && (

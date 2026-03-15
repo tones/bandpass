@@ -23,6 +23,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // worker/main.ts
+var import_http = __toESM(require("http"));
 var import_child_process = require("child_process");
 var import_readline = require("readline");
 var import_fs3 = __toESM(require("fs"));
@@ -388,11 +389,11 @@ function getBucket() {
 function isS3Configured() {
   return !!(process.env.AWS_S3_BUCKET && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
 }
-function trackKey(trackId) {
+function trackKey2(trackId) {
   return `tracks/${trackId}.mp3`;
 }
 async function uploadTrackFromFile(trackId, filePath) {
-  const key = trackKey(trackId);
+  const key = trackKey2(trackId);
   await getClient().send(
     new import_client_s3.PutObjectCommand({
       Bucket: getBucket(),
@@ -699,7 +700,18 @@ async function processReleases() {
     clearInterval(progressInterval);
   }
 }
+var HEALTH_PORT = parseInt(process.env.WORKER_HEALTH_PORT ?? "8080", 10);
+function startHealthServer() {
+  const server = import_http.default.createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("ok");
+  });
+  server.listen(HEALTH_PORT, () => {
+    console.log(`Health check server listening on port ${HEALTH_PORT}`);
+  });
+}
 async function main() {
+  startHealthServer();
   if (!process.env.DATABASE_URL) {
     console.error("DATABASE_URL not set");
     process.exit(1);

@@ -13,6 +13,7 @@ import type { FeedFilter } from './FilterBar';
 import { SyncStatus } from '@/components/SyncStatus';
 import { queryFeed } from '@/app/(app)/timeline/actions';
 import { useCrateActions } from '@/hooks/useCrateActions';
+import { releaseKey } from '@/lib/crate-utils';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 
@@ -93,7 +94,7 @@ export function FeedView({
   const [selectedFriend, setSelectedFriend] = useState<string | null>(initialFriend ?? null);
   const [selectedTag, setSelectedTag] = useState<string | null>(initialTag ?? null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const { crates, crateItemIds, itemCrateMap, toggleCrate, addToCrate, removeFromCrate } = useCrateActions({
+  const { crates, crateItemIds, itemCrateMap, toggleCrate, toggleCrateForAlbum, addToCrate, addToCrateForAlbumAction, removeFromCrate } = useCrateActions({
     initialCrateItemIds, initialCrates, initialItemCrateMap,
   });
   const [albumTracksMap, setAlbumTracksMap] = useState<Record<string, CatalogTrack[]>>(initialAlbumTracksMap);
@@ -246,18 +247,46 @@ export function FeedView({
             <FeedItemCard
               key={entry.item.id}
               item={entry.item}
-              isInCrate={crateItemIds.has(entry.item.id)}
+              isInCrate={entry.item.releaseId != null && crateItemIds.has(releaseKey(entry.item.releaseId))}
               isPlaying={isPlayerPlaying && (
                 playingTrackUrl === entry.item.track?.streamUrl ||
                 (albumTracksMap[entry.item.album.url]?.some((t) => t.streamUrl === playingTrackUrl) ?? false)
               )}
-              onToggleCrate={() => toggleCrate(entry.item.id)}
+              onToggleCrate={() => {
+                const album = entry.item.album;
+                const artist = entry.item.artist;
+                const rk = entry.item.releaseId != null ? releaseKey(entry.item.releaseId) : null;
+                toggleCrateForAlbum(rk, {
+                  url: album.url,
+                  title: album.title,
+                  imageUrl: album.imageUrl,
+                  artistName: artist.name,
+                  artistUrl: artist.url,
+                  bandcampId: album.id,
+                });
+              }}
               onPlay={() => handlePlay(entry.item)}
               exchangeRates={exchangeRates}
               crates={crates}
-              itemCrateIds={itemCrateMap[entry.item.id]}
-              onAddToCrate={(crateId) => addToCrate(entry.item.id, crateId)}
-              onRemoveFromCrate={(crateId) => removeFromCrate(entry.item.id, crateId)}
+              itemCrateIds={entry.item.releaseId != null ? itemCrateMap[releaseKey(entry.item.releaseId)] : undefined}
+              onAddToCrate={(crateId) => {
+                const album = entry.item.album;
+                const artist = entry.item.artist;
+                const rk = entry.item.releaseId != null ? releaseKey(entry.item.releaseId) : null;
+                addToCrateForAlbumAction(rk, {
+                  url: album.url,
+                  title: album.title,
+                  imageUrl: album.imageUrl,
+                  artistName: artist.name,
+                  artistUrl: artist.url,
+                  bandcampId: album.id,
+                }, crateId);
+              }}
+              onRemoveFromCrate={(crateId) => {
+                if (entry.item.releaseId != null) {
+                  removeFromCrate(releaseKey(entry.item.releaseId), { releaseId: entry.item.releaseId }, crateId);
+                }
+              }}
               albumTrackContext={albumTracksMap[entry.item.album.url] ? {
                 tracks: albumTracksMap[entry.item.album.url],
                 playingTrackUrl,

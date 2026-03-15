@@ -8,10 +8,13 @@ import { formatDuration, proxyUrl } from '@/lib/formatters';
 import { TrackActions } from '@/components/TrackActions';
 import type { CrateInfo } from '@/components/TrackActions';
 import { usePlayer } from '@/contexts/PlayerContext';
+import type { CrateItemRef } from '@/lib/crate-utils';
+import { releaseKey, trackKey } from '@/lib/crate-utils';
 import {
   getCratesAction,
   getItemCratesAction,
   toggleDefaultCrate,
+  toggleDefaultCrateForAlbum,
   addToCrateAction,
   removeFromCrateAction,
 } from '@/app/(app)/crates/actions';
@@ -40,37 +43,60 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
   const [crates, setCrates] = useState<CrateInfo[]>([]);
   const [itemCrateIds, setItemCrateIds] = useState<number[]>([]);
 
+  const itemRef: CrateItemRef | null = item.track?.catalogTrackId
+    ? { trackId: item.track.catalogTrackId }
+    : item.releaseId
+      ? { releaseId: item.releaseId }
+      : null;
+
   useEffect(() => {
     let cancelled = false;
     getCratesAction()
       .then((c) => { if (!cancelled) setCrates(c.filter((cr) => cr.source === 'user').map(({ id, name }) => ({ id, name }))); })
       .catch(() => {});
-    getItemCratesAction(item.id)
-      .then((ids) => { if (!cancelled) setItemCrateIds(ids); })
-      .catch(() => {});
+    if (itemRef) {
+      getItemCratesAction(itemRef)
+        .then((ids) => { if (!cancelled) setItemCrateIds(ids); })
+        .catch(() => {});
+    }
     return () => { cancelled = true; };
-  }, [item.id]);
+  }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleCrate = useCallback(() => {
     setItemCrateIds((prev) => (prev.length > 0 ? [] : crates.length === 1 ? [crates[0].id] : []));
-    toggleDefaultCrate(item.id).catch(() => {
-      setItemCrateIds((prev) => (prev.length > 0 ? [] : crates.length === 1 ? [crates[0].id] : []));
-    });
-  }, [item.id, crates]);
+    if (itemRef) {
+      toggleDefaultCrate(itemRef).catch(() => {
+        setItemCrateIds((prev) => (prev.length > 0 ? [] : crates.length === 1 ? [crates[0].id] : []));
+      });
+    } else {
+      toggleDefaultCrateForAlbum({
+        url: item.album.url,
+        title: item.album.title,
+        imageUrl: item.album.imageUrl,
+        artistName: item.artist.name,
+        artistUrl: item.artist.url,
+        bandcampId: item.album.id,
+      }).catch(() => {
+        setItemCrateIds((prev) => (prev.length > 0 ? [] : crates.length === 1 ? [crates[0].id] : []));
+      });
+    }
+  }, [item, itemRef, crates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddToCrate = useCallback((crateId: number) => {
+    if (!itemRef) return;
     setItemCrateIds((prev) => [...prev, crateId]);
-    addToCrateAction(crateId, item.id).catch(() => {
+    addToCrateAction(crateId, itemRef).catch(() => {
       setItemCrateIds((prev) => prev.filter((id) => id !== crateId));
     });
-  }, [item.id]);
+  }, [itemRef]);
 
   const handleRemoveFromCrate = useCallback((crateId: number) => {
+    if (!itemRef) return;
     setItemCrateIds((prev) => prev.filter((id) => id !== crateId));
-    removeFromCrateAction(crateId, item.id).catch(() => {
+    removeFromCrateAction(crateId, itemRef).catch(() => {
       setItemCrateIds((prev) => [...prev, crateId]);
     });
-  }, [item.id]);
+  }, [itemRef]);
 
   const onReady = useCallback((ws: WaveSurfer) => {
     setWavesurfer(ws);

@@ -1,15 +1,11 @@
 /**
  * Crate CRUD and item management. Crates are user-created or system-created
- * (bandcamp_wishlist) collections of feed items, catalog tracks, catalog
- * releases, and wishlist items. Items are referenced by string IDs in
- * crate_items (feed item ID, "catalog-track-{id}", or "catalog-release-{id}").
+ * (bandcamp_wishlist) collections. Each crate item references either a
+ * catalog_releases row (release_id) or a catalog_tracks row (track_id).
  * Wishlist query functions live in ./wishlist.ts and are re-exported here.
  */
 import { query, queryOne, execute } from './index';
-import { rowToFeedItem } from './queries';
-import { safeParseTags, tagsWithFallback } from './utils';
-import type { FeedItemRow } from './queries';
-import type { FeedItem } from '@/lib/bandcamp/types/domain';
+import { safeParseTags } from './utils';
 import type { CatalogTrack, CatalogTrackRow } from './catalog';
 import { rowToTrack } from './catalog';
 
@@ -21,6 +17,11 @@ export {
 } from './wishlist';
 export type { WishlistAlbumData } from './wishlist';
 
+export { crateKey, releaseKey, trackKey } from '@/lib/crate-utils';
+export type { CrateItemRef } from '@/lib/crate-utils';
+
+import type { CrateItemRef } from '@/lib/crate-utils';
+
 export interface Crate {
   id: number;
   fanId: number;
@@ -30,7 +31,6 @@ export interface Crate {
 }
 
 export interface CrateCatalogItem {
-  crateItemId: string;
   trackId: number;
   trackTitle: string;
   trackDuration: number;
@@ -45,19 +45,7 @@ export interface CrateCatalogItem {
   musicalKey: string | null;
 }
 
-const CATALOG_PREFIX = 'catalog-track-';
-const RELEASE_PREFIX = 'catalog-release-';
-
-async function verifyCrateOwnership(crateId: number, fanId: number): Promise<boolean> {
-  const owns = await queryOne<{ exists: number }>(
-    'SELECT 1 as exists FROM crates WHERE id = $1 AND fan_id = $2',
-    [crateId, fanId],
-  );
-  return !!owns;
-}
-
 export interface CrateReleaseItem {
-  crateItemId: string;
   releaseId: number;
   releaseTitle: string;
   releaseUrl: string;
@@ -69,6 +57,14 @@ export interface CrateReleaseItem {
   tags: string[];
   releaseDate: string | null;
   tracks: CatalogTrack[];
+}
+
+async function verifyCrateOwnership(crateId: number, fanId: number): Promise<boolean> {
+  const owns = await queryOne<{ exists: number }>(
+    'SELECT 1 as exists FROM crates WHERE id = $1 AND fan_id = $2',
+    [crateId, fanId],
+  );
+  return !!owns;
 }
 
 export async function getCrates(fanId: number): Promise<Crate[]> {
@@ -134,31 +130,9 @@ export async function ensureDefaultCrate(fanId: number): Promise<number> {
   return ensureCrateBySource(fanId, 'user', 'My Crate');
 }
 
-export async function getCrateItems(crateId: number, fanId: number): Promise<FeedItem[]> {
-  const rows = await query<FeedItemRow>(`
-    SELECT fi.id, fi.fan_id, fi.story_type, fi.date,
-           fi.album_id, fi.album_title, fi.album_url, fi.album_image_url,
-           fi.artist_id, fi.artist_name, fi.artist_url,
-           fi.track_title, fi.track_duration, fi.track_stream_url,
-           ${tagsWithFallback('cr', 'fi')} AS tags,
-           fi.price_amount, fi.price_currency,
-           fi.fan_name, fi.fan_username, fi.also_collected_count,
-           COALESCE(ct.bpm, fi.bpm) AS bpm,
-           COALESCE(ct.musical_key, fi.musical_key) AS musical_key
-    FROM crate_items ci
-    JOIN feed_items fi ON fi.id = ci.feed_item_id AND fi.fan_id = $1
-    LEFT JOIN catalog_releases cr ON cr.id = fi.release_id
-    LEFT JOIN catalog_tracks ct ON ct.id = fi.track_id
-    WHERE ci.crate_id = $2
-    ORDER BY ci.added_at DESC
-  `, [fanId, crateId]);
-  return rows.map(rowToFeedItem);
-}
-
 export async function getCrateCatalogItems(crateId: number, fanId: number): Promise<CrateCatalogItem[]> {
   if (!await verifyCrateOwnership(crateId, fanId)) return [];
   const rows = await query<{
-    feed_item_id: string;
     track_id: number;
     track_title: string;
     duration: number;
@@ -172,19 +146,18 @@ export async function getCrateCatalogItems(crateId: number, fanId: number): Prom
     bpm: number | null;
     musical_key: string | null;
   }>(`
-    SELECT ci.feed_item_id, ct.id as track_id, ct.title as track_title,
+    SELECT ct.id as track_id, ct.title as track_title,
            ct.duration, ct.stream_url, ct.track_url, cr.title as release_title,
            cr.url as release_url, cr.image_url, cr.band_name, cr.band_url,
            ct.bpm, ct.musical_key
     FROM crate_items ci
-    JOIN catalog_tracks ct ON ct.id = CAST(SUBSTRING(ci.feed_item_id FROM $2) AS INTEGER)
+    JOIN catalog_tracks ct ON ct.id = ci.track_id
     JOIN catalog_releases cr ON cr.id = ct.release_id
-    WHERE ci.crate_id = $1 AND ci.feed_item_id LIKE $3
+    WHERE ci.crate_id = $1
     ORDER BY ci.added_at DESC
-  `, [crateId, CATALOG_PREFIX.length + 1, `${CATALOG_PREFIX}%`]);
+  `, [crateId]);
 
   return rows.map((r) => ({
-    crateItemId: r.feed_item_id,
     trackId: r.track_id,
     trackTitle: r.track_title,
     trackDuration: r.duration,
@@ -200,19 +173,10 @@ export async function getCrateCatalogItems(crateId: number, fanId: number): Prom
   }));
 }
 
-export function catalogTrackCrateItemId(trackId: number): string {
-  return `${CATALOG_PREFIX}${trackId}`;
-}
-
-export function catalogReleaseCrateItemId(releaseId: number): string {
-  return `${RELEASE_PREFIX}${releaseId}`;
-}
-
 export async function getCrateReleaseItems(crateId: number, fanId: number): Promise<CrateReleaseItem[]> {
   if (!await verifyCrateOwnership(crateId, fanId)) return [];
 
   const rows = await query<{
-    feed_item_id: string;
     release_id: number;
     title: string;
     url: string;
@@ -224,13 +188,13 @@ export async function getCrateReleaseItems(crateId: number, fanId: number): Prom
     tags: string | string[];
     release_date: string | null;
   }>(`
-    SELECT ci.feed_item_id, cr.id as release_id, cr.title, cr.url, cr.release_type,
+    SELECT cr.id as release_id, cr.title, cr.url, cr.release_type,
            cr.image_url, cr.band_name, cr.band_url, cr.band_slug, cr.tags, cr.release_date
     FROM crate_items ci
-    JOIN catalog_releases cr ON cr.id = CAST(SUBSTRING(ci.feed_item_id FROM $2) AS INTEGER)
-    WHERE ci.crate_id = $1 AND ci.feed_item_id LIKE $3
+    JOIN catalog_releases cr ON cr.id = ci.release_id
+    WHERE ci.crate_id = $1
     ORDER BY ci.added_at DESC
-  `, [crateId, RELEASE_PREFIX.length + 1, `${RELEASE_PREFIX}%`]);
+  `, [crateId]);
 
   const releaseIds = rows.map((r) => r.release_id);
   const trackMap: Record<number, CatalogTrack[]> = {};
@@ -251,7 +215,6 @@ export async function getCrateReleaseItems(crateId: number, fanId: number): Prom
   }
 
   return rows.map((r) => ({
-    crateItemId: r.feed_item_id,
     releaseId: r.release_id,
     releaseTitle: r.title,
     releaseUrl: r.url,
@@ -266,40 +229,58 @@ export async function getCrateReleaseItems(crateId: number, fanId: number): Prom
   }));
 }
 
-export async function addToCrate(crateId: number, fanId: number, feedItemId: string): Promise<void> {
+function refWhere(ref: CrateItemRef, startParam: number): { clause: string; values: unknown[] } {
+  if ('trackId' in ref) return { clause: `track_id = $${startParam}`, values: [ref.trackId] };
+  return { clause: `release_id = $${startParam}`, values: [ref.releaseId] };
+}
+
+export async function addToCrate(crateId: number, fanId: number, ref: CrateItemRef): Promise<void> {
   if (!await verifyCrateOwnership(crateId, fanId)) throw new Error('Crate not found');
+  if ('trackId' in ref) {
+    await execute(
+      'INSERT INTO crate_items (crate_id, track_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [crateId, ref.trackId],
+    );
+  } else {
+    await execute(
+      'INSERT INTO crate_items (crate_id, release_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [crateId, ref.releaseId],
+    );
+  }
+}
+
+export async function removeFromCrate(crateId: number, fanId: number, ref: CrateItemRef): Promise<void> {
+  if (!await verifyCrateOwnership(crateId, fanId)) throw new Error('Crate not found');
+  const { clause, values } = refWhere(ref, 2);
   await execute(
-    'INSERT INTO crate_items (crate_id, feed_item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-    [crateId, feedItemId],
+    `DELETE FROM crate_items WHERE crate_id = $1 AND ${clause}`,
+    [crateId, ...values],
   );
 }
 
-export async function removeFromCrate(crateId: number, fanId: number, feedItemId: string): Promise<void> {
-  if (!await verifyCrateOwnership(crateId, fanId)) throw new Error('Crate not found');
-  await execute(
-    'DELETE FROM crate_items WHERE crate_id = $1 AND feed_item_id = $2',
-    [crateId, feedItemId],
-  );
-}
-
-export async function getItemCrates(fanId: number, feedItemId: string): Promise<number[]> {
+export async function getItemCrates(fanId: number, ref: CrateItemRef): Promise<number[]> {
+  const { clause, values } = refWhere(ref, 2);
   const rows = await query<{ crate_id: number }>(`
     SELECT ci.crate_id FROM crate_items ci
     JOIN crates c ON c.id = ci.crate_id
-    WHERE c.fan_id = $1 AND ci.feed_item_id = $2
-  `, [fanId, feedItemId]);
+    WHERE c.fan_id = $1 AND ci.${clause}
+  `, [fanId, ...values]);
   return rows.map((r) => r.crate_id);
 }
 
 export async function getItemCrateMultiMap(fanId: number): Promise<Record<string, number[]>> {
-  const rows = await query<{ feed_item_id: string; crate_id: number }>(`
-    SELECT ci.feed_item_id, ci.crate_id FROM crate_items ci
+  const rows = await query<{ item_key: string; crate_id: number }>(`
+    SELECT
+      CASE WHEN ci.track_id IS NOT NULL THEN 'track:' || ci.track_id
+           ELSE 'release:' || ci.release_id END AS item_key,
+      ci.crate_id
+    FROM crate_items ci
     JOIN crates c ON c.id = ci.crate_id
     WHERE c.fan_id = $1
   `, [fanId]);
   const map: Record<string, number[]> = {};
   for (const r of rows) {
-    (map[r.feed_item_id] ??= []).push(r.crate_id);
+    (map[r.item_key] ??= []).push(r.crate_id);
   }
   return map;
 }
@@ -309,12 +290,14 @@ export async function clearCrate(crateId: number, fanId: number): Promise<void> 
   await execute('DELETE FROM crate_items WHERE crate_id = $1', [crateId]);
 }
 
-/** Returns all item IDs across all crates for a fan. */
 export async function getAllCrateItemIds(fanId: number): Promise<Set<string>> {
-  const rows = await query<{ feed_item_id: string }>(`
-    SELECT ci.feed_item_id FROM crate_items ci
+  const rows = await query<{ item_key: string }>(`
+    SELECT
+      CASE WHEN ci.track_id IS NOT NULL THEN 'track:' || ci.track_id
+           ELSE 'release:' || ci.release_id END AS item_key
+    FROM crate_items ci
     JOIN crates c ON c.id = ci.crate_id
     WHERE c.fan_id = $1
   `, [fanId]);
-  return new Set(rows.map((r) => r.feed_item_id));
+  return new Set(rows.map((r) => r.item_key));
 }
