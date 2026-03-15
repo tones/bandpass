@@ -250,6 +250,9 @@ async function cleanupStaleJobs(jobTypes) {
   }
 }
 
+// lib/db/sync/feed.ts
+var SIX_MONTHS_SECONDS = 180 * 24 * 60 * 60;
+
 // lib/bandcamp/scraper.ts
 var publicFetcher = async (url) => {
   const res = await fetch(url);
@@ -309,8 +312,7 @@ async function fetchAlbumTracks(fetchHtml, albumUrl) {
   };
 }
 
-// lib/db/sync.ts
-var SIX_MONTHS_SECONDS = 180 * 24 * 60 * 60;
+// lib/db/sync/audio.ts
 async function getAudioAnalysisPendingCount() {
   const row = await queryOne(
     "SELECT COUNT(*) AS c FROM catalog_tracks WHERE stream_url IS NOT NULL AND stream_url != '' AND bpm_status IS NULL"

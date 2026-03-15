@@ -106,27 +106,43 @@ export async function getAllUsersWithStats(): Promise<AdminUser[]> {
 export interface AdminGlobalStats {
   enrichmentPending: number;
   enrichmentDone: number;
+  enrichmentTotal: number;
   totalCatalogReleases: number;
   totalCatalogTracks: number;
+  audioAnalyzed: number;
+  audioPending: number;
+  audioTotal: number;
 }
 
 export async function getGlobalStats(): Promise<AdminGlobalStats> {
   const row = await queryOne<{
     enrichment_pending: string;
+    enrichment_total: string;
     enrichment_done: string;
     total_catalog_releases: string;
     total_catalog_tracks: string;
+    audio_analyzed: string;
+    audio_pending: string;
+    audio_total: string;
   }>(`
     SELECT
       (SELECT COUNT(*) FROM enrichment_queue WHERE status = 'pending') AS enrichment_pending,
+      (SELECT COUNT(*) FROM enrichment_queue WHERE status IN ('done', 'pending', 'failed')) AS enrichment_total,
       (SELECT COUNT(*) FROM enrichment_queue WHERE status = 'done') AS enrichment_done,
       (SELECT COUNT(*) FROM catalog_releases) AS total_catalog_releases,
-      (SELECT COUNT(*) FROM catalog_tracks) AS total_catalog_tracks
+      (SELECT COUNT(*) FROM catalog_tracks) AS total_catalog_tracks,
+      (SELECT COUNT(*) FROM catalog_tracks WHERE bpm IS NOT NULL) AS audio_analyzed,
+      (SELECT COUNT(*) FROM catalog_tracks WHERE bpm IS NULL AND stream_url IS NOT NULL) AS audio_pending,
+      (SELECT COUNT(*) FROM catalog_tracks WHERE stream_url IS NOT NULL) AS audio_total
   `);
   return {
     enrichmentPending: parseInt(row?.enrichment_pending ?? '0', 10),
     enrichmentDone: parseInt(row?.enrichment_done ?? '0', 10),
+    enrichmentTotal: parseInt(row?.enrichment_total ?? '0', 10),
     totalCatalogReleases: parseInt(row?.total_catalog_releases ?? '0', 10),
     totalCatalogTracks: parseInt(row?.total_catalog_tracks ?? '0', 10),
+    audioAnalyzed: parseInt(row?.audio_analyzed ?? '0', 10),
+    audioPending: parseInt(row?.audio_pending ?? '0', 10),
+    audioTotal: parseInt(row?.audio_total ?? '0', 10),
   };
 }

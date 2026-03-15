@@ -122,7 +122,7 @@ export function AccountView({
           </Row>
         </Section>
 
-        <Section title="Sync Status">
+        <Section title="Your Sync Status">
           <Row label="Last synced">
             {lastSyncAt ? formatDate(lastSyncAt) : 'Never'}
           </Row>
@@ -154,6 +154,9 @@ export function AccountView({
               pendingLabel="Pending"
             />
           </Row>
+        </Section>
+
+        <Section title="Global Sync Status">
           <Row label="Catalog enrichment">
             <StatusBadge
               done={!isEnriching && enrichmentPendingCount === 0 && wishlistSynced && collectionSynced}

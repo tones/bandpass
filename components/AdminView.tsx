@@ -51,6 +51,7 @@ function SyncBadge({ done, active, label }: { done: boolean; active: boolean; la
 
 function UserCard({ user }: { user: AdminUser }) {
   const displayName = user.username ?? `Fan ${user.fanId}`;
+  const actuallySyncing = user.isSyncing && user.activeJobType != null;
 
   return (
     <div className="rounded-lg border border-zinc-800 p-5">
@@ -59,7 +60,7 @@ function UserCard({ user }: { user: AdminUser }) {
           <h2 className="text-base font-medium text-zinc-100">{displayName}</h2>
           <p className="text-xs text-zinc-500">ID: {user.fanId}</p>
         </div>
-        {user.isSyncing && (
+        {actuallySyncing && (
           <span className="rounded-full bg-amber-400/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
             Syncing
           </span>
@@ -67,20 +68,27 @@ function UserCard({ user }: { user: AdminUser }) {
       </div>
 
       <div className="space-y-3">
-        <Section title="Activity">
+        <Section title="Sync Status">
           <Row label="Last synced">
             {user.lastSyncAt ? formatDate(user.lastSyncAt) : 'Never'}
           </Row>
-          {user.oldestStoryDate && user.newestStoryDate && (
-            <Row label="Feed range">
-              {formatTimestamp(user.oldestStoryDate)} &ndash; {formatTimestamp(user.newestStoryDate)}
-            </Row>
-          )}
-          {user.activeJobType && (
-            <Row label="Active job">
-              <span className="text-amber-400">{user.activeJobType.replace('_', ' ')}</span>
-            </Row>
-          )}
+          <Row label="Total items">{user.totalFeedItems.toLocaleString()}</Row>
+          <Row label="Feed history">
+            <SyncBadge done={user.deepSyncComplete} active={actuallySyncing && !user.deepSyncComplete}
+              label={user.deepSyncComplete && user.oldestStoryDate
+                ? `Complete \u00b7 back to ${formatTimestamp(user.oldestStoryDate)}`
+                : user.oldestStoryDate
+                  ? `Pending \u00b7 back to ${formatTimestamp(user.oldestStoryDate)}`
+                  : undefined} />
+          </Row>
+          <Row label="Purchases">
+            <SyncBadge done={user.collectionSynced} active={actuallySyncing && !user.collectionSynced}
+              label={user.collectionSynced ? `${user.myPurchases.toLocaleString()} items` : undefined} />
+          </Row>
+          <Row label="Wishlist">
+            <SyncBadge done={user.wishlistSynced} active={actuallySyncing && !user.wishlistSynced}
+              label={user.wishlistSynced ? `${user.wishlistCount.toLocaleString()} items` : undefined} />
+          </Row>
         </Section>
 
         <Section title="Items">
@@ -95,18 +103,6 @@ function UserCard({ user }: { user: AdminUser }) {
           <Row label="Crates">{user.crateCount.toLocaleString()}</Row>
           <Row label="Wishlist items">{user.wishlistCount.toLocaleString()}</Row>
         </Section>
-
-        <Section title="Sync Progress">
-          <Row label="Deep sync">
-            <SyncBadge done={user.deepSyncComplete} active={user.isSyncing && !user.deepSyncComplete} />
-          </Row>
-          <Row label="Collection">
-            <SyncBadge done={user.collectionSynced} active={user.isSyncing && !user.collectionSynced} />
-          </Row>
-          <Row label="Wishlist">
-            <SyncBadge done={user.wishlistSynced} active={user.isSyncing && !user.wishlistSynced} />
-          </Row>
-        </Section>
       </div>
     </div>
   );
@@ -120,11 +116,21 @@ export function AdminView({ users, globalStats }: AdminViewProps) {
 
       <div className="mt-8 rounded-lg border border-zinc-800 p-4">
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">Global Stats</h2>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
           <Stat label="Catalog releases" value={globalStats.totalCatalogReleases.toLocaleString()} />
           <Stat label="Catalog tracks" value={globalStats.totalCatalogTracks.toLocaleString()} />
-          <Stat label="Enrichment done" value={globalStats.enrichmentDone.toLocaleString()} />
-          <Stat label="Enrichment pending" value={globalStats.enrichmentPending.toLocaleString()} />
+          <Stat
+            label="Catalog enrichment"
+            value={globalStats.enrichmentPending > 0
+              ? `${globalStats.enrichmentDone.toLocaleString()} / ${globalStats.enrichmentTotal.toLocaleString()} albums`
+              : `${globalStats.enrichmentDone.toLocaleString()} / ${globalStats.enrichmentTotal.toLocaleString()} albums`}
+          />
+          <Stat
+            label="Audio enrichment"
+            value={globalStats.audioPending > 0
+              ? `${globalStats.audioAnalyzed.toLocaleString()} / ${globalStats.audioTotal.toLocaleString()} tracks`
+              : `${globalStats.audioAnalyzed.toLocaleString()} / ${globalStats.audioTotal.toLocaleString()} tracks`}
+          />
         </div>
       </div>
 
