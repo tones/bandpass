@@ -6,6 +6,7 @@
  * back to catalog_tracks. Progress is tracked via sync_jobs with periodic
  * heartbeats. Gracefully shuts down on SIGTERM/SIGINT.
  */
+import http from 'http';
 import { spawn, ChildProcess } from 'child_process';
 import { createInterface, Interface } from 'readline';
 import fs from 'fs';
@@ -387,7 +388,21 @@ async function processReleases() {
   }
 }
 
+const HEALTH_PORT = parseInt(process.env.WORKER_HEALTH_PORT ?? '8080', 10);
+
+function startHealthServer() {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ok');
+  });
+  server.listen(HEALTH_PORT, () => {
+    console.log(`Health check server listening on port ${HEALTH_PORT}`);
+  });
+}
+
 async function main() {
+  startHealthServer();
+
   if (!process.env.DATABASE_URL) {
     console.error('DATABASE_URL not set');
     process.exit(1);
