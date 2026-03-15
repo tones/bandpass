@@ -3,6 +3,7 @@ import { getIdentityCookie, getSession } from '@/lib/session';
 import { BandcampClient } from '@/lib/bandcamp/client';
 import { fetchDiscography, artIdToUrl, publicFetcher } from '@/lib/bandcamp/scraper';
 import { getCachedDiscography, cacheDiscography } from '@/lib/db/catalog';
+import { enqueueUrlsForEnrichment } from '@/lib/db/sync';
 import { getAllCrateItemIds, getCrates, getItemCrateMultiMap } from '@/lib/db/crates';
 import { CatalogView } from '@/components/music/CatalogView';
 
@@ -57,6 +58,11 @@ export default async function MusicDetailPage({ params }: MusicDetailPageProps) 
           imageUrl: item.artId ? artIdToUrl(item.artId) : '',
           releaseType: item.type,
         })),
+      );
+
+      const urls = releases.map((r) => r.url).filter(Boolean);
+      enqueueUrlsForEnrichment(urls).catch((err) =>
+        console.error('Failed to enqueue discography for enrichment:', err),
       );
     } catch (err) {
       console.error('Failed to fetch discography:', err);

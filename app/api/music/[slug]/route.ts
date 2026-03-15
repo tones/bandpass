@@ -11,6 +11,7 @@ import {
 } from '@/lib/db/catalog';
 import { queryOne } from '@/lib/db/index';
 import { safeParseTags } from '@/lib/db/utils';
+import { enqueueUrlsForEnrichment } from '@/lib/db/sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,11 @@ export async function GET(
         imageUrl: item.artId ? artIdToUrl(item.artId) : '',
         releaseType: item.type,
       })),
+    );
+
+    const urls = releases.map((r) => r.url).filter(Boolean);
+    enqueueUrlsForEnrichment(urls).catch((e) =>
+      console.error('Failed to enqueue discography for enrichment:', e),
     );
 
     return NextResponse.json({ releases, fromCache: false });

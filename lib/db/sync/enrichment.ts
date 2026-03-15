@@ -9,6 +9,19 @@ import { ensureCatalogRelease, cacheAlbumTracks } from '../catalog';
 import { sleep } from '../utils';
 import { withRetry } from './helpers';
 
+export async function enqueueUrlsForEnrichment(albumUrls: string[]): Promise<number> {
+  if (albumUrls.length === 0) return 0;
+  let enqueued = 0;
+  for (const url of albumUrls) {
+    const result = await execute(
+      'INSERT INTO enrichment_queue (album_url) VALUES ($1) ON CONFLICT DO NOTHING',
+      [url],
+    );
+    if (result.rowCount && result.rowCount > 0) enqueued++;
+  }
+  return enqueued;
+}
+
 export async function enqueueForEnrichment(fanId: number): Promise<number> {
   return await transaction(async (client) => {
     const { rows: feedRows } = await client.query(

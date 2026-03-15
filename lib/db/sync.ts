@@ -7,6 +7,7 @@ export {
   syncCollectionIncremental,
   syncWishlist,
   enqueueForEnrichment,
+  enqueueUrlsForEnrichment,
   getEnrichmentPendingCount,
   getEnrichmentDoneCount,
   getGlobalEnrichmentPendingCount,

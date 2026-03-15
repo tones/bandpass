@@ -3,5 +3,5 @@ export type { SyncState } from './helpers';
 export { syncFeedInitial, syncFeedIncremental, syncFeedDeep } from './feed';
 export { syncCollection, syncCollectionIncremental } from './collection';
 export { syncWishlist } from './wishlist';
-export { enqueueForEnrichment, getEnrichmentPendingCount, getEnrichmentDoneCount, getGlobalEnrichmentPendingCount, processEnrichmentQueue } from './enrichment';
+export { enqueueForEnrichment, enqueueUrlsForEnrichment, getEnrichmentPendingCount, getEnrichmentDoneCount, getGlobalEnrichmentPendingCount, processEnrichmentQueue } from './enrichment';
 export { getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from './audio';

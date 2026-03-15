@@ -30,7 +30,7 @@ vi.mock('../../utils', () => ({
 import { query, queryOne, execute } from '../../index';
 import { fetchAlbumTracks } from '@/lib/bandcamp/scraper';
 import { ensureCatalogRelease, cacheAlbumTracks } from '../../catalog';
-import { enqueueForEnrichment, getEnrichmentPendingCount, getGlobalEnrichmentPendingCount, processEnrichmentQueue } from '../enrichment';
+import { enqueueForEnrichment, enqueueUrlsForEnrichment, getEnrichmentPendingCount, getGlobalEnrichmentPendingCount, processEnrichmentQueue } from '../enrichment';
 
 describe('enrichment', () => {
   beforeEach(() => {
@@ -123,6 +123,33 @@ describe('enrichment', () => {
       const sql = vi.mocked(queryOne).mock.calls[0][0] as string;
       expect(sql).toContain('enrichment_queue');
       expect(sql).toContain("'pending'");
+    });
+  });
+
+  describe('enqueueUrlsForEnrichment', () => {
+    it('returns 0 for empty array', async () => {
+      const count = await enqueueUrlsForEnrichment([]);
+      expect(count).toBe(0);
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('inserts URLs and counts newly enqueued', async () => {
+      vi.mocked(execute)
+        .mockResolvedValueOnce({ rowCount: 1 } as never)
+        .mockResolvedValueOnce({ rowCount: 0 } as never)
+        .mockResolvedValueOnce({ rowCount: 1 } as never);
+
+      const count = await enqueueUrlsForEnrichment([
+        'https://a.bandcamp.com/album/x',
+        'https://b.bandcamp.com/album/y',
+        'https://c.bandcamp.com/album/z',
+      ]);
+
+      expect(count).toBe(2);
+      expect(execute).toHaveBeenCalledTimes(3);
+      const sql = vi.mocked(execute).mock.calls[0][0] as string;
+      expect(sql).toContain('enrichment_queue');
+      expect(sql).toContain('ON CONFLICT DO NOTHING');
     });
   });
 
