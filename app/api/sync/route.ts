@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { BandcampAPI } from '@/lib/bandcamp/api';
-import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, getEnrichmentPendingCount, getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from '@/lib/db/sync';
+import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, getEnrichmentPendingCount, getEnrichmentDoneCount, getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from '@/lib/db/sync';
 import { createJob, updateJobProgress, completeJob, failJob, hasActiveUserSync, getActiveJob, getLatestJob } from '@/lib/db/sync-jobs';
 import { getItemCount } from '@/lib/db/queries';
 import { execute } from '@/lib/db';
@@ -82,6 +82,7 @@ export async function GET() {
   const enrichmentPendingCount = state?.collectionSynced && state?.wishlistSynced
     ? await getEnrichmentPendingCount(fanId)
     : 0;
+  const enrichmentDoneCount = await getEnrichmentDoneCount();
   const audioAnalysisPending = await getAudioAnalysisPendingCount();
   const audioAnalysisDone = await getAudioAnalysisDoneCount();
 
@@ -130,7 +131,7 @@ export async function GET() {
     isWishlistSyncing,
     wishlistSynced: state?.wishlistSynced ?? false,
     isEnriching,
-    enrichedCount: enrichmentJob?.progressDone ?? 0,
+    enrichmentDoneCount,
     enrichmentPendingCount: isEnriching
       ? (enrichmentJob?.progressTotal ?? 0) - (enrichmentJob?.progressDone ?? 0)
       : enrichmentPendingCount,

@@ -1,10 +1,13 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import type { AdminUser, AdminGlobalStats } from '@/lib/db/admin';
 import { formatDate } from '@/components/panes/shared';
 import { UserItemCounts } from '@/components/panes/UserItemCounts';
 import { UserSyncStatus } from '@/components/panes/UserSyncStatus';
 import { GlobalSyncStatus } from '@/components/panes/GlobalSyncStatus';
+
+const POLL_INTERVAL_MS = 3000;
 
 interface AdminViewProps {
   users: AdminUser[];
@@ -65,7 +68,24 @@ function UserCard({ user }: { user: AdminUser }) {
   );
 }
 
-export function AdminView({ users, globalStats }: AdminViewProps) {
+export function AdminView({ users, globalStats: initialStats }: AdminViewProps) {
+  const [globalStats, setGlobalStats] = useState(initialStats);
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/admin/stats');
+        if (!res.ok) return;
+        const data = await res.json();
+        setGlobalStats(data);
+      } catch {
+        // ignore fetch errors
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="text-2xl font-semibold text-zinc-100">Admin</h1>
@@ -74,12 +94,11 @@ export function AdminView({ users, globalStats }: AdminViewProps) {
       <div className="mt-8 rounded-lg border border-zinc-800 p-4">
         <GlobalSyncStatus
           isEnriching={globalStats.isEnriching}
-          enrichedCount={globalStats.enrichedCount}
+          enrichmentDoneCount={globalStats.enrichmentDoneCount}
           enrichmentPendingCount={globalStats.enrichmentPendingCount}
           collectionSynced={true}
           wishlistSynced={true}
           isAnalyzingAudio={globalStats.isAnalyzingAudio}
-          audioAnalyzed={globalStats.audioAnalyzed}
           audioAnalysisPending={globalStats.audioAnalysisPending}
           audioAnalysisDone={globalStats.audioAnalysisDone}
           audioErrors={globalStats.audioErrors}

@@ -8,6 +8,7 @@ export {
   syncWishlist,
   enqueueForEnrichment,
   getEnrichmentPendingCount,
+  getEnrichmentDoneCount,
   getGlobalEnrichmentPendingCount,
   processEnrichmentQueue,
   getAudioAnalysisPendingCount,

@@ -15,7 +15,7 @@ export interface SyncState {
   wishlistSynced: boolean;
   wishlistItemsFound?: number;
   isEnriching: boolean;
-  enrichedCount?: number;
+  enrichmentDoneCount?: number;
   enrichmentPendingCount?: number;
   isAnalyzingAudio: boolean;
   audioAnalyzed?: number;

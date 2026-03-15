@@ -76,10 +76,9 @@ export function AccountView({
   const isCollectionSyncing = state?.isCollectionSyncing ?? false;
   const isWishlistSyncing = state?.isWishlistSyncing ?? false;
   const isEnriching = state?.isEnriching ?? false;
-  const enrichedCount = state?.enrichedCount ?? 0;
+  const enrichmentDoneCount = state?.enrichmentDoneCount ?? 0;
   const enrichmentPendingCount = state?.enrichmentPendingCount ?? null;
   const isAnalyzingAudio = state?.isAnalyzingAudio ?? false;
-  const audioAnalyzed = state?.audioAnalyzed ?? 0;
   const audioAnalysisPending = state?.audioAnalysisPending ?? null;
   const audioAnalysisDone = state?.audioAnalysisDone ?? 0;
   const audioErrors = state?.audioErrors ?? 0;
@@ -138,12 +137,11 @@ export function AccountView({
         <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
           <GlobalSyncStatus
             isEnriching={isEnriching}
-            enrichedCount={enrichedCount}
+            enrichmentDoneCount={enrichmentDoneCount}
             enrichmentPendingCount={enrichmentPendingCount}
             collectionSynced={collectionSynced}
             wishlistSynced={wishlistSynced}
             isAnalyzingAudio={isAnalyzingAudio}
-            audioAnalyzed={audioAnalyzed}
             audioAnalysisPending={audioAnalysisPending}
             audioAnalysisDone={audioAnalysisDone}
             audioErrors={audioErrors}

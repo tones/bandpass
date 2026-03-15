@@ -51,6 +51,13 @@ export async function enqueueForEnrichment(fanId: number): Promise<number> {
   });
 }
 
+export async function getEnrichmentDoneCount(): Promise<number> {
+  const row = await queryOne<{ c: string }>(
+    "SELECT COUNT(*) AS c FROM enrichment_queue WHERE status = 'done'",
+  );
+  return parseInt(row!.c, 10);
+}
+
 export async function getGlobalEnrichmentPendingCount(): Promise<number> {
   const row = await queryOne<{ c: string }>(
     "SELECT COUNT(*) AS c FROM enrichment_queue WHERE status = 'pending'",

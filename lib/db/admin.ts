@@ -1,6 +1,6 @@
 import { query, queryOne } from './index';
 import { getActiveJob, getLatestJob } from './sync-jobs';
-import { getAudioAnalysisPendingCount, getAudioAnalysisDoneCount, getGlobalEnrichmentPendingCount } from './sync';
+import { getAudioAnalysisPendingCount, getAudioAnalysisDoneCount, getEnrichmentDoneCount, getGlobalEnrichmentPendingCount } from './sync';
 
 export interface AdminUser {
   fanId: number;
@@ -117,10 +117,9 @@ export interface AdminGlobalStats {
   totalCatalogReleases: number;
   totalCatalogTracks: number;
   isEnriching: boolean;
-  enrichedCount: number;
+  enrichmentDoneCount: number;
   enrichmentPendingCount: number;
   isAnalyzingAudio: boolean;
-  audioAnalyzed: number;
   audioAnalysisPending: number;
   audioAnalysisDone: number;
   audioErrors: number;
@@ -144,6 +143,7 @@ export async function getGlobalStats(): Promise<AdminGlobalStats> {
   const activeAudioJob = await getActiveJob('audio_analysis');
   const audioJob = activeAudioJob ?? await getLatestJob('audio_analysis');
 
+  const enrichmentDoneCount = await getEnrichmentDoneCount();
   const enrichmentPendingCount = await getGlobalEnrichmentPendingCount();
   const audioAnalysisPending = await getAudioAnalysisPendingCount();
   const audioAnalysisDone = await getAudioAnalysisDoneCount();
@@ -164,12 +164,11 @@ export async function getGlobalStats(): Promise<AdminGlobalStats> {
     totalCatalogReleases: parseInt(countsRow?.total_catalog_releases ?? '0', 10),
     totalCatalogTracks: parseInt(countsRow?.total_catalog_tracks ?? '0', 10),
     isEnriching,
-    enrichedCount: enrichmentJob?.progressDone ?? 0,
+    enrichmentDoneCount,
     enrichmentPendingCount: isEnriching
       ? (enrichmentJob?.progressTotal ?? 0) - (enrichmentJob?.progressDone ?? 0)
       : enrichmentPendingCount,
     isAnalyzingAudio,
-    audioAnalyzed: audioJob?.progressDone ?? 0,
     audioAnalysisPending: isAnalyzingAudio
       ? (audioJob?.progressTotal ?? 0) - (audioJob?.progressDone ?? 0)
       : audioAnalysisPending,

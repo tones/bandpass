@@ -39,7 +39,7 @@ export function SyncStatus({ onSyncComplete, onOldestDateChange }: SyncStatusPro
       if (active) {
         if (data.isEnriching) {
           const parts: string[] = [];
-          if (data.enrichedCount) parts.push(`${data.enrichedCount} done`);
+          if (data.enrichmentDoneCount) parts.push(`${data.enrichmentDoneCount} done`);
           if (data.enrichmentPendingCount) parts.push(`${data.enrichmentPendingCount.toLocaleString()} remaining`);
           setMessage(parts.length ? `Enriching catalog... (${parts.join(', ')})` : 'Enriching catalog...');
         } else if (data.isWishlistSyncing) {
