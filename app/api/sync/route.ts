@@ -73,7 +73,7 @@ export async function GET() {
   const fanId = session.fanId;
 
   execute(
-    `UPDATE sync_state SET identity_cookie = $2 WHERE fan_id = $1`,
+    `UPDATE sync_state SET identity_cookie = $2, last_visited_at = NOW() WHERE fan_id = $1`,
     [fanId, session.identityCookie],
   ).catch((err) => console.error('Failed to persist identity cookie:', err));
 

@@ -74,6 +74,9 @@ function UserCard({ user }: { user: AdminUser }) {
 
       <div className="space-y-3">
         <Section title="Sync Status">
+          <Row label="Last visited">
+            {user.lastVisitedAt ? formatDate(user.lastVisitedAt) : 'Never'}
+          </Row>
           <Row label="Last synced">
             {user.lastSyncAt ? formatDate(user.lastSyncAt) : 'Never'}
           </Row>

@@ -18,6 +18,7 @@ export interface AdminUser {
   wishlistCount: number;
   activeJobType: string | null;
   hasCookie: boolean;
+  lastVisitedAt: string | null;
 }
 
 interface AdminUserRow {
@@ -38,6 +39,7 @@ interface AdminUserRow {
   wishlist_count: string;
   active_job_type: string | null;
   has_cookie: boolean;
+  last_visited_at: Date | string | null;
 }
 
 function rowToAdminUser(row: AdminUserRow): AdminUser {
@@ -59,6 +61,7 @@ function rowToAdminUser(row: AdminUserRow): AdminUser {
     wishlistCount: parseInt(row.wishlist_count, 10),
     activeJobType: row.active_job_type,
     hasCookie: row.has_cookie,
+    lastVisitedAt: row.last_visited_at instanceof Date ? row.last_visited_at.toISOString() : row.last_visited_at,
   };
 }
 
@@ -75,6 +78,7 @@ export async function getAllUsersWithStats(): Promise<AdminUser[]> {
       s.oldest_story_date,
       s.newest_story_date,
       (s.identity_cookie IS NOT NULL) AS has_cookie,
+      s.last_visited_at,
       fi.total_feed_items,
       fi.new_releases,
       fi.friend_purchases,
