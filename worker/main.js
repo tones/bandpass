@@ -24,8 +24,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // worker/main.ts
 var import_http = __toESM(require("http"));
-var import_child_process = require("child_process");
-var import_readline = require("readline");
 var import_fs3 = __toESM(require("fs"));
 
 // lib/db/index.ts
@@ -149,7 +147,8 @@ function rowToTrack(row) {
     bpm: row.bpm ?? null,
     musicalKey: row.musical_key ?? null,
     keyCamelot: row.key_camelot ?? null,
-    audioStorageKey: row.audio_storage_key ?? null
+    audioStorageKey: row.audio_storage_key ?? null,
+    bpmStatus: row.bpm_status ?? null
   };
 }
 async function cacheAlbumTracks(releaseId, tracks, releaseDate, tags) {
@@ -501,6 +500,44 @@ async function getAudioAnalysisPendingCount() {
   return parseInt(row.c, 10);
 }
 
+// lib/s3.ts
+var import_client_s3 = require("@aws-sdk/client-s3");
+var import_s3_request_presigner = require("@aws-sdk/s3-request-presigner");
+var import_fs2 = __toESM(require("fs"));
+var client = null;
+function getClient() {
+  if (client) return client;
+  client = new import_client_s3.S3Client({ region: process.env.AWS_S3_REGION || "us-east-2" });
+  return client;
+}
+function getBucket() {
+  const bucket = process.env.AWS_S3_BUCKET;
+  if (!bucket) throw new Error("AWS_S3_BUCKET is not set");
+  return bucket;
+}
+function isS3Configured() {
+  return !!(process.env.AWS_S3_BUCKET && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+}
+function trackKey2(trackId) {
+  return `tracks/${trackId}.mp3`;
+}
+async function uploadTrackFromFile(trackId, filePath) {
+  const key = trackKey2(trackId);
+  await getClient().send(
+    new import_client_s3.PutObjectCommand({
+      Bucket: getBucket(),
+      Key: key,
+      Body: import_fs2.default.createReadStream(filePath),
+      ContentType: "audio/mpeg"
+    })
+  );
+  return key;
+}
+
+// worker/analyzer.ts
+var import_child_process = require("child_process");
+var import_readline = require("readline");
+
 // lib/audio/camelot.ts
 var CAMELOT_MAP = {
   "C major": "8B",
@@ -551,86 +588,8 @@ function normalizeBpm(bpm) {
   return Math.round(bpm * 10) / 10;
 }
 
-// lib/s3.ts
-var import_client_s3 = require("@aws-sdk/client-s3");
-var import_s3_request_presigner = require("@aws-sdk/s3-request-presigner");
-var import_fs2 = __toESM(require("fs"));
-var client = null;
-function getClient() {
-  if (client) return client;
-  client = new import_client_s3.S3Client({ region: process.env.AWS_S3_REGION || "us-east-2" });
-  return client;
-}
-function getBucket() {
-  const bucket = process.env.AWS_S3_BUCKET;
-  if (!bucket) throw new Error("AWS_S3_BUCKET is not set");
-  return bucket;
-}
-function isS3Configured() {
-  return !!(process.env.AWS_S3_BUCKET && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
-}
-function trackKey2(trackId) {
-  return `tracks/${trackId}.mp3`;
-}
-async function uploadTrackFromFile(trackId, filePath) {
-  const key = trackKey2(trackId);
-  await getClient().send(
-    new import_client_s3.PutObjectCommand({
-      Bucket: getBucket(),
-      Key: key,
-      Body: import_fs2.default.createReadStream(filePath),
-      ContentType: "audio/mpeg"
-    })
-  );
-  return key;
-}
-
-// worker/main.ts
-var shuttingDown = false;
-var POLL_INTERVAL_MS = 3e4;
-var TRACK_DELAY_MS = 750;
-var RELEASE_DELAY_MS = 1e3;
-var MAX_CONSECUTIVE_FAILURES2 = 20;
-async function catalogEnrichmentLoop() {
-  console.log("Catalog enrichment loop started");
-  while (!shuttingDown) {
-    try {
-      const row = await queryOne(
-        "SELECT COUNT(*) as c FROM enrichment_queue WHERE status = 'pending'"
-      );
-      const pendingCount = parseInt(row?.c ?? "0", 10);
-      if (pendingCount > 0 && !await getActiveJob("enrichment")) {
-        const jobId = await createJob("enrichment");
-        const heartbeatInterval = setInterval(async () => {
-          try {
-            await updateHeartbeat(jobId);
-          } catch (err) {
-            console.error("Catalog enrichment heartbeat failed:", err);
-          }
-        }, 3e4);
-        try {
-          await updateHeartbeat(jobId);
-          await updateJobProgress(jobId, 0, pendingCount);
-          await processEnrichmentQueue((processed, remaining) => {
-            updateJobProgress(jobId, processed, processed + remaining);
-          });
-          await completeJob(jobId);
-        } catch (err) {
-          console.error("Catalog enrichment error:", err);
-          await failJob(jobId, err instanceof Error ? err.message : String(err));
-        } finally {
-          clearInterval(heartbeatInterval);
-        }
-      }
-    } catch (err) {
-      console.error("Catalog enrichment loop error:", err);
-    }
-    if (!shuttingDown) {
-      await sleep(POLL_INTERVAL_MS);
-    }
-  }
-  console.log("Catalog enrichment loop stopped");
-}
+// worker/analyzer.ts
+var ANALYZE_TIMEOUT_MS = 12e4;
 var EssentiaProcess = class {
   constructor(id = 0) {
     this.id = id;
@@ -701,11 +660,26 @@ var EssentiaProcess = class {
       }, 1e4);
     });
   }
-  async analyze(streamUrl) {
+  async analyze(streamUrl, timeoutMs = ANALYZE_TIMEOUT_MS) {
     await this.ensure();
     const raw = await new Promise(
       (resolve, reject) => {
-        this.pending = { resolve, reject };
+        const timer = setTimeout(() => {
+          this.pending = null;
+          this.kill();
+          this.proc = null;
+          reject(new Error(`Analysis timed out after ${timeoutMs / 1e3}s`));
+        }, timeoutMs);
+        this.pending = {
+          resolve: (v) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          reject: (e) => {
+            clearTimeout(timer);
+            reject(e);
+          }
+        };
         this.proc.stdin.write(JSON.stringify({ url: streamUrl }) + "\n");
       }
     );
@@ -755,6 +729,60 @@ var AnalyzerPool = class {
     this.pool.forEach((p) => p.kill());
   }
 };
+
+// worker/main.ts
+var shuttingDown = false;
+var lastProgressAt = Date.now();
+var hasActiveAnalysisJob = false;
+var POLL_INTERVAL_MS = 3e4;
+var TRACK_DELAY_MS = 750;
+var RELEASE_DELAY_MS = 1e3;
+var MAX_CONSECUTIVE_FAILURES2 = 20;
+var STALL_THRESHOLD_MS = 10 * 60 * 1e3;
+async function catalogEnrichmentLoop() {
+  console.log("Catalog enrichment loop started");
+  while (!shuttingDown) {
+    try {
+      const row = await queryOne(
+        "SELECT COUNT(*) as c FROM enrichment_queue WHERE status = 'pending'"
+      );
+      const pendingCount = parseInt(row?.c ?? "0", 10);
+      if (pendingCount > 0 && !await getActiveJob("enrichment")) {
+        const jobId = await createJob("enrichment");
+        const heartbeatInterval = setInterval(async () => {
+          try {
+            await updateHeartbeat(jobId);
+          } catch (err) {
+            console.error("Catalog enrichment heartbeat failed:", err);
+          }
+        }, 3e4);
+        try {
+          await updateHeartbeat(jobId);
+          await updateJobProgress(jobId, 0, pendingCount);
+          await processEnrichmentQueue((processed, remaining) => {
+            updateJobProgress(jobId, processed, processed + remaining);
+          });
+          await completeJob(jobId);
+        } catch (err) {
+          console.error("Catalog enrichment error:", err);
+          await failJob(jobId, err instanceof Error ? err.message : String(err));
+        } finally {
+          clearInterval(heartbeatInterval);
+        }
+      }
+    } catch (err) {
+      console.error("Catalog enrichment loop error:", err);
+    }
+    if (!shuttingDown) {
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+  console.log("Catalog enrichment loop stopped");
+}
+var FETCH_TIMEOUT_MS2 = 3e4;
+function timedFetcher2(url) {
+  return publicFetcher(url, AbortSignal.timeout(FETCH_TIMEOUT_MS2));
+}
 var CONCURRENCY = Math.max(1, parseInt(process.env.ANALYZER_CONCURRENCY ?? "2", 10));
 var pool2;
 var s3Enabled = false;
@@ -802,6 +830,7 @@ async function analyzeTrack(analyzer, track, jobId) {
       }
     }
     await saveAudioResult(track.id, track.stream_url, result, storageKey);
+    lastProgressAt = Date.now();
     console.log(`  ${analyzer.tag} Track ${track.id}: bpm=${result.bpm} key=${result.musicalKey}`);
     return true;
   } catch (err) {
@@ -817,6 +846,8 @@ async function processReleases() {
   if (totalPending === 0) return;
   if (await getActiveJob("audio_analysis")) return;
   const jobId = await createJob("audio_analysis");
+  hasActiveAnalysisJob = true;
+  lastProgressAt = Date.now();
   let done = 0;
   let errors = 0;
   let consecutiveFailures = 0;
@@ -852,7 +883,7 @@ async function processReleases() {
       const release = releases[ri];
       console.log(`Release ${ri + 1}/${releases.length}: ${release.releaseUrl}`);
       try {
-        const album = await fetchAlbumTracks(publicFetcher, release.releaseUrl);
+        const album = await fetchAlbumTracks(timedFetcher2, release.releaseUrl);
         await refreshStreamUrls(
           release.releaseId,
           album.tracks.map((t) => ({
@@ -917,6 +948,7 @@ async function processReleases() {
     console.error("Audio analysis error:", err);
     await failJob(jobId, err instanceof Error ? err.message : String(err));
   } finally {
+    hasActiveAnalysisJob = false;
     clearInterval(heartbeatInterval);
     clearInterval(progressInterval);
   }
@@ -924,8 +956,14 @@ async function processReleases() {
 var HEALTH_PORT = parseInt(process.env.WORKER_HEALTH_PORT ?? "8080", 10);
 function startHealthServer() {
   const server = import_http.default.createServer((_req, res) => {
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("ok");
+    const stalledMs = Date.now() - lastProgressAt;
+    if (hasActiveAnalysisJob && stalledMs > STALL_THRESHOLD_MS) {
+      res.writeHead(503, { "Content-Type": "text/plain" });
+      res.end(`stalled: no progress for ${Math.round(stalledMs / 1e3)}s`);
+    } else {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    }
   });
   server.listen(HEALTH_PORT, () => {
     console.log(`Health check server listening on port ${HEALTH_PORT}`);

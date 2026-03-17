@@ -8,8 +8,6 @@
  * heartbeats, and shut down gracefully on SIGTERM/SIGINT.
  */
 import http from 'http';
-import { spawn, ChildProcess } from 'child_process';
-import { createInterface, Interface } from 'readline';
 import fs from 'fs';
 import { execute, queryOne } from '../lib/db/index';
 import {
@@ -30,16 +28,19 @@ import {
 } from '../lib/db/sync-jobs';
 import { getAudioAnalysisPendingCount, processEnrichmentQueue } from '../lib/db/sync';
 import { fetchAlbumTracks, publicFetcher } from '../lib/bandcamp/scraper';
-import { normalizeBpm, toCamelot, formatKey } from '../lib/audio/camelot';
 import { isS3Configured, uploadTrackFromFile } from '../lib/s3';
 import { sleep } from '../lib/db/utils';
+import { EssentiaProcess, AnalyzerPool } from './analyzer';
 
 let shuttingDown = false;
+let lastProgressAt = Date.now();
+let hasActiveAnalysisJob = false;
 
 const POLL_INTERVAL_MS = 30_000;
 const TRACK_DELAY_MS = 750;
 const RELEASE_DELAY_MS = 1_000;
 const MAX_CONSECUTIVE_FAILURES = 20;
+const STALL_THRESHOLD_MS = 10 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Catalog enrichment loop
@@ -94,148 +95,10 @@ async function catalogEnrichmentLoop() {
 // Audio analysis
 // ---------------------------------------------------------------------------
 
-class EssentiaProcess {
-  private proc: ChildProcess | null = null;
-  private rl: Interface | null = null;
-  private pending: {
-    resolve: (v: { bpm: number; key: string; scale: string; timing: string; file?: string }) => void;
-    reject: (e: Error) => void;
-  } | null = null;
+const FETCH_TIMEOUT_MS = 30_000;
 
-  constructor(public readonly id: number = 0) {}
-
-  get tag() { return `[analyzer-${this.id}]`; }
-
-  async ensure(): Promise<void> {
-    if (this.proc && this.proc.exitCode === null) return;
-    await this.start();
-  }
-
-  private start(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      console.log(`${this.tag} Spawning Python Essentia analyzer...`);
-      this.proc = spawn('python3', ['worker/analyze.py'], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      this.rl = createInterface({ input: this.proc.stdout! });
-      this.rl.on('line', (line) => {
-        if (!this.pending) return;
-        const { resolve: res, reject: rej } = this.pending;
-        this.pending = null;
-        try {
-          const result = JSON.parse(line);
-          if (result.error) rej(new Error(result.error));
-          else res(result);
-        } catch {
-          rej(new Error(`Invalid JSON from analyzer: ${line}`));
-        }
-      });
-
-      let resolved = false;
-      const stderrRl = createInterface({ input: this.proc.stderr! });
-      stderrRl.on('line', (line) => {
-        if (line.includes('essentia-analyzer ready')) {
-          resolved = true;
-          console.log(`${this.tag} Python Essentia analyzer ready`);
-          resolve();
-        } else {
-          console.log(`  ${this.tag} [python] ${line}`);
-        }
-      });
-
-      this.proc.on('exit', (code) => {
-        console.log(`${this.tag} Python analyzer exited with code ${code}`);
-        if (!resolved) {
-          resolved = true;
-          reject(new Error(`Analyzer ${this.id} exited before ready (code ${code})`));
-        }
-        if (this.pending) {
-          this.pending.reject(new Error(`Analyzer ${this.id} exited (code ${code})`));
-          this.pending = null;
-        }
-      });
-
-      this.proc.on('error', (err) => {
-        console.error(`${this.tag} Failed to spawn Python analyzer:`, err.message);
-        if (!resolved) {
-          resolved = true;
-          reject(err);
-        }
-      });
-
-      setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          reject(new Error(`Analyzer ${this.id} did not start within 10s`));
-        }
-      }, 10_000);
-    });
-  }
-
-  async analyze(
-    streamUrl: string,
-  ): Promise<{ bpm: number; musicalKey: string; keyCamelot: string | null; tempFile?: string }> {
-    await this.ensure();
-
-    const raw = await new Promise<{ bpm: number; key: string; scale: string; timing: string; file?: string }>(
-      (resolve, reject) => {
-        this.pending = { resolve, reject };
-        this.proc!.stdin!.write(JSON.stringify({ url: streamUrl }) + '\n');
-      },
-    );
-
-    console.log(`  ${this.tag} [timing] ${raw.timing}`);
-
-    return {
-      bpm: normalizeBpm(raw.bpm),
-      musicalKey: formatKey(raw.key, raw.scale),
-      keyCamelot: toCamelot(raw.key, raw.scale),
-      tempFile: raw.file,
-    };
-  }
-
-  kill() {
-    if (this.proc && this.proc.exitCode === null) {
-      this.proc.stdin!.end();
-      this.proc.kill();
-    }
-  }
-}
-
-class AnalyzerPool {
-  private pool: EssentiaProcess[] = [];
-  private available: EssentiaProcess[] = [];
-  private waiters: ((p: EssentiaProcess) => void)[] = [];
-
-  constructor(private size: number) {}
-
-  async start() {
-    console.log(`Starting analyzer pool with ${this.size} processes...`);
-    for (let i = 0; i < this.size; i++) {
-      const p = new EssentiaProcess(i);
-      await p.ensure();
-      this.pool.push(p);
-      this.available.push(p);
-    }
-    console.log(`Analyzer pool ready (${this.size} processes)`);
-  }
-
-  acquire(): Promise<EssentiaProcess> {
-    const p = this.available.pop();
-    if (p) return Promise.resolve(p);
-    return new Promise((resolve) => this.waiters.push(resolve));
-  }
-
-  release(p: EssentiaProcess) {
-    const waiter = this.waiters.shift();
-    if (waiter) waiter(p);
-    else this.available.push(p);
-  }
-
-  killAll() {
-    this.pool.forEach((p) => p.kill());
-  }
+function timedFetcher(url: string): Promise<string> {
+  return publicFetcher(url, AbortSignal.timeout(FETCH_TIMEOUT_MS));
 }
 
 const CONCURRENCY = Math.max(1, parseInt(process.env.ANALYZER_CONCURRENCY ?? '2', 10));
@@ -298,6 +161,7 @@ async function analyzeTrack(
     }
 
     await saveAudioResult(track.id, track.stream_url, result, storageKey);
+    lastProgressAt = Date.now();
     console.log(`  ${analyzer.tag} Track ${track.id}: bpm=${result.bpm} key=${result.musicalKey}`);
     return true;
   } catch (err) {
@@ -316,6 +180,8 @@ async function processReleases() {
   if (await getActiveJob('audio_analysis')) return;
 
   const jobId = await createJob('audio_analysis');
+  hasActiveAnalysisJob = true;
+  lastProgressAt = Date.now();
   let done = 0;
   let errors = 0;
   let consecutiveFailures = 0;
@@ -361,7 +227,7 @@ async function processReleases() {
       console.log(`Release ${ri + 1}/${releases.length}: ${release.releaseUrl}`);
 
       try {
-        const album = await fetchAlbumTracks(publicFetcher, release.releaseUrl);
+        const album = await fetchAlbumTracks(timedFetcher, release.releaseUrl);
         await refreshStreamUrls(
           release.releaseId,
           album.tracks.map((t) => ({
@@ -439,6 +305,7 @@ async function processReleases() {
     console.error('Audio analysis error:', err);
     await failJob(jobId, err instanceof Error ? err.message : String(err));
   } finally {
+    hasActiveAnalysisJob = false;
     clearInterval(heartbeatInterval);
     clearInterval(progressInterval);
   }
@@ -448,8 +315,15 @@ const HEALTH_PORT = parseInt(process.env.WORKER_HEALTH_PORT ?? '8080', 10);
 
 function startHealthServer() {
   const server = http.createServer((_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('ok');
+    const stalledMs = Date.now() - lastProgressAt;
+
+    if (hasActiveAnalysisJob && stalledMs > STALL_THRESHOLD_MS) {
+      res.writeHead(503, { 'Content-Type': 'text/plain' });
+      res.end(`stalled: no progress for ${Math.round(stalledMs / 1000)}s`);
+    } else {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('ok');
+    }
   });
   server.listen(HEALTH_PORT, () => {
     console.log(`Health check server listening on port ${HEALTH_PORT}`);
