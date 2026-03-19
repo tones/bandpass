@@ -237,7 +237,9 @@ async function processReleases() {
           })),
         );
       } catch (err) {
-        console.error(`Failed to refresh URLs for release ${release.releaseId}:`, err);
+        console.error(`Failed to refresh URLs for release ${release.releaseId}, skipping:`, err);
+        await sleep(RELEASE_DELAY_MS);
+        continue;
       }
 
       await markNoStreamTracks(release.releaseId);

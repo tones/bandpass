@@ -314,13 +314,16 @@ export async function getReleasesNeedingStreamRefresh(): Promise<ReleaseNeedingR
 
 export async function refreshStreamUrls(
   releaseId: number,
-  freshTracks: Array<{ trackNum: number; streamUrl: string | null; trackUrl: string | null }>,
+  freshTracks: Array<{ trackNum: number | null; streamUrl: string | null; trackUrl: string | null }>,
 ): Promise<void> {
   await transaction(async (client) => {
     for (const t of freshTracks) {
+      const trackNumClause = t.trackNum != null ? 'track_num = $4' : 'track_num IS NULL';
+      const params: unknown[] = [t.streamUrl, t.trackUrl, releaseId];
+      if (t.trackNum != null) params.push(t.trackNum);
       await client.query(
-        'UPDATE catalog_tracks SET stream_url = $1, track_url = COALESCE($2, track_url) WHERE release_id = $3 AND track_num = $4',
-        [t.streamUrl, t.trackUrl, releaseId, t.trackNum],
+        `UPDATE catalog_tracks SET stream_url = $1, track_url = COALESCE($2, track_url) WHERE release_id = $3 AND ${trackNumClause}`,
+        params,
       );
     }
   });
