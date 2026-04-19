@@ -1,15 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { logout } from '@/app/logout/actions';
+import { signOut } from 'next-auth/react';
 import { useSyncPolling } from '@/hooks/useSyncPolling';
 import { formatDate } from '@/components/panes/shared';
 import { UserItemCounts } from '@/components/panes/UserItemCounts';
 import { UserSyncStatus } from '@/components/panes/UserSyncStatus';
 import { GlobalSyncStatus } from '@/components/panes/GlobalSyncStatus';
+import { BandcampLinkForm } from '@/components/BandcampLinkForm';
 
 interface AccountViewProps {
   username: string;
+  email: string;
+  avatarUrl: string | null;
+  hasBandcamp: boolean;
+  bandcampCookiePresent: boolean;
   totalItems: number;
   newReleases: number;
   friendPurchases: number;
@@ -26,6 +31,10 @@ interface AccountViewProps {
 
 export function AccountView({
   username,
+  email,
+  avatarUrl,
+  hasBandcamp,
+  bandcampCookiePresent,
   totalItems: initialTotal,
   newReleases: initialNewReleases,
   friendPurchases: initialFriendPurchases,
@@ -58,6 +67,7 @@ export function AccountView({
   };
 
   const { state, isActive: anySyncing, triggerSync } = useSyncPolling({
+    enabled: hasBandcamp,
     onSyncComplete() {
       setStopping(false);
     },
@@ -94,90 +104,122 @@ export function AccountView({
       <div className="mt-8 space-y-6">
         <div className="rounded-lg border border-zinc-800 p-4">
           <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-600">Profile</h2>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-zinc-500">Username</span>
-            <a
-              href={`https://bandcamp.com/${username}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-zinc-200 hover:text-white"
-            >
-              {username}
-            </a>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-500">Google account</span>
+              <div className="flex items-center gap-2">
+                {avatarUrl && (
+                  <img src={avatarUrl} alt="" referrerPolicy="no-referrer" className="h-5 w-5 rounded-full" />
+                )}
+                <span className="text-zinc-300">{email}</span>
+              </div>
+            </div>
+            {hasBandcamp && (
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500">Bandcamp</span>
+                <a
+                  href={`https://bandcamp.com/${username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-zinc-200 hover:text-white"
+                >
+                  {username}
+                </a>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
-          <UserItemCounts
-            totalFeedItems={totalItems}
-            newReleases={initialNewReleases}
-            friendPurchases={initialFriendPurchases}
-            myPurchases={initialMyPurchases}
-            crateCount={crateCount}
-            wishlistCount={initialWishlistCount}
-          />
-        </div>
+        {!hasBandcamp && (
+          <BandcampLinkForm />
+        )}
 
-        <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
-          <UserSyncStatus
-            lastSyncAt={lastSyncAt}
-            totalItems={totalItems}
-            deepSyncComplete={deepSyncComplete}
-            isDeepSyncing={isDeepSyncing}
-            oldestStoryDate={oldestDate}
-            collectionSynced={collectionSynced}
-            isCollectionSyncing={isCollectionSyncing}
-            purchaseCount={initialPurchaseItems}
-            wishlistSynced={wishlistSynced}
-            isWishlistSyncing={isWishlistSyncing}
-            wishlistCount={initialWishlistCount}
-          />
-        </div>
+        {hasBandcamp && !bandcampCookiePresent && (
+          <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-4">
+            <p className="mb-2 text-sm text-amber-400">
+              Your Bandcamp cookie has expired or is missing. Update it to resume syncing.
+            </p>
+            <BandcampLinkForm mode="update" />
+          </div>
+        )}
 
-        <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
-          <GlobalSyncStatus
-            isEnriching={isEnriching}
-            enrichmentDoneCount={enrichmentDoneCount}
-            enrichmentPendingCount={enrichmentPendingCount}
-            collectionSynced={collectionSynced}
-            wishlistSynced={wishlistSynced}
-            isAnalyzingAudio={isAnalyzingAudio}
-            audioAnalysisPending={audioAnalysisPending}
-            audioAnalysisDone={audioAnalysisDone}
-            audioErrors={audioErrors}
-            audioJobError={audioJobError}
-            audioJobStatus={audioJobStatus}
-            audioAnalysisEnabled={audioAnalysisEnabled}
-            workerOnline={workerOnline}
-            stopping={stopping}
-          />
-        </div>
+        {hasBandcamp && (
+          <>
+            <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
+              <UserItemCounts
+                totalFeedItems={totalItems}
+                newReleases={initialNewReleases}
+                friendPurchases={initialFriendPurchases}
+                myPurchases={initialMyPurchases}
+                crateCount={crateCount}
+                wishlistCount={initialWishlistCount}
+              />
+            </div>
+
+            <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
+              <UserSyncStatus
+                lastSyncAt={lastSyncAt}
+                totalItems={totalItems}
+                deepSyncComplete={deepSyncComplete}
+                isDeepSyncing={isDeepSyncing}
+                oldestStoryDate={oldestDate}
+                collectionSynced={collectionSynced}
+                isCollectionSyncing={isCollectionSyncing}
+                purchaseCount={initialPurchaseItems}
+                wishlistSynced={wishlistSynced}
+                isWishlistSyncing={isWishlistSyncing}
+                wishlistCount={initialWishlistCount}
+              />
+            </div>
+
+            <div className="rounded-lg border border-zinc-800 p-4 space-y-4">
+              <GlobalSyncStatus
+                isEnriching={isEnriching}
+                enrichmentDoneCount={enrichmentDoneCount}
+                enrichmentPendingCount={enrichmentPendingCount}
+                collectionSynced={collectionSynced}
+                wishlistSynced={wishlistSynced}
+                isAnalyzingAudio={isAnalyzingAudio}
+                audioAnalysisPending={audioAnalysisPending}
+                audioAnalysisDone={audioAnalysisDone}
+                audioErrors={audioErrors}
+                audioJobError={audioJobError}
+                audioJobStatus={audioJobStatus}
+                audioAnalysisEnabled={audioAnalysisEnabled}
+                workerOnline={workerOnline}
+                stopping={stopping}
+              />
+            </div>
+          </>
+        )}
 
         <div className="flex gap-3 border-t border-zinc-800 pt-6">
-          <button
-            onClick={triggerSync}
-            disabled={anySyncing}
-            className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {anySyncing ? 'Syncing...' : 'Sync now'}
-          </button>
-          {isAnalyzingAudio && (
-            <button
-              onClick={stopAudioAnalysis}
-              disabled={stopping}
-              className="cursor-pointer rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {stopping ? 'Stopping...' : 'Stop analysis'}
-            </button>
+          {hasBandcamp && (
+            <>
+              <button
+                onClick={triggerSync}
+                disabled={anySyncing}
+                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {anySyncing ? 'Syncing...' : 'Sync now'}
+              </button>
+              {isAnalyzingAudio && (
+                <button
+                  onClick={stopAudioAnalysis}
+                  disabled={stopping}
+                  className="cursor-pointer rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {stopping ? 'Stopping...' : 'Stop analysis'}
+                </button>
+              )}
+            </>
           )}
-          <form action={logout}>
-            <button
-              type="submit"
-              className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-zinc-700"
-            >
-              Log out
-            </button>
-          </form>
+          <button
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-zinc-700"
+          >
+            Sign out
+          </button>
         </div>
       </div>
     </div>

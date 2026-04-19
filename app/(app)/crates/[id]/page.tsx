@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { getIdentityCookie, getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { getExchangeRates } from '@/lib/currency';
 import { getCrates, getCrateCatalogItems, getCrateReleaseItems, getWishlistItems, ensureDefaultCrate, getItemCrateMultiMap, getWishlistAlbumTracks } from '@/lib/db/crates';
 import { CratesView } from '@/components/CratesView';
@@ -11,19 +11,18 @@ interface CrateDetailPageProps {
 
 export async function generateMetadata({ params }: CrateDetailPageProps): Promise<Metadata> {
   const { id } = await params;
-  const session = await getSession();
-  if (!session.fanId) return { title: 'Crates' };
-  const crates = await getCrates(session.fanId);
+  const user = await getUser();
+  if (!user?.fanId) return { title: 'Crates' };
+  const crates = await getCrates(user.fanId);
   const crate = crates.find((c) => c.id === parseInt(id, 10));
   return { title: crate?.name ?? 'Crates' };
 }
 
 export default async function CrateDetailPage({ params }: CrateDetailPageProps) {
-  const cookie = await getIdentityCookie();
-  const session = await getSession();
-  const fanId = session.fanId;
+  const user = await getUser();
+  const fanId = user?.fanId;
 
-  if (!cookie || !fanId) {
+  if (!fanId) {
     redirect('/crates');
   }
 

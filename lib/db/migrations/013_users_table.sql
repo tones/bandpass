@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  google_id TEXT UNIQUE NOT NULL,
+  email TEXT NOT NULL,
+  name TEXT,
+  avatar_url TEXT,
+  bandcamp_fan_id INTEGER UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_users_google_id ON users (google_id);

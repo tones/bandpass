@@ -29,6 +29,7 @@ export interface SyncState {
 }
 
 interface UseSyncPollingOptions {
+  enabled?: boolean;
   onSyncComplete?: () => void;
   onStateChange?: (state: SyncState) => void;
 }
@@ -58,7 +59,10 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
     return jobRunning || enrichmentQueued || audioQueued;
   }, []);
 
+  const enabled = options.enabled !== false;
+
   useEffect(() => {
+    if (!enabled) return;
     fetchState().then((data) => {
       if (!data) return;
       setState(data);
@@ -69,7 +73,7 @@ export function useSyncPolling(options: UseSyncPollingOptions = {}) {
         setPolling(true);
       }
     });
-  }, [fetchState, isActive]);
+  }, [fetchState, isActive, enabled]);
 
   useEffect(() => {
     if (!polling) return;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { queryOne } from '@/lib/db/index';
 import { isS3Configured, getPresignedUrl } from '@/lib/s3';
 
@@ -17,8 +17,8 @@ function isAllowedUrl(url: string): boolean {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session.fanId) {
+  const user = await getUser();
+  if (!user?.fanId) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
@@ -46,8 +46,8 @@ export async function GET(request: NextRequest) {
   }
 
   const reqHeaders: Record<string, string> = {};
-  if (session.identityCookie) {
-    reqHeaders['Cookie'] = `identity=${session.identityCookie}`;
+  if (user.bandcampCookie) {
+    reqHeaders['Cookie'] = `identity=${user.bandcampCookie}`;
   }
 
   const upstream = await fetch(url, { headers: reqHeaders });

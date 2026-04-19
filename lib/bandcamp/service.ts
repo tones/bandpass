@@ -1,6 +1,6 @@
 import { BandcampAPI } from './api';
 import { BandcampClient } from './client';
-import { getIdentityCookie } from '@/lib/session';
+import { getIdentityCookie } from '@/lib/auth';
 
 export async function getBandcamp(): Promise<BandcampAPI> {
   const cookie = await getIdentityCookie();

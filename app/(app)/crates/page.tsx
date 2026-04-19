@@ -1,25 +1,26 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { getIdentityCookie, getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { getCrates, ensureDefaultCrate } from '@/lib/db/crates';
 
 export const metadata: Metadata = { title: 'Crates' };
 
 export default async function CratesPage() {
-  const cookie = await getIdentityCookie();
-  const session = await getSession();
-  const fanId = session.fanId;
+  const user = await getUser();
+  const fanId = user?.fanId;
 
-  if (!cookie || !fanId) {
+  if (!fanId) {
     return (
       <main className="min-h-screen">
         <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
-          <p className="text-lg text-zinc-400">Log in to see your crates</p>
+          <p className="text-lg text-zinc-400">
+            {user ? 'Connect your Bandcamp account to use crates.' : 'Log in to see your crates.'}
+          </p>
           <a
-            href="/login"
+            href={user ? '/account' : '/login'}
             className="mt-4 rounded-lg bg-amber-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
           >
-            Log in
+            {user ? 'Go to settings' : 'Log in'}
           </a>
         </div>
       </main>

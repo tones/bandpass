@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { BandcampClient } from '@/lib/bandcamp/client';
 import { fetchDiscography, fetchAlbumTracks, artIdToUrl, publicFetcher } from '@/lib/bandcamp/scraper';
 import type { HtmlFetcher } from '@/lib/bandcamp/scraper';
@@ -15,7 +15,7 @@ import { enqueueUrlsForEnrichment } from '@/lib/db/sync';
 
 export const dynamic = 'force-dynamic';
 
-async function getFetcher(identityCookie?: string): Promise<HtmlFetcher> {
+async function getFetcher(identityCookie?: string | null): Promise<HtmlFetcher> {
   if (identityCookie) {
     const client = new BandcampClient(identityCookie);
     return (url: string) => client.getHtml(url);
@@ -34,10 +34,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
-  const session = await getSession();
-  if (!session.fanId) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const user = await getUser();
 
   const { slug } = await params;
   const cached = await getCachedDiscography(slug);
@@ -46,7 +43,7 @@ export async function GET(
   }
 
   try {
-    const fetcher = await getFetcher(session.identityCookie);
+    const fetcher = await getFetcher(user?.bandcampCookie);
     const bandUrl = slugToBandUrl(slug);
     const result = await fetchDiscography(fetcher, bandUrl);
 
@@ -83,10 +80,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
-  const session = await getSession();
-  if (!session.fanId) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const user = await getUser();
 
   await params;
 
@@ -123,7 +117,7 @@ export async function POST(
   }
 
   try {
-    const fetcher = await getFetcher(session.identityCookie);
+    const fetcher = await getFetcher(user?.bandcampCookie);
     const album = await fetchAlbumTracks(fetcher, albumUrl);
 
     const tracks = await cacheAlbumTracks(

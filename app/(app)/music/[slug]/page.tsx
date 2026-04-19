@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { getIdentityCookie, getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { BandcampClient } from '@/lib/bandcamp/client';
 import { fetchDiscography, artIdToUrl, publicFetcher } from '@/lib/bandcamp/scraper';
 import { getCachedDiscography, cacheDiscography } from '@/lib/db/catalog';
@@ -28,9 +28,9 @@ function slugToBandUrl(slug: string): string {
 }
 
 export default async function MusicDetailPage({ params }: MusicDetailPageProps) {
-  const cookie = await getIdentityCookie();
-  const session = await getSession();
-  const fanId = session.fanId;
+  const user = await getUser();
+  const cookie = user?.bandcampCookie;
+  const fanId = user?.fanId;
 
   const { slug } = await params;
   const bandUrl = slugToBandUrl(slug);

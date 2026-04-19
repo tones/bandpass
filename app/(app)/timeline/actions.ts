@@ -1,6 +1,6 @@
 'use server';
 
-import { getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { getFeedItems, getTagCounts, getFriendCounts, getItemCount, getAlbumTracksForFeedItems } from '@/lib/db/queries';
 import type { FeedFilters } from '@/lib/db/queries';
 import type { FeedItem } from '@/lib/bandcamp';
@@ -15,10 +15,10 @@ export interface FeedQueryResult {
 }
 
 export async function queryFeed(filters: FeedFilters): Promise<FeedQueryResult> {
-  const session = await getSession();
-  if (!session.fanId) throw new Error('Not authenticated');
+  const user = await getUser();
+  if (!user?.fanId) throw new Error('Not authenticated');
 
-  const fanId = session.fanId;
+  const fanId = user.fanId;
   const items = await getFeedItems(fanId, filters);
   const tags = await getTagCounts(fanId);
   const friends = await getFriendCounts(fanId);

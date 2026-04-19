@@ -1,13 +1,13 @@
-import { getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { AppHeader } from '@/components/AppHeader';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await getSession();
-  const username = session.username ?? null;
-  const isAdmin = session.fanId != null && session.fanId === Number(process.env.ADMIN_FAN_ID);
+  const user = await getUser();
+  const displayName = user?.username ?? user?.name ?? null;
+  const isAdmin = user?.isAdmin ?? false;
   return (
     <>
-      <AppHeader username={username} isAdmin={isAdmin} />
+      <AppHeader username={displayName} isAdmin={isAdmin} />
       {children}
     </>
   );

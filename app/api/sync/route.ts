@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { BandcampAPI } from '@/lib/bandcamp/api';
 import { getSyncState, syncFeedInitial, syncFeedIncremental, syncFeedDeep, syncCollection, syncCollectionIncremental, syncWishlist, enqueueForEnrichment, getEnrichmentPendingCount, getEnrichmentDoneCount, getAudioAnalysisPendingCount, getAudioAnalysisDoneCount } from '@/lib/db/sync';
 import { createJob, updateJobProgress, completeJob, failJob, hasActiveUserSync, getActiveJob, getLatestJob } from '@/lib/db/sync-jobs';
@@ -64,16 +64,16 @@ async function startSync(fanId: number, identityCookie: string, isInitial: boole
 }
 
 export async function GET() {
-  const session = await getSession();
-  if (!session.fanId || !session.identityCookie) {
+  const user = await getUser();
+  if (!user?.fanId || !user.bandcampCookie) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const fanId = session.fanId;
+  const fanId = user.fanId;
 
   execute(
     `UPDATE sync_state SET identity_cookie = $2, last_visited_at = NOW() WHERE fan_id = $1`,
-    [fanId, session.identityCookie],
+    [fanId, user.bandcampCookie],
   ).catch((err) => console.error('Failed to persist identity cookie:', err));
 
   const state = await getSyncState(fanId);
@@ -109,8 +109,8 @@ export async function GET() {
     : false;
 
   const needsSync = !state?.lastSyncAt || !state?.deepSyncComplete || !state?.collectionSynced || !state?.wishlistSynced || enrichmentPendingCount > 0;
-  if (needsSync && !isUserSyncing && session.identityCookie) {
-    startSync(fanId, session.identityCookie, !state?.lastSyncAt).catch((err) =>
+  if (needsSync && !isUserSyncing && user.bandcampCookie) {
+    startSync(fanId, user.bandcampCookie, !state?.lastSyncAt).catch((err) =>
       console.error('Auto-triggered sync error:', err),
     );
   }
@@ -150,8 +150,8 @@ export async function GET() {
 }
 
 export async function DELETE() {
-  const session = await getSession();
-  if (!session.fanId) {
+  const user = await getUser();
+  if (!user?.fanId) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
@@ -163,12 +163,12 @@ export async function DELETE() {
 }
 
 export async function POST() {
-  const session = await getSession();
-  if (!session.fanId || !session.identityCookie) {
+  const user = await getUser();
+  if (!user?.fanId || !user.bandcampCookie) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const fanId = session.fanId;
+  const fanId = user.fanId;
 
   if (await hasActiveUserSync(fanId)) {
     return NextResponse.json({ status: 'already_syncing' });
@@ -177,7 +177,7 @@ export async function POST() {
   const state = await getSyncState(fanId);
   const isInitial = !state?.lastSyncAt;
 
-  startSync(fanId, session.identityCookie, isInitial).catch((err) =>
+  startSync(fanId, user.bandcampCookie, isInitial).catch((err) =>
     console.error('POST-triggered sync error:', err),
   );
 

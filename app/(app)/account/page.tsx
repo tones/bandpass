@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { getSyncState } from '@/lib/db/sync';
 import { getFeedTypeCounts, getCrateCount } from '@/lib/db/queries';
 import { getWishlistItemCount } from '@/lib/db/crates';
@@ -9,26 +9,34 @@ import { AccountView } from '@/components/AccountView';
 export const metadata: Metadata = { title: 'Account' };
 
 export default async function AccountPage() {
-  const session = await getSession();
+  const user = await getUser();
 
-  if (!session.fanId || !session.identityCookie) {
+  if (!user) {
     redirect('/login');
   }
 
-  const fanId = session.fanId;
-  const [syncState, feedCounts, crateCount, wishlistItemCount] = await Promise.all([
-    getSyncState(fanId),
-    getFeedTypeCounts(fanId),
-    getCrateCount(fanId),
-    getWishlistItemCount(fanId),
-  ]);
+  const fanId = user.fanId;
+  const hasBandcamp = fanId != null;
 
-  const username = session.username ?? 'Unknown';
+  const [syncState, feedCounts, crateCount, wishlistItemCount] = hasBandcamp
+    ? await Promise.all([
+        getSyncState(fanId),
+        getFeedTypeCounts(fanId),
+        getCrateCount(fanId),
+        getWishlistItemCount(fanId),
+      ])
+    : [null, { total: 0, newReleases: 0, friendPurchases: 0, myPurchases: 0 }, 0, 0];
+
+  const displayName = user.username ?? user.name ?? 'Unknown';
 
   return (
     <main className="min-h-screen">
       <AccountView
-        username={username}
+        username={displayName}
+        email={user.email}
+        avatarUrl={user.avatarUrl}
+        hasBandcamp={hasBandcamp}
+        bandcampCookiePresent={!!user.bandcampCookie}
         totalItems={feedCounts.total}
         newReleases={feedCounts.newReleases}
         friendPurchases={feedCounts.friendPurchases}

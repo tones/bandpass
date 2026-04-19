@@ -1,6 +1,6 @@
 'use server';
 
-import { getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import {
   addToCrate,
   removeFromCrate,
@@ -26,9 +26,9 @@ import type { WishlistItem } from '@/lib/bandcamp/types/domain';
 import type { Crate, CrateCatalogItem } from '@/lib/db/crates';
 
 async function requireFanId(): Promise<number> {
-  const session = await getSession();
-  if (!session.fanId) throw new Error('Not authenticated');
-  return session.fanId;
+  const user = await getUser();
+  if (!user?.fanId) throw new Error('Not authenticated');
+  return user.fanId;
 }
 
 export async function toggleDefaultCrate(ref: CrateItemRef): Promise<boolean> {
@@ -169,11 +169,11 @@ export async function getItemCrateMultiMapAction(): Promise<Record<string, numbe
 }
 
 export async function refreshWishlistAction(): Promise<WishlistItemsResult> {
-  const session = await getSession();
-  if (!session.fanId || !session.identityCookie) throw new Error('Not authenticated');
-  const api = new BandcampAPI(session.identityCookie);
-  await syncWishlist(api, session.fanId);
-  const wishlistItems = await getWishlistItems(session.fanId);
+  const user = await getUser();
+  if (!user?.fanId || !user.bandcampCookie) throw new Error('Not authenticated');
+  const api = new BandcampAPI(user.bandcampCookie);
+  await syncWishlist(api, user.fanId);
+  const wishlistItems = await getWishlistItems(user.fanId);
   const albumUrls = wishlistItems.filter((i) => i.tralbumType === 'a').map((i) => i.itemUrl);
   const albumTracks = await getWishlistAlbumTracks(albumUrls);
   return { wishlistItems, albumTracks };

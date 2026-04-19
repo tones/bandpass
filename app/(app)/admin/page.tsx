@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
+import { getUser } from '@/lib/auth';
 import { getAllUsersWithStats, getGlobalStats } from '@/lib/db/admin';
 import { AdminView } from '@/components/AdminView';
 
@@ -8,9 +8,9 @@ export const metadata: Metadata = { title: 'Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
-  const session = await getSession();
+  const user = await getUser();
 
-  if (!session.fanId || session.fanId !== Number(process.env.ADMIN_FAN_ID)) {
+  if (!user?.isAdmin) {
     redirect('/');
   }
 

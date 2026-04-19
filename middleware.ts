@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/gate', '/api/gate', '/privacy'];
+const PUBLIC_PATHS = ['/gate', '/api/gate', '/api/auth', '/privacy'];
 
 /**
  * Constant-time string comparison compatible with the Edge Runtime.
