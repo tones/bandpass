@@ -119,7 +119,11 @@ export function FeedView({
     const playlistItems: FeedItem[] = [];
     for (const item of items) {
       const tracks = filteredAlbumTracksMap[item.album.url];
-      if (tracks && tracks.length > 1) {
+      // The unfiltered map only contains multi-track releases, so any entry
+      // here represents an album. When a BPM filter is active the entry may
+      // hold a single in-range track; play that rather than the (possibly
+      // out-of-range) pinned feed item track.
+      if (tracks && tracks.length > 0) {
         const pseudoRelease = feedItemToPseudoRelease(item);
         for (const t of tracks) {
           if (t.streamUrl) playlistItems.push(catalogTrackToFeedItem(t, pseudoRelease));

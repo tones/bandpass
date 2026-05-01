@@ -94,7 +94,12 @@ export function FeedItemCard({
     : null;
 
   const albumTracks = albumTrackContext?.tracks;
-  const hasAlbumTracks = albumTracks && albumTracks.length > 1;
+  // The map only contains entries for multi-track releases (singles are
+  // pruned by getAlbumTracksForFeedItems). When a BPM filter is active the
+  // visible track list may be narrowed to one or more tracks; in either
+  // case render as an album so the displayed BPM never contradicts the
+  // active filter.
+  const hasAlbumTracks = !!albumTracks && albumTracks.length > 0;
 
   const priceDisplay = item.price ? (() => {
     const { amount, currency } = item.price;
@@ -160,7 +165,7 @@ export function FeedItemCard({
             )}
             {hasAlbumTracks && (
               <span className="text-zinc-600">
-                {' · '}{albumTracks.length} tracks
+                {' · '}{albumTracks.length} {albumTracks.length === 1 ? 'track' : 'tracks'}
                 {priceDisplay && ` · ${priceDisplay}`}
               </span>
             )}
