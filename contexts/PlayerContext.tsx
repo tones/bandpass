@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { FeedItem } from '@/lib/bandcamp/types/domain';
 import { WaveformPlayer } from '@/components/feed/WaveformPlayer';
 import type { WaveformPlayerHandle } from '@/components/feed/WaveformPlayer';
@@ -80,6 +80,32 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setPlayingItem(prevItem);
     }
   }, [canGoPrev, playlist, currentIndex]);
+
+  // Spacebar toggles play/pause when a track is loaded in the player bar.
+  // Skips inputs / buttons so typing and button activation behave normally.
+  useEffect(() => {
+    if (!playingItem) return;
+
+    const SKIP_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']);
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.code !== 'Space') return;
+      if (e.repeat) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        if (SKIP_TAGS.has(target.tagName)) return;
+        if (target.isContentEditable) return;
+      }
+
+      e.preventDefault();
+      playerRef.current?.togglePlayPause();
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [playingItem]);
 
   return (
     <PlayerContext.Provider value={{
