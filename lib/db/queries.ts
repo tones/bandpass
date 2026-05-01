@@ -16,6 +16,8 @@ export interface FeedFilters {
   tag?: string;
   dateFrom?: string;
   dateTo?: string;
+  bpmMin?: number;
+  bpmMax?: number;
 }
 
 export interface FeedItemRow {
@@ -114,6 +116,30 @@ export async function getFeedItems(fanId: number, filters: FeedFilters = {}): Pr
     conditions.push(`fi.date < $${paramIndex}`);
     params.push(filters.dateTo);
     paramIndex++;
+  }
+  if (filters.bpmMin != null || filters.bpmMax != null) {
+    const innerBpm: string[] = [];
+    const outerBpm: string[] = [];
+    if (filters.bpmMin != null) {
+      innerBpm.push(`ct2.bpm >= $${paramIndex}`);
+      outerBpm.push(`fi.bpm >= $${paramIndex}`);
+      params.push(filters.bpmMin);
+      paramIndex++;
+    }
+    if (filters.bpmMax != null) {
+      innerBpm.push(`ct2.bpm <= $${paramIndex}`);
+      outerBpm.push(`fi.bpm <= $${paramIndex}`);
+      params.push(filters.bpmMax);
+      paramIndex++;
+    }
+    conditions.push(`(
+      (fi.release_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM catalog_tracks ct2
+        WHERE ct2.release_id = fi.release_id
+          AND ${innerBpm.join(' AND ')}
+      ))
+      OR (fi.release_id IS NULL AND ${outerBpm.join(' AND ')})
+    )`);
   }
 
   const selectCols = `

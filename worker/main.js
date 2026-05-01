@@ -206,9 +206,12 @@ async function getReleasesNeedingStreamRefresh() {
 async function refreshStreamUrls(releaseId, freshTracks) {
   await transaction(async (client2) => {
     for (const t of freshTracks) {
+      const trackNumClause = t.trackNum != null ? "track_num = $4" : "track_num IS NULL";
+      const params = [t.streamUrl, t.trackUrl, releaseId];
+      if (t.trackNum != null) params.push(t.trackNum);
       await client2.query(
-        "UPDATE catalog_tracks SET stream_url = $1, track_url = COALESCE($2, track_url) WHERE release_id = $3 AND track_num = $4",
-        [t.streamUrl, t.trackUrl, releaseId, t.trackNum]
+        `UPDATE catalog_tracks SET stream_url = $1, track_url = COALESCE($2, track_url) WHERE release_id = $3 AND ${trackNumClause}`,
+        params
       );
     }
   });
@@ -893,7 +896,9 @@ async function processReleases() {
           }))
         );
       } catch (err) {
-        console.error(`Failed to refresh URLs for release ${release.releaseId}:`, err);
+        console.error(`Failed to refresh URLs for release ${release.releaseId}, skipping:`, err);
+        await sleep(RELEASE_DELAY_MS);
+        continue;
       }
       await markNoStreamTracks(release.releaseId);
       const tracks = await getPendingTracksForRelease(release.releaseId);

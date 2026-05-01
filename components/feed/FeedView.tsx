@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useTransition, useEffect } from 'react';
+import { useState, useCallback, useMemo, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DateRange } from 'react-day-picker';
 import type { FeedItem } from '@/lib/bandcamp';
@@ -9,7 +9,7 @@ import { catalogTrackToFeedItem, feedItemToPseudoRelease } from '@/lib/formatter
 import { FeedItemCard } from './FeedItem';
 import { DateHeader } from './DateHeader';
 import { FilterBar } from './FilterBar';
-import type { FeedFilter } from './FilterBar';
+import type { FeedFilter, BpmRange } from './FilterBar';
 import { SyncStatus } from '@/components/SyncStatus';
 import { queryFeed } from '@/app/(app)/timeline/actions';
 import { useCrateActions } from '@/hooks/useCrateActions';
@@ -94,6 +94,7 @@ export function FeedView({
   const [selectedFriend, setSelectedFriend] = useState<string | null>(initialFriend ?? null);
   const [selectedTag, setSelectedTag] = useState<string | null>(initialTag ?? null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [bpmRange, setBpmRange] = useState<BpmRange | null>(null);
   const { crates, crateItemIds, itemCrateMap, toggleCrate, toggleCrateForAlbum, addToCrate, addToCrateForAlbumAction, removeFromCrate } = useCrateActions({
     initialCrateItemIds, initialCrates, initialItemCrateMap,
   });
@@ -102,10 +103,22 @@ export function FeedView({
   const [isPending, startTransition] = useTransition();
   const [dynamicOldestDate, setDynamicOldestDate] = useState(oldestStoryDate ?? null);
 
+  const filteredAlbumTracksMap = useMemo(() => {
+    if (!bpmRange) return albumTracksMap;
+    const out: Record<string, CatalogTrack[]> = {};
+    for (const [url, tracks] of Object.entries(albumTracksMap)) {
+      const kept = tracks.filter(
+        (t) => t.bpm != null && t.bpm >= bpmRange.min && t.bpm <= bpmRange.max,
+      );
+      if (kept.length > 0) out[url] = kept;
+    }
+    return out;
+  }, [albumTracksMap, bpmRange]);
+
   useEffect(() => {
     const playlistItems: FeedItem[] = [];
     for (const item of items) {
-      const tracks = albumTracksMap[item.album.url];
+      const tracks = filteredAlbumTracksMap[item.album.url];
       if (tracks && tracks.length > 1) {
         const pseudoRelease = feedItemToPseudoRelease(item);
         for (const t of tracks) {
@@ -117,7 +130,7 @@ export function FeedView({
     }
     setPlaylist(playlistItems);
     return () => setPlaylist([]);
-  }, [items, albumTracksMap, setPlaylist]);
+  }, [items, filteredAlbumTracksMap, setPlaylist]);
 
   useEffect(() => {
     const qs = window.location.search;
@@ -144,6 +157,7 @@ export function FeedView({
       newFriend: string | null,
       newTag: string | null,
       newDateRange: DateRange | undefined,
+      newBpmRange: BpmRange | null,
     ) => {
       syncUrl(newFilter, newFriend, newTag);
 
@@ -163,6 +177,8 @@ export function FeedView({
           tag: newTag ?? undefined,
           dateFrom,
           dateTo,
+          bpmMin: newBpmRange?.min,
+          bpmMax: newBpmRange?.max,
         });
         setItems(result.items);
         setTotalItems(result.totalItems);
@@ -179,38 +195,46 @@ export function FeedView({
       setFeedFilter(filter);
       const newFriend = filter === 'friend_purchase' ? selectedFriend : null;
       if (filter !== 'friend_purchase') setSelectedFriend(null);
-      applyFilters(filter, newFriend, selectedTag, dateRange);
+      applyFilters(filter, newFriend, selectedTag, dateRange, bpmRange);
     },
-    [selectedFriend, selectedTag, dateRange, applyFilters],
+    [selectedFriend, selectedTag, dateRange, bpmRange, applyFilters],
   );
 
   const handleFriendChange = useCallback(
     (friend: string | null) => {
       setSelectedFriend(friend);
-      applyFilters(feedFilter, friend, selectedTag, dateRange);
+      applyFilters(feedFilter, friend, selectedTag, dateRange, bpmRange);
     },
-    [feedFilter, selectedTag, dateRange, applyFilters],
+    [feedFilter, selectedTag, dateRange, bpmRange, applyFilters],
   );
 
   const handleTagChange = useCallback(
     (tag: string | null) => {
       setSelectedTag(tag);
-      applyFilters(feedFilter, selectedFriend, tag, dateRange);
+      applyFilters(feedFilter, selectedFriend, tag, dateRange, bpmRange);
     },
-    [feedFilter, selectedFriend, dateRange, applyFilters],
+    [feedFilter, selectedFriend, dateRange, bpmRange, applyFilters],
   );
 
   const handleDateRangeChange = useCallback(
     (range: DateRange | undefined) => {
       setDateRange(range);
-      applyFilters(feedFilter, selectedFriend, selectedTag, range);
+      applyFilters(feedFilter, selectedFriend, selectedTag, range, bpmRange);
     },
-    [feedFilter, selectedFriend, selectedTag, applyFilters],
+    [feedFilter, selectedFriend, selectedTag, bpmRange, applyFilters],
+  );
+
+  const handleBpmRangeChange = useCallback(
+    (range: BpmRange | null) => {
+      setBpmRange(range);
+      applyFilters(feedFilter, selectedFriend, selectedTag, dateRange, range);
+    },
+    [feedFilter, selectedFriend, selectedTag, dateRange, applyFilters],
   );
 
   const handleSyncComplete = useCallback(() => {
-    applyFilters(feedFilter, selectedFriend, selectedTag, dateRange);
-  }, [feedFilter, selectedFriend, selectedTag, dateRange, applyFilters]);
+    applyFilters(feedFilter, selectedFriend, selectedTag, dateRange, bpmRange);
+  }, [feedFilter, selectedFriend, selectedTag, dateRange, bpmRange, applyFilters]);
 
   const handleOldestDateChange = useCallback((timestamp: number) => {
     setDynamicOldestDate((prev) => (prev === null || timestamp < prev) ? timestamp : prev);
@@ -231,6 +255,8 @@ export function FeedView({
         onTagChange={handleTagChange}
         dateRange={dateRange}
         onDateRangeChange={handleDateRangeChange}
+        bpmRange={bpmRange}
+        onBpmRangeChange={handleBpmRangeChange}
         oldestStoryDate={dynamicOldestDate}
       />
       <div className="flex items-center justify-between px-6 py-2">
@@ -250,7 +276,7 @@ export function FeedView({
               isInCrate={entry.item.releaseId != null && crateItemIds.has(releaseKey(entry.item.releaseId))}
               isPlaying={isPlayerPlaying && (
                 playingTrackUrl === entry.item.track?.streamUrl ||
-                (albumTracksMap[entry.item.album.url]?.some((t) => t.streamUrl === playingTrackUrl) ?? false)
+                (filteredAlbumTracksMap[entry.item.album.url]?.some((t) => t.streamUrl === playingTrackUrl) ?? false)
               )}
               onToggleCrate={() => {
                 const album = entry.item.album;
@@ -287,8 +313,8 @@ export function FeedView({
                   removeFromCrate(releaseKey(entry.item.releaseId), { releaseId: entry.item.releaseId }, crateId);
                 }
               }}
-              albumTrackContext={albumTracksMap[entry.item.album.url] ? {
-                tracks: albumTracksMap[entry.item.album.url],
+              albumTrackContext={filteredAlbumTracksMap[entry.item.album.url] ? {
+                tracks: filteredAlbumTracksMap[entry.item.album.url],
                 playingTrackUrl,
                 isPlayerPlaying,
                 itemCrateMap,

@@ -4,8 +4,17 @@ import { useState, useRef, useEffect } from 'react';
 import { DayPicker } from 'react-day-picker';
 import type { DateRange } from 'react-day-picker';
 import type { StoryType } from '@/lib/bandcamp';
+import { BpmRangeSlider } from './BpmRangeSlider';
 
 export type FeedFilter = StoryType | 'all';
+
+export interface BpmRange {
+  min: number;
+  max: number;
+}
+
+const BPM_BOUND_MIN = 60;
+const BPM_BOUND_MAX = 200;
 
 interface Friend {
   name: string;
@@ -29,6 +38,8 @@ interface FilterBarProps {
   onTagChange: (tag: string | null) => void;
   dateRange: DateRange | undefined;
   onDateRangeChange: (range: DateRange | undefined) => void;
+  bpmRange: BpmRange | null;
+  onBpmRangeChange: (range: BpmRange | null) => void;
   oldestStoryDate?: number | null;
 }
 
@@ -59,10 +70,33 @@ function formatDateLabel(range: DateRange | undefined, oldest: Date): string {
   return `${fmt(range.from)} – ${fmt(range.to)}`;
 }
 
-export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFriend, onFriendChange, tags, selectedTag, onTagChange, dateRange, onDateRangeChange, oldestStoryDate }: FilterBarProps) {
+function formatBpmLabel(range: BpmRange | null): string {
+  if (!range) return 'Any BPM';
+  return `${range.min} – ${range.max} BPM`;
+}
+
+export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFriend, onFriendChange, tags, selectedTag, onTagChange, dateRange, onDateRangeChange, bpmRange, onBpmRangeChange, oldestStoryDate }: FilterBarProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const [bpmOpen, setBpmOpen] = useState(false);
+  const bpmPopoverRef = useRef<HTMLDivElement>(null);
+  const [bpmDraft, setBpmDraft] = useState<[number, number]>([
+    bpmRange?.min ?? BPM_BOUND_MIN,
+    bpmRange?.max ?? BPM_BOUND_MAX,
+  ]);
+  const [trackedBpmRange, setTrackedBpmRange] = useState(bpmRange);
   const oldestDate = oldestStoryDate ? new Date(oldestStoryDate * 1000) : DEFAULT_OLDEST;
+
+  // React docs pattern: adjust state during render when a prop changes
+  // (https://react.dev/reference/react/useState#storing-information-from-previous-renders).
+  // Avoids the cascading-renders foot-gun of an effect-driven sync.
+  if (bpmRange !== trackedBpmRange) {
+    setTrackedBpmRange(bpmRange);
+    setBpmDraft([
+      bpmRange?.min ?? BPM_BOUND_MIN,
+      bpmRange?.max ?? BPM_BOUND_MAX,
+    ]);
+  }
 
   useEffect(() => {
     if (!calendarOpen) return;
@@ -74,6 +108,19 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [calendarOpen]);
+
+  useEffect(() => {
+    if (!bpmOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (bpmPopoverRef.current && !bpmPopoverRef.current.contains(e.target as Node)) {
+        setBpmOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [bpmOpen]);
+
+  const isFullRange = bpmDraft[0] === BPM_BOUND_MIN && bpmDraft[1] === BPM_BOUND_MAX;
 
   return (
     <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 px-6 py-3 backdrop-blur">
@@ -178,6 +225,70 @@ export function FilterBar({ feedFilter, onFeedFilterChange, friends, selectedFri
                   root: 'rdp-dark',
                 }}
               />
+            </div>
+          )}
+        </div>
+
+        <div className="relative" ref={bpmPopoverRef}>
+          <button
+            onClick={() => setBpmOpen((v) => !v)}
+            className={`rounded-full px-3 py-1 text-sm transition-colors ${
+              bpmRange
+                ? 'bg-amber-600/20 text-amber-400'
+                : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
+            }`}
+          >
+            {formatBpmLabel(bpmRange)}
+          </button>
+          {bpmRange && (
+            <button
+              onClick={() => onBpmRangeChange(null)}
+              className="ml-1 px-1 text-xs text-zinc-500 hover:text-zinc-400"
+              title="Clear BPM filter"
+            >
+              ×
+            </button>
+          )}
+          {bpmOpen && (
+            <div
+              className="absolute left-0 top-full z-20 mt-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4 shadow-xl"
+              style={{ width: 'min(20rem, 90vw)' }}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-sm font-medium text-zinc-300">
+                  {bpmDraft[0]} – {bpmDraft[1]} BPM
+                </span>
+                {bpmRange && (
+                  <button
+                    onClick={() => {
+                      onBpmRangeChange(null);
+                      setBpmOpen(false);
+                    }}
+                    className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+              <BpmRangeSlider
+                value={bpmDraft}
+                onValueChange={(v) => setBpmDraft(v)}
+                onValueCommit={(v) => {
+                  const fullRange = v[0] === BPM_BOUND_MIN && v[1] === BPM_BOUND_MAX;
+                  onBpmRangeChange(fullRange ? null : { min: v[0], max: v[1] });
+                }}
+                min={BPM_BOUND_MIN}
+                max={BPM_BOUND_MAX}
+              />
+              <div className="mt-2 flex justify-between text-[10px] text-zinc-500">
+                <span>{BPM_BOUND_MIN}</span>
+                <span>{BPM_BOUND_MAX}</span>
+              </div>
+              {isFullRange && !bpmRange && (
+                <p className="mt-3 text-xs text-zinc-600">
+                  Drag the handles to filter by tempo.
+                </p>
+              )}
             </div>
           )}
         </div>

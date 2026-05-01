@@ -158,6 +158,107 @@ describe('queries', () => {
       const result = await getFeedItems(1);
       expect(result).toEqual([]);
     });
+
+    describe('bpm range filter', () => {
+      it('omits bpm clause entirely when neither bound is set', async () => {
+        vi.mocked(query).mockResolvedValue([]);
+        await getFeedItems(1);
+
+        const [sql] = vi.mocked(query).mock.calls[0];
+        expect(sql).not.toMatch(/ct2\.bpm/);
+        expect(sql).not.toMatch(/fi\.bpm\s*>=/);
+        expect(sql).not.toMatch(/fi\.bpm\s*<=/);
+      });
+
+      it('emits only the >= clause when only bpmMin is set', async () => {
+        vi.mocked(query).mockResolvedValue([]);
+        await getFeedItems(1, { bpmMin: 120 });
+
+        const [sql, params] = vi.mocked(query).mock.calls[0];
+        expect(sql).toMatch(/ct2\.bpm >= \$2/);
+        expect(sql).toMatch(/fi\.bpm >= \$2/);
+        expect(sql).not.toMatch(/ct2\.bpm <=/);
+        expect(sql).not.toMatch(/fi\.bpm <=/);
+        expect(params).toEqual([1, 120]);
+      });
+
+      it('emits only the <= clause when only bpmMax is set', async () => {
+        vi.mocked(query).mockResolvedValue([]);
+        await getFeedItems(1, { bpmMax: 130 });
+
+        const [sql, params] = vi.mocked(query).mock.calls[0];
+        expect(sql).toMatch(/ct2\.bpm <= \$2/);
+        expect(sql).toMatch(/fi\.bpm <= \$2/);
+        expect(sql).not.toMatch(/ct2\.bpm >=/);
+        expect(sql).not.toMatch(/fi\.bpm >=/);
+        expect(params).toEqual([1, 130]);
+      });
+
+      it('emits both clauses when both bounds are set', async () => {
+        vi.mocked(query).mockResolvedValue([]);
+        await getFeedItems(1, { bpmMin: 120, bpmMax: 130 });
+
+        const [sql, params] = vi.mocked(query).mock.calls[0];
+        expect(sql).toMatch(/ct2\.bpm >= \$2/);
+        expect(sql).toMatch(/ct2\.bpm <= \$3/);
+        expect(sql).toMatch(/fi\.bpm >= \$2/);
+        expect(sql).toMatch(/fi\.bpm <= \$3/);
+        expect(params).toEqual([1, 120, 130]);
+      });
+
+      it('uses a mutually-exclusive structure split on fi.release_id IS NULL', async () => {
+        vi.mocked(query).mockResolvedValue([]);
+        await getFeedItems(1, { bpmMin: 120, bpmMax: 130 });
+
+        const [sql] = vi.mocked(query).mock.calls[0];
+        expect(sql).toContain('fi.release_id IS NOT NULL AND EXISTS');
+        expect(sql).toContain('fi.release_id IS NULL');
+        expect(sql).toMatch(/SELECT 1 FROM catalog_tracks ct2/);
+        expect(sql).toMatch(/ct2\.release_id = fi\.release_id/);
+      });
+
+      it('reuses the same parameter placeholder in both branches', async () => {
+        vi.mocked(query).mockResolvedValue([]);
+        await getFeedItems(1, { bpmMin: 120, bpmMax: 130 });
+
+        const [sql, params] = vi.mocked(query).mock.calls[0];
+        const minRefs = sql.match(/\$2/g) ?? [];
+        const maxRefs = sql.match(/\$3/g) ?? [];
+        expect(minRefs.length).toBe(2);
+        expect(maxRefs.length).toBe(2);
+        expect(params).toHaveLength(3);
+      });
+
+      it('combines correctly with the tag filter (DISTINCT preserved)', async () => {
+        vi.mocked(query).mockResolvedValue([]);
+        await getFeedItems(1, { tag: 'electronic', bpmMin: 120, bpmMax: 130 });
+
+        const [sql, params] = vi.mocked(query).mock.calls[0];
+        expect(sql).toContain('SELECT DISTINCT');
+        expect(sql).toContain('jsonb_array_elements_text');
+        expect(sql).toMatch(/t\.value = \$\d+/);
+        expect(sql).toMatch(/ct2\.bpm >= \$\d+/);
+        expect(sql).toMatch(/ct2\.bpm <= \$\d+/);
+        expect(params).toContain('electronic');
+        expect(params).toContain(120);
+        expect(params).toContain(130);
+      });
+
+      it('positions bpm placeholders after date placeholders when combined', async () => {
+        vi.mocked(query).mockResolvedValue([]);
+        await getFeedItems(1, {
+          dateFrom: '2025-01-01',
+          dateTo: '2025-02-01',
+          bpmMin: 120,
+        });
+
+        const [sql, params] = vi.mocked(query).mock.calls[0];
+        expect(sql).toMatch(/fi\.date >= \$2/);
+        expect(sql).toMatch(/fi\.date < \$3/);
+        expect(sql).toMatch(/ct2\.bpm >= \$4/);
+        expect(params).toEqual([1, '2025-01-01', '2025-02-01', 120]);
+      });
+    });
   });
 
   describe('getTagCounts', () => {
