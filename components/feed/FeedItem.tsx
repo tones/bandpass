@@ -169,12 +169,15 @@ export function FeedItemCard({
             {[...new Set(item.tags)].sort().slice(0, 4).map((tag) => (
               <TagPill key={tag} tag={tag} />
             ))}
-            {!hasAlbumTracks && <BpmKeyBadge bpm={item.bpm} musicalKey={item.musicalKey} bpmStatus={item.bpmStatus} />}
             {!isCrate && signalText && (
               <span className="text-xs text-amber-500/80">{signalText}</span>
             )}
           </div>
         </div>
+
+        {!hasAlbumTracks && (
+          <BpmKeyBadge bpm={item.bpm} musicalKey={item.musicalKey} bpmStatus={item.bpmStatus} />
+        )}
 
         <TrackActions
           isPlaying={isPlaying}
