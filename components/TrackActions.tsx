@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 
 export interface CrateInfo {
   id: number;
@@ -53,6 +53,7 @@ export function TrackActions({
 }: TrackActionsProps) {
   const s = SIZE_CLASSES[size];
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   const multiCrate = crates && crates.length > 1;
@@ -67,6 +68,15 @@ export function TrackActions({
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [pickerOpen]);
+
+  useLayoutEffect(() => {
+    if (!pickerOpen || !pickerRef.current) return;
+    const rect = pickerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    // ~32px per row + 12px padding, capped at 280px
+    const estimatedMenuHeight = Math.min((crates?.length ?? 0) * 32 + 12, 280);
+    setDropUp(spaceBelow < estimatedMenuHeight);
+  }, [pickerOpen, crates]);
 
   const handleCrateClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -119,7 +129,11 @@ export function TrackActions({
           </button>
 
           {pickerOpen && multiCrate && (
-            <div className="absolute right-0 top-full z-30 mt-1 min-w-[160px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+            <div
+              className={`absolute right-0 z-30 min-w-[160px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl ${
+                dropUp ? 'bottom-full mb-1' : 'top-full mt-1'
+              }`}
+            >
               {crates.map((crate) => {
                 const isIn = itemCrateIds?.includes(crate.id) ?? false;
                 return (
