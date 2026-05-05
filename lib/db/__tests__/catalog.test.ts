@@ -215,6 +215,30 @@ describe('catalog', () => {
       );
       expect(insertCalls).toHaveLength(0);
     });
+
+    it('only deletes stale discography rows that are not referenced elsewhere', async () => {
+      // The DELETE used to roll back the entire transaction (and every
+      // scraped_at refresh in the same tx) because feed_items / wishlist_items
+      // / crate_items still pointed at some of the rows it tried to remove.
+      // Guard with NOT EXISTS so referenced rows survive the prune.
+      mockClientQuery.mockResolvedValue({ rows: [] });
+      vi.mocked(queryOne).mockResolvedValue(null);
+      vi.mocked(query).mockResolvedValue([]);
+
+      await cacheDiscography('slug', 'Band', 'https://slug.bandcamp.com', [
+        { title: 'Album', url: 'https://slug.bandcamp.com/album/a', imageUrl: 'https://img.jpg', releaseType: 'album' },
+      ]);
+
+      const deleteCall = mockClientQuery.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('DELETE FROM catalog_releases'),
+      );
+      expect(deleteCall).toBeDefined();
+      const sql = deleteCall![0] as string;
+      expect(sql).toContain("source = 'discography'");
+      expect(sql).toContain('NOT EXISTS (SELECT 1 FROM feed_items');
+      expect(sql).toContain('NOT EXISTS (SELECT 1 FROM wishlist_items');
+      expect(sql).toContain('NOT EXISTS (SELECT 1 FROM crate_items');
+    });
   });
 
   describe('cacheAlbumTracks', () => {

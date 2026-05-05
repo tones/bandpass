@@ -172,9 +172,20 @@ export async function cacheDiscography(
     }
 
     if (newUrls.size > 0) {
+      // Prune discography-source rows that are no longer in the fresh fetch,
+      // but only if no other table still references them. Without these guards
+      // the DELETE rolls back the whole transaction (and every scraped_at
+      // refresh above) when any feed_item / wishlist_item / crate_item still
+      // points at the row.
       const placeholders = [...newUrls].map((_, i) => `$${i + 2}`).join(',');
       await client.query(
-        `DELETE FROM catalog_releases WHERE band_slug = $1 AND source = 'discography' AND url NOT IN (${placeholders})`,
+        `DELETE FROM catalog_releases cr
+         WHERE cr.band_slug = $1
+           AND cr.source = 'discography'
+           AND cr.url NOT IN (${placeholders})
+           AND NOT EXISTS (SELECT 1 FROM feed_items WHERE release_id = cr.id)
+           AND NOT EXISTS (SELECT 1 FROM wishlist_items WHERE release_id = cr.id)
+           AND NOT EXISTS (SELECT 1 FROM crate_items WHERE release_id = cr.id)`,
         [slug, ...newUrls],
       );
     }
