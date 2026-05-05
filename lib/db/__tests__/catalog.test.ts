@@ -108,6 +108,23 @@ describe('catalog', () => {
       expect(result![0].title).toBe('Album');
       expect(result![0].tags).toEqual(['rock']);
     });
+
+    it('does not require a discography-source row for the freshness gate', async () => {
+      const freshDate = new Date(Date.now() - 1000);
+      vi.mocked(queryOne).mockResolvedValue({ scraped_at: freshDate });
+      vi.mocked(query).mockResolvedValue([{
+        id: 1, band_slug: 'colonyproductions', band_name: 'colony productions',
+        band_url: 'https://colonyproductions.bandcamp.com', title: 'Album',
+        url: 'https://colonyproductions.bandcamp.com/album/x', image_url: 'https://img.jpg',
+        release_type: 'album', scraped_at: freshDate.toISOString(), release_date: null,
+        tags: '[]',
+      }]);
+
+      const result = await getCachedDiscography('colonyproductions');
+      expect(result).toHaveLength(1);
+      const [freshSql] = vi.mocked(queryOne).mock.calls[0];
+      expect(freshSql).not.toContain("source = 'discography'");
+    });
   });
 
   describe('cacheDiscography', () => {
@@ -146,16 +163,52 @@ describe('catalog', () => {
       expect(updateCall).toBeDefined();
     });
 
-    it('skips releases that already have enrichment source', async () => {
+    it('refreshes scraped_at on enrichment rows owned by the same band', async () => {
+      // Same-band case: a Colony Productions release that was already enriched
+      // via the timeline. We must mark it as freshly scraped so the band's
+      // /music page treats the discography as fresh, but must not clobber
+      // enrichment-specific data (release_date, tags, bandcamp_id).
       mockClientQuery
-        .mockResolvedValueOnce({ rows: [{ id: 1 }] })    // enrichment exists
-        .mockResolvedValueOnce({ rows: [] });             // DELETE stale
+        .mockResolvedValueOnce({ rows: [{ id: 7, band_slug: 'slug' }] })  // enrichment exists, same slug
+        .mockResolvedValueOnce({ rows: [] })                              // scraped_at refresh
+        .mockResolvedValueOnce({ rows: [] });                             // DELETE stale
       vi.mocked(queryOne).mockResolvedValue(null);
       vi.mocked(query).mockResolvedValue([]);
 
       await cacheDiscography('slug', 'Band', 'https://slug.bandcamp.com', [
         { title: 'Album', url: 'https://slug.bandcamp.com/album/a', imageUrl: 'https://img.jpg', releaseType: 'album' },
       ]);
+
+      const refreshCall = mockClientQuery.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('SET scraped_at = CURRENT_TIMESTAMP') && !c[0].includes('band_name'),
+      );
+      expect(refreshCall).toBeDefined();
+      expect(refreshCall![1]).toEqual([7]);
+
+      const insertCalls = mockClientQuery.mock.calls.filter(
+        (c) => typeof c[0] === 'string' && c[0].includes('INSERT INTO catalog_releases'),
+      );
+      expect(insertCalls).toHaveLength(0);
+    });
+
+    it('leaves enrichment rows untouched when band_slug differs (cross-label)', async () => {
+      // Cross-label case: a Hoopla release surfaced on Colony Productions'
+      // label page. The Hoopla enrichment row must stay attributed to its own
+      // artist's discography, so we don't touch it here.
+      mockClientQuery
+        .mockResolvedValueOnce({ rows: [{ id: 9, band_slug: 'hooplamusic' }] })  // enrichment exists, different slug
+        .mockResolvedValueOnce({ rows: [] });                                    // DELETE stale
+      vi.mocked(queryOne).mockResolvedValue(null);
+      vi.mocked(query).mockResolvedValue([]);
+
+      await cacheDiscography('colonyproductions', 'colony productions', 'https://colonyproductions.bandcamp.com', [
+        { title: 'Plethora', url: 'https://hooplamusic.bandcamp.com/album/plethora?label=3561125160&tab=music', imageUrl: 'https://img.jpg', releaseType: 'album' },
+      ]);
+
+      const refreshCall = mockClientQuery.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('SET scraped_at = CURRENT_TIMESTAMP') && !c[0].includes('band_name'),
+      );
+      expect(refreshCall).toBeUndefined();
 
       const insertCalls = mockClientQuery.mock.calls.filter(
         (c) => typeof c[0] === 'string' && c[0].includes('INSERT INTO catalog_releases'),

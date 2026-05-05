@@ -46,9 +46,12 @@ export interface CatalogTrack {
 const STALE_HOURS = 24;
 
 export async function getCachedDiscography(slug: string): Promise<CatalogRelease[] | null> {
+  // Freshness is determined by the most recent scraped_at across any source,
+  // so a band whose releases are only known via enrichment (e.g. labels whose
+  // releases all entered through the timeline) still gets a populated page.
   const freshCheck = await queryOne<{ scraped_at: Date | string }>(`
     SELECT scraped_at FROM catalog_releases
-    WHERE band_slug = $1 AND source = 'discography'
+    WHERE band_slug = $1
     ORDER BY scraped_at DESC LIMIT 1
   `, [slug]);
 
@@ -126,11 +129,26 @@ export async function cacheDiscography(
 
   await transaction(async (client) => {
     for (const r of releases) {
-      const enrichmentExists = await client.query(
-        "SELECT 1 FROM catalog_releases WHERE url = $1 AND source = 'enrichment'",
+      const enrichmentExists = await client.query<{ id: number; band_slug: string }>(
+        "SELECT id, band_slug FROM catalog_releases WHERE url = $1 AND source = 'enrichment'",
         [r.url],
       );
-      if (enrichmentExists.rows.length > 0) continue;
+      if (enrichmentExists.rows.length > 0) {
+        // Refresh scraped_at when the enrichment row belongs to this band, so
+        // the freshness gate in getCachedDiscography treats this slug's
+        // discography as recently scraped. Don't overwrite enrichment-specific
+        // fields (release_date, tags, bandcamp_id). For cross-label items where
+        // the row's band_slug points elsewhere, leave the row alone -- it stays
+        // attributed to its own artist's discography.
+        const row = enrichmentExists.rows[0];
+        if (row.band_slug === slug) {
+          await client.query(
+            'UPDATE catalog_releases SET scraped_at = CURRENT_TIMESTAMP WHERE id = $1',
+            [row.id],
+          );
+        }
+        continue;
+      }
 
       const existing = await client.query(
         "SELECT id FROM catalog_releases WHERE url = $1 AND source = 'discography'",
