@@ -28,10 +28,12 @@ interface WaveformPlayerProps {
 
 export interface WaveformPlayerHandle {
   togglePlayPause: () => void;
+  seekTo: (progress: number) => void;
 }
 
 export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerProps>(
   function WaveformPlayer({ item, trackUrl, onPlayStateChange, onClose }, ref) {
+  const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [wavesurfer, setWavesurfer] = useState<WaveSurfer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -99,6 +101,7 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
   }, [itemRef]);
 
   const onReady = useCallback((ws: WaveSurfer) => {
+    wavesurferRef.current = ws;
     setWavesurfer(ws);
     setDuration(ws.getDuration());
     ws.play();
@@ -112,12 +115,16 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
   }, [wavesurfer, trackUrl, catalogTrackId]);
 
   const togglePlayPause = useCallback(() => {
-    wavesurfer?.playPause();
-  }, [wavesurfer]);
+    wavesurferRef.current?.playPause();
+  }, []);
+
+  const seekTo = useCallback((progress: number) => {
+    wavesurferRef.current?.seekTo(progress);
+  }, []);
 
   const { next, prev, canGoNext, canGoPrev } = usePlayer();
 
-  useImperativeHandle(ref, () => ({ togglePlayPause }), [togglePlayPause]);
+  useImperativeHandle(ref, () => ({ togglePlayPause, seekTo }), [togglePlayPause, seekTo]);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-800 bg-zinc-950 px-6 py-3">

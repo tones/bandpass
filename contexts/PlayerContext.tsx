@@ -37,8 +37,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const currentIndex = useMemo(() => {
     if (!playingItem) return -1;
-    return playlist.findIndex((item) => item.id === playingItem.id);
-  }, [playingItem, playlist]);
+    const directIndex = playlist.findIndex((item) => item.id === playingItem.id);
+    if (directIndex !== -1) return directIndex;
+    if (playingTrackUrl) {
+      return playlist.findIndex((item) => item.track?.streamUrl === playingTrackUrl);
+    }
+    return -1;
+  }, [playingItem, playlist, playingTrackUrl]);
 
   const canGoPrev = currentIndex > 0;
   const canGoNext = currentIndex >= 0 && currentIndex < playlist.length - 1;
@@ -81,26 +86,60 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [canGoPrev, playlist, currentIndex]);
 
-  // Spacebar toggles play/pause when a track is loaded in the player bar.
-  // Skips inputs / buttons so typing and button activation behave normally.
+  const nextRef = useRef(next);
+  nextRef.current = next;
+  const prevRef = useRef(prev);
+  prevRef.current = prev;
+
+  // Keyboard shortcuts when a track is loaded in the player bar:
+  // - Space: toggle play/pause
+  // - ArrowLeft: previous track
+  // - ArrowRight: next track
+  // - 0-9: seek to 0%, 10%, 20%, ..., 90% (YouTube style)
+  // Skips text inputs so typing is not interrupted.
   useEffect(() => {
     if (!playingItem) return;
 
-    const SKIP_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']);
+    const TEXT_INPUT_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.code !== 'Space') return;
-      if (e.repeat) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const target = e.target as HTMLElement | null;
       if (target) {
-        if (SKIP_TAGS.has(target.tagName)) return;
+        if (TEXT_INPUT_TAGS.has(target.tagName)) return;
         if (target.isContentEditable) return;
+        if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
       }
 
-      e.preventDefault();
-      playerRef.current?.togglePlayPause();
+      if (e.code === 'Space' || e.key === ' ') {
+        if (e.repeat) return;
+        e.preventDefault();
+        playerRef.current?.togglePlayPause();
+        return;
+      }
+
+      if (e.code === 'ArrowLeft' || e.key === 'ArrowLeft') {
+        if (e.repeat) return;
+        e.preventDefault();
+        prevRef.current();
+        return;
+      }
+
+      if (e.code === 'ArrowRight' || e.key === 'ArrowRight') {
+        if (e.repeat) return;
+        e.preventDefault();
+        nextRef.current();
+        return;
+      }
+
+      if (e.key >= '0' && e.key <= '9') {
+        if (e.repeat) return;
+        e.preventDefault();
+        const digit = parseInt(e.key, 10);
+        playerRef.current?.seekTo(digit / 10);
+        return;
+      }
     }
 
     window.addEventListener('keydown', onKeyDown);
