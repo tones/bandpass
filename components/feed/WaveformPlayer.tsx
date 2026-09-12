@@ -162,6 +162,7 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
             onPlay={() => { setIsPlaying(true); onPlayStateChange?.(true); }}
             onPause={() => { setIsPlaying(false); onPlayStateChange?.(false); }}
             onTimeupdate={(ws: WaveSurfer) => setCurrentTime(ws.getCurrentTime())}
+            onFinish={() => { if (canGoNext) next(); }}
           />
         </div>
 

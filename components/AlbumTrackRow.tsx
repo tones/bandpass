@@ -31,6 +31,7 @@ export function AlbumTrackRow({
 }: AlbumTrackRowProps) {
   return (
     <div
+      data-stream-url={track.streamUrl ?? undefined}
       className={`flex w-full items-center gap-3 py-2 pl-4 pr-6 transition-colors ${
         isActive ? 'bg-zinc-900' : 'hover:bg-zinc-900/30'
       } ${!track.streamUrl ? 'opacity-40' : ''}`}

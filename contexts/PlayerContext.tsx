@@ -28,6 +28,41 @@ export function usePlayer(): PlayerContextValue {
   return ctx;
 }
 
+function scrollTrackIntoViewIfOffscreen(streamUrl: string) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  requestAnimationFrame(() => {
+    let el: HTMLElement | null = null;
+    try {
+      el = document.querySelector(`[data-stream-url="${CSS.escape(streamUrl)}"]`);
+    } catch {
+      const all = document.querySelectorAll<HTMLElement>('[data-stream-url]');
+      for (const item of all) {
+        if (item.getAttribute('data-stream-url') === streamUrl) {
+          el = item;
+          break;
+        }
+      }
+    }
+
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    const topMargin = 70; // Clearance below sticky top header / filter bar
+    const bottomMargin = 85; // Clearance above fixed bottom player bar (~72px + margin)
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+
+    const isFullyVisible = rect.top >= topMargin && rect.bottom <= (viewportHeight - bottomMargin);
+
+    if (!isFullyVisible) {
+      el.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  });
+}
+
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [playingTrackUrl, setPlayingTrackUrl] = useState<string | null>(null);
   const [playingItem, setPlayingItem] = useState<FeedItem | null>(null);
@@ -74,6 +109,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (nextItem?.track?.streamUrl) {
       setPlayingTrackUrl(nextItem.track.streamUrl);
       setPlayingItem(nextItem);
+      scrollTrackIntoViewIfOffscreen(nextItem.track.streamUrl);
     }
   }, [canGoNext, playlist, currentIndex]);
 
@@ -83,6 +119,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (prevItem?.track?.streamUrl) {
       setPlayingTrackUrl(prevItem.track.streamUrl);
       setPlayingItem(prevItem);
+      scrollTrackIntoViewIfOffscreen(prevItem.track.streamUrl);
     }
   }, [canGoPrev, playlist, currentIndex]);
 

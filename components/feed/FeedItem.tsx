@@ -108,7 +108,7 @@ export function FeedItemCard({
   })() : null;
 
   return (
-    <div>
+    <div data-stream-url={!hasAlbumTracks ? (item.track?.streamUrl ?? undefined) : undefined}>
       <div
         className={`flex items-center gap-4 px-6 py-3 transition-colors hover:bg-zinc-900/50 ${
           isPlaying ? 'bg-zinc-900/80' : ''
