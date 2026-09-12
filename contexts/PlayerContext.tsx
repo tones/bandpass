@@ -48,17 +48,17 @@ function scrollTrackIntoViewIfOffscreen(streamUrl: string) {
     if (!el) return;
 
     const rect = el.getBoundingClientRect();
-    const topMargin = 70; // Clearance below sticky top header / filter bar
-    const bottomMargin = 85; // Clearance above fixed bottom player bar (~72px + margin)
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const topBoundary = 72; // Clearance below sticky top header / filter bar
+    const bottomBoundary = (window.innerHeight || document.documentElement.clientHeight) - 88; // Clearance above fixed player bar
 
-    const isFullyVisible = rect.top >= topMargin && rect.bottom <= (viewportHeight - bottomMargin);
-
-    if (!isFullyVisible) {
-      el.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+    if (rect.bottom > bottomBoundary) {
+      // Offscreen below: scroll down just enough to bring track above bottom player bar with breathing room
+      const delta = rect.bottom - bottomBoundary + 16;
+      window.scrollBy({ top: delta, behavior: 'smooth' });
+    } else if (rect.top < topBoundary) {
+      // Offscreen above: scroll up just enough to bring track below top header with breathing room
+      const delta = rect.top - topBoundary - 16;
+      window.scrollBy({ top: delta, behavior: 'smooth' });
     }
   });
 }
