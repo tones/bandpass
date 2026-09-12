@@ -36,7 +36,7 @@ export default async function CratesPage() {
   }
 
   return (
-    <main className="flex h-screen flex-col">
+    <main className="flex h-[calc(100dvh-89px)] flex-col">
       <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
         <p className="text-lg text-zinc-400">No crates yet</p>
       </div>

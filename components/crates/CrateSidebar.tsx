@@ -63,6 +63,17 @@ export function CrateSidebar({
   return (
     <>
       <div className="flex w-56 shrink-0 flex-col border-r border-zinc-800">
+        <div className="flex items-center justify-between border-b border-zinc-800/60 px-3 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Crates</span>
+          <button
+            type="button"
+            onClick={() => setShowNewCrate(true)}
+            title="New Crate"
+            className="flex h-5 w-5 items-center justify-center rounded text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+          >
+            +
+          </button>
+        </div>
         <nav className="flex-1 overflow-y-auto py-2">
           {crates.map((crate) => {
             const isActive = activeCrateId === crate.id;
@@ -130,7 +141,7 @@ export function CrateSidebar({
           })}
         </nav>
 
-        <div className={`border-t border-zinc-800 px-3 py-3 ${hasPlayingItem ? 'pb-24' : ''}`}>
+        <div className={`shrink-0 border-t border-zinc-800 px-3 py-3 ${hasPlayingItem ? 'pb-24' : ''}`}>
           {showNewCrate ? (
             <div className="flex flex-col gap-2">
               <input

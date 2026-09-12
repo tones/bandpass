@@ -50,7 +50,7 @@ export default async function CrateDetailPage({ params }: CrateDetailPageProps) 
   const initialAlbumTracks = await getWishlistAlbumTracks(albumItemUrls);
 
   return (
-    <main className="flex h-screen flex-col">
+    <main className="flex h-[calc(100dvh-89px)] flex-col overflow-hidden">
       <CratesView
         crates={crates}
         initialCrateId={targetCrate?.id ?? null}
